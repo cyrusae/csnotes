@@ -1,0 +1,10 @@
+{
+  "uuid": "454be06b-771a-432c-9edb-d52db1931686",
+  "issue_uuid": "ecfd6496-90e0-4c1c-a2af-454ca87eb3da",
+  "author": "3owj",
+  "content": "Implemented all Phase 1 features: comrak heading parsing (markdown.rs), source scanning in reconcile, topics_updated tracking in teardown, pending_sessions in reindex, rename_topic structural op with precondition checks, source teardown status update, richer _session.md (per-topic block IDs + pending sessions + follow_up re-injection). 58 tests passing (up from 41). STATUS.md updated.",
+  "created_at": "2026-06-09T23:24:55.664511Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAx5X7IRkSsmRRRlJVQF9fBZPRjNSQomaZGBvWcOZKKsPODBCwpS+Ht+R9p0hd7movZ9aMvQwVjsBnx53Cu2sOAA=="
+}
