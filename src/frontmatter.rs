@@ -223,10 +223,13 @@ pub fn write_frontmatter(path: &Path, fm: &NoteFrontmatter, body: &str) -> Resul
         }
     })?;
 
-    // serde_yaml emits a leading `---\n`; we normalise to our fence format.
+    // serde_yml may or may not emit a leading `---\n`; strip it if present so
+    // we control the fence format ourselves.  Also trim any trailing newlines
+    // so the closing `---` always lands on its own line.
     let yaml = yaml.strip_prefix("---\n").unwrap_or(&yaml);
+    let yaml = yaml.trim_end_matches('\n');
 
-    let content = format!("---\n{}---\n\n{}", yaml, body.trim_start_matches('\n'));
+    let content = format!("---\n{}\n---\n\n{}", yaml, body.trim_start_matches('\n'));
     std::fs::write(path, content)
         .with_context(|| format!("writing frontmatter to {}", path.display()))?;
     Ok(())
@@ -322,5 +325,28 @@ Body content here. ^polymorphism-core
     fn no_frontmatter_returns_error() {
         let result = parse_frontmatter("# Just a header\n\nNo fence.", Path::new("bare.md"));
         assert!(result.is_err());
+    }
+
+    /// Verifies that write_frontmatter produces output that parse_frontmatter
+    /// can round-trip back.  This exercises the serde_yml serialisation path.
+    #[test]
+    fn write_then_parse_roundtrip() {
+        use chrono::TimeZone;
+        use tempfile::NamedTempFile;
+
+        let now = Utc.with_ymd_and_hms(2026, 9, 3, 18, 0, 0).unwrap();
+        let fm = NoteFrontmatter::new_atomic("cpsc5001", "Algorithm Analysis", "algo-intro", now);
+        let body = "Big-O notation.\n\n^algo-intro\n";
+
+        let file = NamedTempFile::new().unwrap();
+        write_frontmatter(file.path(), &fm, body).unwrap();
+
+        let content = std::fs::read_to_string(file.path()).unwrap();
+        assert!(content.starts_with("---\n"), "file must start with YAML fence; got: {:?}", &content[..content.len().min(40)]);
+
+        let parsed = parse_frontmatter(&content, file.path()).unwrap();
+        assert_eq!(parsed.kind, NoteKind::Atomic);
+        assert_eq!(parsed.block_id.as_deref(), Some("algo-intro"));
+        assert!(content.contains("Big-O notation."), "body must be preserved");
     }
 }

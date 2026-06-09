@@ -141,14 +141,31 @@ impl BackendLauncher for MockBackend {
         // `--backend mock` is only meaningful during development.
         let fixture_dir = locate_fixture_dir(fixture_name)?;
 
-        // Copy _session_report.json
+        // Derive the actual run_id from the workspace directory name.
+        // workspace_root = $base/csnotes/<run_id>, so file_name() == run_id.
+        let run_id = workspace
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        // Read, patch run_id, and write _session_report.json.
+        // The fixture file stores a placeholder; the real run_id is only known
+        // at launch time and must match what the teardown will check.
         let report_src = fixture_dir.join("_session_report.json");
         if report_src.exists() {
-            std::fs::copy(&report_src, workspace.join("_session_report.json"))
-                .map_err(|e| CsnotesError::BackendFailed(format!("copying fixture report: {e}")))?;
+            let content = std::fs::read_to_string(&report_src)
+                .map_err(|e| CsnotesError::BackendFailed(format!("reading fixture report: {e}")))?;
+            let mut report: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| CsnotesError::BackendFailed(format!("parsing fixture report: {e}")))?;
+            report["run_id"] = serde_json::Value::String(run_id);
+            let patched = serde_json::to_string_pretty(&report)
+                .map_err(|e| CsnotesError::BackendFailed(format!("serialising patched report: {e}")))?;
+            std::fs::write(workspace.join("_session_report.json"), patched)
+                .map_err(|e| CsnotesError::BackendFailed(format!("writing fixture report: {e}")))?;
         }
 
-        // Copy any fixture synthetic note edits
+        // Copy any fixture synthetic note edits into the workspace.
         let synthetic_src = fixture_dir.join("_synthetic");
         if synthetic_src.exists() {
             copy_dir_merge(&synthetic_src, &workspace.join("_synthetic"))?;
