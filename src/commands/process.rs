@@ -231,14 +231,18 @@ pub fn run_teardown(
     // Step 10: Merge-back
     merge_back(workspace_root, vault_root, &config.synthetic_dir)?;
 
-    // Copy last_report.json
+    // Copy last_report.json and per-session report copies
     let report_src = workspace_root.join(REPORT_FILENAME);
     if report_src.exists() {
-        std::fs::copy(
-            &report_src,
-            new_manifest.last_report_path(),
-        )
-        .ok(); // non-fatal
+        std::fs::copy(&report_src, new_manifest.last_report_path()).ok();
+
+        for session_id in &report.scope.sessions {
+            let dest = new_manifest.session_report_path(session_id);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::copy(&report_src, &dest).ok();
+        }
     }
 
     // Append flags to flag store

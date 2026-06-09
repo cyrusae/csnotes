@@ -14,7 +14,7 @@ pub fn run(sub: FlagsSubcommand) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
     let flags_path = vault_root.join(&config.generated_dir).join("flags.json");
-    let mut store = FlagStore::load(&flags_path)?;
+    let mut store = FlagStore::load(&flags_path).unwrap_or_default();
 
     match sub {
         FlagsSubcommand::List { all } => {

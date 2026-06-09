@@ -85,6 +85,14 @@ impl Manifest {
     pub fn last_report_path(&self) -> PathBuf {
         self.vault_root.join(&self.config.generated_dir).join("last_report.json")
     }
+
+    /// Path for storing the report from a specific session.
+    pub fn session_report_path(&self, session_id: &str) -> PathBuf {
+        self.vault_root
+            .join(&self.config.generated_dir)
+            .join("reports")
+            .join(format!("{}.json", session_id))
+    }
 }
 
 // ── ManifestConfig ────────────────────────────────────────────────────────────

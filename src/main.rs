@@ -90,18 +90,24 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             recover::run(recover::RecoverArgs { resume, discard })
         }
 
-        Command::Audit { reindex, fix } => audit_cmd::run(audit_cmd::AuditArgs { reindex, fix }),
+        Command::Audit { reindex, fix, apply } => {
+            audit_cmd::run(audit_cmd::AuditArgs { reindex, fix, apply })
+        }
 
         Command::Config {
             set,
             show,
+            add_course,
             archive,
             migrate,
+            apply,
         } => config_cmd::run(config_cmd::ConfigArgs {
             set,
             show,
+            add_course,
             archive,
             migrate,
+            apply,
         }),
     }
 }
@@ -215,9 +221,13 @@ enum Command {
         /// Rebuild csnotes.json from frontmatter + filesystem.
         #[arg(long)]
         reindex: bool,
-        /// Apply mechanical repairs.
+        /// Show mechanical repairs without writing anything (dry-run).
+        /// Combine with --apply to execute.
         #[arg(long)]
         fix: bool,
+        /// Execute the repairs shown by --fix.
+        #[arg(long)]
+        apply: bool,
     },
 
     /// Read or update vault configuration.
@@ -228,12 +238,19 @@ enum Command {
         /// Print current configuration.
         #[arg(long)]
         show: bool,
+        /// Add a course to active_courses.
+        #[arg(long)]
+        add_course: Option<String>,
         /// Archive a course (removes from active_courses).
         #[arg(long)]
         archive: Option<String>,
-        /// Rename existing files to the current filename_format.
+        /// Show the rename plan for migrating files to the current
+        /// filename_format (dry-run).  Combine with --apply to execute.
         #[arg(long)]
         migrate: bool,
+        /// Execute the rename plan shown by --migrate.
+        #[arg(long)]
+        apply: bool,
     },
 }
 

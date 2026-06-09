@@ -480,6 +480,100 @@ fn note_exists_in_tree(root: &Path, note_name: &str) -> bool {
     false
 }
 
+// ── Fix plan ──────────────────────────────────────────────────────────────────
+
+use std::path::PathBuf;
+
+/// A single mechanical repair that `audit --fix --apply` can execute.
+pub struct FixItem {
+    /// Human-readable description for the dry-run preview.
+    pub description: String,
+    pub action: FixAction,
+}
+
+pub enum FixAction {
+    /// Append a `^block_id` anchor to the end of the note body.
+    AppendAnchor { path: PathBuf, block_id: String },
+}
+
+/// Collect all auto-repairable issues in `_synthetic/`.
+///
+/// Currently detects: atomic notes whose frontmatter declares a `block_id`
+/// but whose body is missing the corresponding `^id` anchor.
+pub fn collect_fixes(
+    vault_root: &Path,
+    config: &crate::config::VaultConfig,
+) -> Result<Vec<FixItem>> {
+    let synthetic_root = vault_root.join(&config.synthetic_dir);
+    let mut fixes = Vec::new();
+
+    if !synthetic_root.exists() {
+        return Ok(fixes);
+    }
+
+    for entry in walkdir::WalkDir::new(&synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+    {
+        let content = match std::fs::read_to_string(entry.path()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        // Unparseable frontmatter can't be auto-repaired
+        let fm = match parse_frontmatter(&content, entry.path()) {
+            Ok(fm) => fm,
+            Err(_) => continue,
+        };
+        if fm.kind == NoteKind::Atomic {
+            if let Some(id) = &fm.block_id {
+                if !extract_block_ids(&content).contains(id) {
+                    let rel = entry
+                        .path()
+                        .strip_prefix(vault_root)
+                        .unwrap_or(entry.path());
+                    fixes.push(FixItem {
+                        description: format!(
+                            "'{}': append '^{}' anchor to body",
+                            rel.display(),
+                            id
+                        ),
+                        action: FixAction::AppendAnchor {
+                            path: entry.path().to_path_buf(),
+                            block_id: id.clone(),
+                        },
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(fixes)
+}
+
+/// Execute a collected fix plan.  Returns the number of repairs applied.
+pub fn apply_fixes(fixes: &[FixItem]) -> Result<usize> {
+    use anyhow::Context;
+    let mut applied = 0;
+    for fix in fixes {
+        match &fix.action {
+            FixAction::AppendAnchor { path, block_id } => {
+                let content = std::fs::read_to_string(path)
+                    .with_context(|| format!("reading {}", path.display()))?;
+                // Append anchor on its own line, preceded by a blank line if
+                // the body doesn't already end with one.
+                let trimmed = content.trim_end_matches('\n');
+                let gap = if trimmed.ends_with('\n') { "\n" } else { "\n\n" };
+                let new_content = format!("{}{}\n^{}\n", trimmed, gap, block_id);
+                std::fs::write(path, new_content)
+                    .with_context(|| format!("writing {}", path.display()))?;
+                applied += 1;
+            }
+        }
+    }
+    Ok(applied)
+}
+
 fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Result<()> {
     if !synthetic_root.exists() {
         return Ok(());

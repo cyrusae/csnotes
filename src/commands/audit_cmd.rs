@@ -6,6 +6,9 @@ use crate::manifest::Manifest;
 pub struct AuditArgs {
     pub reindex: bool,
     pub fix: bool,
+    /// Only meaningful when `fix` is also true.  Without `--apply`, `--fix`
+    /// shows the repair plan without writing anything.
+    pub apply: bool,
 }
 
 pub fn run(args: AuditArgs) -> Result<()> {
@@ -17,7 +20,8 @@ pub fn run(args: AuditArgs) -> Result<()> {
         println!("Rebuilding manifest from frontmatter...");
         let new_manifest = crate::audit::reindex(&vault_root, &config)?;
         new_manifest.save(&vault_root)?;
-        println!("Manifest rebuilt: {} topics, {} sessions, {} sources",
+        println!(
+            "Manifest rebuilt: {} topics, {} sessions, {} sources",
             new_manifest.topics.len(),
             new_manifest.sessions.len(),
             new_manifest.sources.len(),
@@ -25,24 +29,58 @@ pub fn run(args: AuditArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Read-only invariant run against the vault
+    // ── Read-only invariant run ───────────────────────────────────────────────
     println!("Running invariant suite (read-only)...");
-
-    // We need a dummy report to satisfy the invariant_suite signature.
-    // For a direct audit, we check the vault state without a report context.
-    // TODO: decouple audit from SessionReport for direct vault audits.
     let audit = crate::audit::audit_vault(&vault_root, &config)?;
     audit.print();
 
+    // ── Fix plan ──────────────────────────────────────────────────────────────
     if args.fix {
-        println!("\nApplying mechanical repairs (--fix)...");
-        println!("  (Phase 4 — not yet implemented)");
+        println!();
+        let fixes = crate::audit::collect_fixes(&vault_root, &config)?;
+
+        if fixes.is_empty() {
+            println!("No mechanical repairs needed.");
+        } else {
+            println!("Repair plan ({}):", fixes.len());
+            for fix in &fixes {
+                println!("  ~ {}", fix.description);
+            }
+
+            if args.apply {
+                let n = crate::audit::apply_fixes(&fixes)?;
+                println!("\nApplied {} repair(s).", n);
+                println!("Re-run `csnotes audit` to verify the vault is now clean.");
+            } else {
+                println!();
+                println!("Run `csnotes audit --fix --apply` to execute these repairs.");
+            }
+        }
+
+        // Note violations that are NOT auto-fixable
+        if !audit.hard_violations.is_empty() {
+            let fixable = fixes.len();
+            let total = audit.hard_violations.len();
+            // The fixable violations are a subset of hard_violations (anchor
+            // mismatches).  Any remaining violations need manual work.
+            if total > fixable {
+                println!();
+                println!(
+                    "{} violation(s) above require manual resolution.",
+                    total - fixable
+                );
+            }
+        }
     }
 
-    if audit.is_clean() {
-        println!("Vault is clean.");
-    } else {
+    // ── Exit code ─────────────────────────────────────────────────────────────
+    if !audit.is_clean() {
         std::process::exit(1);
+    }
+
+    if !args.fix {
+        // Only print "clean" when not in fix mode (fix mode already printed its summary)
+        println!("Vault is clean.");
     }
 
     Ok(())
