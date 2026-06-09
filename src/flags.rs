@@ -106,6 +106,14 @@ impl FlagStore {
         })
     }
 
+    /// Resolved flags that have a follow-up note — injected into the next
+    /// session briefing so the AI has context from previous resolutions.
+    pub fn resolved_with_follow_up(&self) -> impl Iterator<Item = &StoredFlag> {
+        self.flags
+            .iter()
+            .filter(|f| !f.open && f.follow_up.is_some())
+    }
+
     /// Resolve a flag by ID.  Returns `false` if not found.
     pub fn resolve(&mut self, id: &str, now: DateTime<Utc>, follow_up: Option<String>) -> bool {
         if let Some(flag) = self.flags.iter_mut().find(|f| f.id == id) {

@@ -350,50 +350,141 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
         }
     }
 
-    // Existing synthetic notes
+    // Existing synthetic notes — per-topic with block IDs, pending sessions,
+    // and topic-scoped flags inline.
     out.push_str("## Existing Synthetic Notes\n");
-    let synthetic_root = params.vault_root.join(&params.config.synthetic_dir);
-    if synthetic_root.exists() {
+    out.push_str("_Block IDs listed per topic — reuse existing IDs; never duplicate._\n");
+
+    let ws_synthetic = workspace_root.join(&params.config.synthetic_dir);
+    // Collect all block IDs once, then bucket by topic for inline display.
+    let all_block_ids = if ws_synthetic.exists() {
+        collect_all_block_ids(&ws_synthetic)?
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let flag_store = FlagStore::load(&params.manifest.flags_path_absolute())
+        .unwrap_or_default();
+
+    if params.manifest.topics.is_empty() {
+        out.push_str("\n_No synthetic notes yet._\n");
+    } else {
         for (topic_name, topic) in &params.manifest.topics {
             out.push_str(&format!("\n### {}\n", topic_name));
             out.push_str(&format!("- Index: `{}`\n", topic.index_note));
             for atomic in &topic.atomic_notes {
                 out.push_str(&format!("- Atomic: `{}`\n", atomic));
             }
-            out.push_str(&format!("- Last updated: {}\n", topic.last_updated.format("%Y-%m-%d")));
-        }
-    } else {
-        out.push_str("_No synthetic notes yet._\n");
-    }
+            out.push_str(&format!(
+                "- Last updated: {}\n",
+                topic.last_updated.format("%Y-%m-%d")
+            ));
 
-    // All known block IDs (for collision avoidance)
-    out.push_str("\n## All Known Block IDs (vault-wide)\n");
-    out.push_str("_Reuse existing IDs where appropriate; never create a duplicate._\n\n");
-    let ws_synthetic = workspace_root.join(&params.config.synthetic_dir);
-    if ws_synthetic.exists() {
-        let block_ids = collect_all_block_ids(&ws_synthetic)?;
-        if block_ids.is_empty() {
-            out.push_str("_None yet._\n");
-        } else {
-            let mut sorted: Vec<_> = block_ids.iter().collect();
-            sorted.sort_by_key(|(id, _)| (*id).clone());
-            for (id, path) in sorted {
-                out.push_str(&format!("- `^{}` → `{}`\n", id, path));
+            // Pending sessions (processed after this topic's last_updated).
+            if !topic.pending_sessions.is_empty() {
+                out.push_str(&format!(
+                    "- ⚠ Pending sessions (processed after last update): {}\n",
+                    topic.pending_sessions.join(", ")
+                ));
+            }
+
+            // Block IDs belonging to this topic's folder.
+            let topic_prefix = format!("{}/", topic_name);
+            let mut topic_ids: Vec<(&String, &String)> = all_block_ids
+                .iter()
+                .filter(|(_, path)| {
+                    // path is relative to _synthetic/, so strip the synthetic
+                    // dir prefix to check the topic component.
+                    let stripped = path
+                        .trim_start_matches(&format!("{}/", params.config.synthetic_dir));
+                    stripped.starts_with(&topic_prefix)
+                })
+                .collect();
+            topic_ids.sort_by_key(|(id, _)| *id);
+            if !topic_ids.is_empty() {
+                out.push_str("- Block IDs:\n");
+                for (id, path) in &topic_ids {
+                    out.push_str(&format!("  - `^{}` in `{}`\n", id, path));
+                }
+            }
+
+            // Open flags scoped to this topic.
+            let topic_flags: Vec<_> = flag_store.open_for_topic(topic_name).collect();
+            if !topic_flags.is_empty() {
+                out.push_str("- Open flags:\n");
+                for flag in topic_flags {
+                    let anchor_suffix = flag
+                        .anchor
+                        .as_deref()
+                        .map(|a| format!(" `^{}`", a))
+                        .unwrap_or_default();
+                    out.push_str(&format!(
+                        "  - [{}] **{}**{}: {}\n",
+                        flag.id,
+                        flag.display_kind(),
+                        anchor_suffix,
+                        flag.message
+                    ));
+                }
             }
         }
     }
 
-    // Open flags
-    out.push_str("\n## Open Flags\n");
-    if let Ok(flag_store) =
-        FlagStore::load(&params.manifest.flags_path_absolute())
+    // Resolved follow-ups — re-inject so the AI knows how past questions
+    // were answered and can apply that context when writing notes.
+    let follow_ups: Vec<_> = flag_store.resolved_with_follow_up().collect();
+    if !follow_ups.is_empty() {
+        out.push_str("\n## Resolved Follow-ups\n");
+        out.push_str("_These flags were resolved by the user; apply any corrections noted below._\n\n");
+        for flag in follow_ups {
+            let path_note = flag
+                .path
+                .as_deref()
+                .map(|p| format!(" (`{}`)", p))
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "- **{}**{}: {}\n",
+                flag.display_kind(),
+                path_note,
+                flag.message
+            ));
+            if let Some(fu) = &flag.follow_up {
+                out.push_str(&format!("  → Follow-up: {}\n", fu));
+            }
+        }
+    }
+
+    // Open flags not scoped to any specific topic (vault-wide actionable +
+    // threads that don't belong to a known topic folder).
+    out.push_str("\n## Open Flags (vault-wide)\n");
     {
-        let actionable: Vec<_> = flag_store.open_actionable().collect();
-        let threads: Vec<_> = flag_store.open_threads().collect();
-        if actionable.is_empty() && threads.is_empty() {
+        // Collect flags NOT already shown in the per-topic sections above.
+        let known_topic_prefixes: Vec<String> = params
+            .manifest
+            .topics
+            .keys()
+            .map(|t| format!("_synthetic/{}/", t))
+            .collect();
+        let unscoped_actionable: Vec<_> = flag_store
+            .open_actionable()
+            .filter(|f| {
+                f.path.as_deref().map_or(true, |p| {
+                    !known_topic_prefixes.iter().any(|prefix| p.starts_with(prefix))
+                })
+            })
+            .collect();
+        let unscoped_threads: Vec<_> = flag_store
+            .open_threads()
+            .filter(|f| {
+                f.path.as_deref().map_or(true, |p| {
+                    !known_topic_prefixes.iter().any(|prefix| p.starts_with(prefix))
+                })
+            })
+            .collect();
+        if unscoped_actionable.is_empty() && unscoped_threads.is_empty() {
             out.push_str("_None._\n");
         }
-        for flag in actionable {
+        for flag in unscoped_actionable {
             out.push_str(&format!(
                 "- [{}] **{}**: {}\n",
                 flag.id,
@@ -401,7 +492,7 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
                 flag.message
             ));
         }
-        for flag in threads {
+        for flag in unscoped_threads {
             out.push_str(&format!(
                 "- [{}] *{}*: {}\n",
                 flag.id,

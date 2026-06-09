@@ -67,6 +67,12 @@ pub enum CsnotesError {
         index: String,
     },
 
+    #[error("rename_topic precondition failed: source topic '{0}' not found in workspace")]
+    RenameTopicSourceMissing(String),
+
+    #[error("rename_topic precondition failed: destination topic '{0}' already exists")]
+    RenameTopicDestExists(String),
+
     // ── Invariant violations ──────────────────────────────────────────────────
     #[error("block ID '^{id}' is not vault-unique; also defined in '{other}'")]
     BlockIdCollision { id: String, other: String },

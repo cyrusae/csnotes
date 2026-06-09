@@ -104,12 +104,30 @@ pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Resul
                 parse_frontmatter(&content, &path)?;
             }
 
-            // Structural ops — precondition checks are Phase 1+ responsibilities.
-            // For Phase 0 we just verify they won't fire unexpectedly.
-            _ => {
-                // Structural ops are not yet executed; they'll fail gracefully
-                // in ops/structural.rs if the AI emits one prematurely.
+            Op::RenameTopic(op) => {
+                // The source topic folder must exist in the workspace.
+                // (The config synthetic_dir is not available here, so we scan
+                // for the folder under any direct child of the workspace root
+                // that looks like a synthetic dir.)
+                let possible_dirs = [
+                    workspace_root.join("_synthetic").join(&op.from),
+                    workspace_root.join(&op.from),
+                ];
+                let from_exists = possible_dirs.iter().any(|d| d.exists());
+                if !from_exists {
+                    return Err(CsnotesError::RenameTopicSourceMissing(op.from.clone()).into());
+                }
+                let possible_dests = [
+                    workspace_root.join("_synthetic").join(&op.to),
+                    workspace_root.join(&op.to),
+                ];
+                if possible_dests.iter().any(|d| d.exists()) {
+                    return Err(CsnotesError::RenameTopicDestExists(op.to.clone()).into());
+                }
             }
+
+            // Phase 4 structural ops — no precondition checks yet.
+            _ => {}
         }
     }
     Ok(())
@@ -368,6 +386,26 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
                 topic.last_updated = fm.last_updated;
             }
         }
+    }
+
+    // Compute pending_sessions: processed sessions whose processed_at is after
+    // the topic's last_updated AND whose topics_updated lists this topic.
+    // This detects genuine desync — e.g., a session was processed but the
+    // topic's notes weren't updated (crash, manual edit, etc.).
+    for (topic_name, topic_entry) in manifest.topics.iter_mut() {
+        topic_entry.pending_sessions = manifest
+            .sessions
+            .iter()
+            .filter(|(_, s)| {
+                if let Some(processed_at) = s.processed_at {
+                    processed_at > topic_entry.last_updated
+                        && s.topics_updated.contains(topic_name)
+                } else {
+                    false
+                }
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
     }
 
     Ok(manifest)

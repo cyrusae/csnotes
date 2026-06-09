@@ -174,14 +174,33 @@ pub fn run_teardown(
         return Err(e);
     }
 
-    // Step 5: Structural ops (Phase 1+; Phase 0 has none)
+    // Step 5: Structural ops — Phase 1 supports rename_topic; Phase 4 ops bail.
     for op in &report.operations {
-        if op.is_structural() {
-            eprintln!("Structural op '{}' is not yet supported (Phase 1+). Discarding workspace.", op.kind_str());
-            cleanup(workspace_root, vault_root, run_id)?;
-            manifest.session_in_progress = None;
-            manifest.save(vault_root)?;
-            bail!("structural ops not yet implemented");
+        match op {
+            Op::RenameTopic(op) => {
+                if let Err(e) = crate::ops::structural::execute_rename_topic(
+                    op,
+                    workspace_root,
+                    &config.synthetic_dir,
+                ) {
+                    eprintln!("rename_topic failed: {}", e);
+                    cleanup(workspace_root, vault_root, run_id)?;
+                    manifest.session_in_progress = None;
+                    manifest.save(vault_root)?;
+                    return Err(e);
+                }
+            }
+            op if op.is_structural() => {
+                eprintln!(
+                    "Structural op '{}' is not yet supported (Phase 4). Discarding workspace.",
+                    op.kind_str()
+                );
+                cleanup(workspace_root, vault_root, run_id)?;
+                manifest.session_in_progress = None;
+                manifest.save(vault_root)?;
+                bail!("structural op '{}' not yet implemented", op.kind_str());
+            }
+            _ => {} // content ops handled in step 6
         }
     }
 
@@ -201,8 +220,9 @@ pub fn run_teardown(
     let mut new_manifest = manifest.clone();
     new_manifest.topics = updated_manifest.topics;
 
-    // Mark session as processed
+    // Mark session(s) as processed and sources as processed
     update_session_status(&report, &mut new_manifest, now);
+    update_source_status(&report, &mut new_manifest, now);
 
     // Step 8: Invariant suite
     let audit = invariant_suite(
@@ -339,12 +359,221 @@ fn update_session_status(
     manifest: &mut Manifest,
     now: chrono::DateTime<Utc>,
 ) {
+    let topics = topics_touched_by_report(report);
     for session_id in &report.scope.sessions {
         if let Some(entry) = manifest.sessions.get_mut(session_id) {
             entry.status = SessionStatus::Processed;
             entry.processed_at = Some(now);
-            // topics_updated will be populated from reindex in Phase 1+
+            entry.topics_updated = topics.clone();
         }
+    }
+}
+
+/// Collect the distinct topic names touched by the content ops in a report.
+fn topics_touched_by_report(report: &SessionReport) -> Vec<String> {
+    use crate::report::Op;
+    use std::collections::BTreeSet;
+
+    let mut seen = BTreeSet::new();
+    for op in &report.operations {
+        let topic = match op {
+            Op::CreateNote(o) => Some(o.topic.clone()),
+            Op::UpdateNote(o) => topic_from_path(&o.path),
+            Op::RenameTopic(o) => {
+                seen.insert(o.from.clone());
+                Some(o.to.clone())
+            }
+            _ => None,
+        };
+        if let Some(t) = topic {
+            seen.insert(t);
+        }
+    }
+    seen.into_iter().collect()
+}
+
+fn update_source_status(
+    report: &SessionReport,
+    manifest: &mut Manifest,
+    now: chrono::DateTime<Utc>,
+) {
+    let topics = topics_touched_by_report(report);
+    for source_id in &report.scope.sources {
+        if let Some(entry) = manifest.sources.get_mut(source_id) {
+            entry.status = crate::manifest::SourceStatus::Processed;
+            entry.last_processed_at = Some(now);
+            entry.topics_updated = topics.clone();
+        }
+    }
+}
+
+/// Extract a topic name from a workspace-relative path like
+/// `_synthetic/{topic}/something.md`.
+fn topic_from_path(path: &str) -> Option<String> {
+    // Strip a leading synthetic dir prefix (e.g. "_synthetic/") if present,
+    // then take the first path component as the topic name.
+    let without_prefix = path
+        .trim_start_matches('/')
+        .split_once('/')
+        .map(|(first, rest)| {
+            // If first component looks like a synthetic dir (starts with "_"),
+            // return the next component; otherwise use first.
+            if first.starts_with('_') {
+                rest.split('/').next().unwrap_or("").to_string()
+            } else {
+                first.to_string()
+            }
+        })?;
+    if without_prefix.is_empty() {
+        None
+    } else {
+        Some(without_prefix)
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontmatter::{NoteKind, ProvenanceDelta};
+    use crate::manifest::SourceStatus;
+    use crate::report::{CreateNoteOp, Op, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp};
+    use chrono::Utc;
+
+    fn make_report(ops: Vec<Op>) -> SessionReport {
+        SessionReport {
+            csnotes_report_schema: 1,
+            run_id: "test-run".to_string(),
+            backend: "mock".to_string(),
+            started_at: Utc::now(),
+            completed_at: Utc::now(),
+            scope: ReportScope {
+                kind: ScopeKind::Session,
+                sessions: vec!["CS101-01-01".to_string()],
+                sources: vec![],
+                topic: None,
+            },
+            operations: ops,
+            review_flags: vec![],
+        }
+    }
+
+    #[test]
+    fn topic_from_path_strips_synthetic_prefix() {
+        assert_eq!(
+            topic_from_path("_synthetic/inheritance/poly.md"),
+            Some("inheritance".to_string())
+        );
+    }
+
+    #[test]
+    fn topic_from_path_handles_no_prefix() {
+        assert_eq!(
+            topic_from_path("inheritance/poly.md"),
+            Some("inheritance".to_string())
+        );
+    }
+
+    #[test]
+    fn topic_from_path_returns_none_for_shallow_path() {
+        assert_eq!(topic_from_path("_synthetic"), None);
+        assert_eq!(topic_from_path(""), None);
+    }
+
+    #[test]
+    fn topics_touched_deduplicates_and_sorts() {
+        let ops = vec![
+            Op::CreateNote(CreateNoteOp {
+                kind: NoteKind::Atomic,
+                path: "_synthetic/inheritance/poly.md".to_string(),
+                title: "Polymorphism".to_string(),
+                topic: "inheritance".to_string(),
+                block_id: Some("poly".to_string()),
+                embed_in: vec![],
+                provenance: ProvenanceDelta::default(),
+                change_summary: "new".to_string(),
+            }),
+            Op::UpdateNote(UpdateNoteOp {
+                path: "_synthetic/types/types.md".to_string(),
+                add_provenance: ProvenanceDelta::default(),
+                sections: vec![],
+                change_summary: "updated".to_string(),
+            }),
+            // Second create in the same topic — should deduplicate
+            Op::CreateNote(CreateNoteOp {
+                kind: NoteKind::Index,
+                path: "_synthetic/inheritance/index.md".to_string(),
+                title: "Inheritance".to_string(),
+                topic: "inheritance".to_string(),
+                block_id: None,
+                embed_in: vec![],
+                provenance: ProvenanceDelta::default(),
+                change_summary: "new".to_string(),
+            }),
+        ];
+        let topics = topics_touched_by_report(&make_report(ops));
+        assert_eq!(topics, vec!["inheritance", "types"]);
+    }
+
+    #[test]
+    fn topics_touched_includes_rename_from_and_to() {
+        let ops = vec![Op::RenameTopic(RenameTopicOp {
+            from: "old-name".to_string(),
+            to: "new-name".to_string(),
+            reason: "clearer".to_string(),
+        })];
+        let topics = topics_touched_by_report(&make_report(ops));
+        assert!(topics.contains(&"old-name".to_string()));
+        assert!(topics.contains(&"new-name".to_string()));
+    }
+
+    #[test]
+    fn update_source_status_marks_processed() {
+        use crate::manifest::{ManifestConfig, SourceEntry, SourceKind};
+        use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+
+        let cfg = ManifestConfig {
+            raw_dir: "notes".into(),
+            plaud_dir: "plaud".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        };
+        let mut manifest = Manifest::empty(std::path::PathBuf::from("/tmp"), cfg);
+        manifest.sources.insert(
+            "SICP/ch01".to_string(),
+            SourceEntry {
+                path: "sources/SICP/ch01.md".to_string(),
+                kind: SourceKind::Textbook,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+            },
+        );
+
+        let mut report = make_report(vec![
+            Op::UpdateNote(UpdateNoteOp {
+                path: "_synthetic/algorithms/search.md".to_string(),
+                add_provenance: ProvenanceDelta::default(),
+                sections: vec![],
+                change_summary: "added".to_string(),
+            }),
+        ]);
+        report.scope.sources = vec!["SICP/ch01".to_string()];
+
+        update_source_status(&report, &mut manifest, Utc::now());
+
+        let entry = manifest.sources.get("SICP/ch01").unwrap();
+        assert_eq!(entry.status, SourceStatus::Processed);
+        assert!(entry.last_processed_at.is_some());
+        assert_eq!(entry.topics_updated, vec!["algorithms"]);
     }
 }
 

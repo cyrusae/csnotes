@@ -1,11 +1,11 @@
-/// `csnotes reconcile` — Phase 0 subset.
+/// `csnotes reconcile` — Phase 0/1.
 ///
 /// Phase 0: scan `raw_dir` for new raw notes, register them as unprocessed
 /// sessions; scan `plaud_dir` for export files and attach them to their
 /// sessions.
 ///
-/// Phase 2 will add: source registration, artifact detection, LiveSync window
-/// awareness, full `--rename-spaces` pipeline.
+/// Phase 1: scan `sources_dir` for source files (.md), derive heading schemes
+/// via comrak, and register them as unprocessed `SourceEntry` records.
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -14,7 +14,9 @@ use chrono::{Datelike, NaiveDate, Utc};
 use crate::config::{FilenameFormat, VaultConfig, find_vault_root};
 use crate::manifest::{
     Manifest, PlaudExport, PlaudKind, SessionEntry, SessionStatus,
+    SourceEntry, SourceKind, SourceStatus,
 };
+use crate::markdown::{derive_heading_scheme, parse_headings};
 
 pub struct ReconcileArgs {
     pub notify: bool,
@@ -30,6 +32,7 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
 
     let mut new_sessions: Vec<String> = Vec::new();
     let mut new_plaud: Vec<(String, String)> = Vec::new(); // (session_id, path)
+    let mut new_sources: Vec<String> = Vec::new();         // source IDs
     let mut space_warnings: Vec<PathBuf> = Vec::new();
 
     // ── Resolve course roots ──────────────────────────────────────────────────
@@ -80,6 +83,12 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
         }
     }
 
+    // ── Scan sources_dir ──────────────────────────────────────────────────────
+    let sources_dir = vault_root.join(&config.sources_dir);
+    if sources_dir.exists() {
+        scan_sources_dir(&sources_dir, &vault_root, &mut manifest, &mut new_sources)?;
+    }
+
     // ── Space warnings ────────────────────────────────────────────────────────
     for path in &space_warnings {
         eprintln!(
@@ -91,7 +100,7 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
     // ── Save + report ─────────────────────────────────────────────────────────
     manifest.save(&vault_root)?;
 
-    if new_sessions.is_empty() && new_plaud.is_empty() && space_warnings.is_empty() {
+    if new_sessions.is_empty() && new_plaud.is_empty() && new_sources.is_empty() && space_warnings.is_empty() {
         println!("reconcile: nothing new.");
     } else {
         for id in &new_sessions {
@@ -100,17 +109,21 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
         for (session_id, path) in &new_plaud {
             println!("  + plaud    {} → {}", path, session_id);
         }
+        for id in &new_sources {
+            println!("  + source   {}", id);
+        }
         if !space_warnings.is_empty() {
             println!("  {} file(s) have spaces in their names", space_warnings.len());
         }
     }
 
     // ── Desktop notification (macOS only, best-effort) ────────────────────────
-    if args.notify && (!new_sessions.is_empty() || !new_plaud.is_empty()) {
+    if args.notify && (!new_sessions.is_empty() || !new_plaud.is_empty() || !new_sources.is_empty()) {
         let msg = format!(
-            "{} new session(s), {} new Plaud export(s)",
+            "{} new session(s), {} new Plaud export(s), {} new source(s)",
             new_sessions.len(),
-            new_plaud.len()
+            new_plaud.len(),
+            new_sources.len(),
         );
         notify(&msg);
     }
@@ -326,6 +339,81 @@ fn plaud_kind(qualifier: &str, config: &VaultConfig) -> PlaudKind {
             PlaudKind::Custom
         }
     }
+}
+
+// ── Source scanning ───────────────────────────────────────────────────────────
+
+/// Walk `sources_dir` for `.md` files and register any not already in the
+/// manifest.
+///
+/// Source IDs follow the path structure relative to `sources_dir`:
+/// - Flat file:       `{stem}`           e.g. `SICP-ch01`
+/// - In subdirectory: `{subdir}/{stem}`  e.g. `SICP/SICP-ch01`
+///
+/// Heading schemes are derived immediately via `comrak` so the AI can
+/// reference textbook locations precisely in session briefings.
+fn scan_sources_dir(
+    sources_dir: &Path,
+    vault_root: &Path,
+    manifest: &mut Manifest,
+    new_sources: &mut Vec<String>,
+) -> Result<()> {
+    for entry in walkdir::WalkDir::new(sources_dir)
+        .max_depth(2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("md") {
+            continue;
+        }
+
+        // Derive the source ID from the path relative to sources_dir.
+        let rel_to_sources = path
+            .strip_prefix(sources_dir)
+            .unwrap_or(path);
+        let source_id = match (
+            rel_to_sources.parent().and_then(|p| p.to_str()),
+            path.file_stem().and_then(|s| s.to_str()),
+        ) {
+            (Some(parent), Some(stem)) if !parent.is_empty() => {
+                format!("{}/{}", parent, stem)
+            }
+            (_, Some(stem)) => stem.to_string(),
+            _ => continue,
+        };
+
+        if manifest.sources.contains_key(&source_id) {
+            continue; // already registered
+        }
+
+        let rel_path = path
+            .strip_prefix(vault_root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
+
+        // Derive heading scheme via comrak.
+        let heading_scheme = match std::fs::read_to_string(path) {
+            Ok(content) => derive_heading_scheme(&parse_headings(&content)),
+            Err(_) => vec![],
+        };
+
+        manifest.sources.insert(
+            source_id.clone(),
+            SourceEntry {
+                path: rel_path,
+                kind: SourceKind::Textbook, // default; user can update via config
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme,
+                topics_updated: vec![],
+            },
+        );
+        new_sources.push(source_id);
+    }
+    Ok(())
 }
 
 fn notify(message: &str) {
