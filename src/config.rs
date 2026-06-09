@@ -165,6 +165,13 @@ impl VaultConfig {
             .join("instructions")
             .join("synthesis.md")
     }
+
+    pub fn report_schema_path(&self, vault_root: &Path) -> PathBuf {
+        vault_root
+            .join(&self.csnotes_dir)
+            .join("instructions")
+            .join("report_schema.md")
+    }
 }
 
 // ── Vault root discovery ──────────────────────────────────────────────────────

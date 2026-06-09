@@ -167,6 +167,56 @@ fn happy_path_creates_two_notes() {
     }
 }
 
+/// `csnotes reconcile` registers a raw note as a new session and matches a
+/// Plaud export to it.
+#[test]
+fn reconcile_registers_session_and_plaud() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // Minimal vault with no sessions yet
+    fs::create_dir_all(root.join("notes")).unwrap();
+    fs::create_dir_all(root.join("plaud")).unwrap();
+    fs::create_dir_all(root.join("_synthetic")).unwrap();
+    write_config(root);
+    // Write a manifest with no sessions
+    let vault_str = root.to_string_lossy();
+    let manifest = format!(
+        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","plaud_dir":"plaud","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
+        vs = serde_json::to_string(&vault_str).unwrap(),
+    );
+    fs::write(root.join("csnotes.json"), &manifest).unwrap();
+
+    // Drop a raw note and a matching Plaud transcript
+    fs::write(root.join("notes/CPSC5001-09-03.md"), "# Lecture 1\n").unwrap();
+    fs::write(root.join("plaud/CPSC5001-09-03-transcript.md"), "Transcript text.\n").unwrap();
+
+    let status = Command::new(env!("CARGO_BIN_EXE_csnotes"))
+        .arg("reconcile")
+        .current_dir(root)
+        .status()
+        .expect("failed to spawn csnotes");
+    assert!(status.success(), "reconcile should succeed");
+
+    let manifest_raw = fs::read_to_string(root.join("csnotes.json")).unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();
+
+    assert!(
+        manifest["sessions"]["CPSC5001-09-03"].is_object(),
+        "session should have been registered"
+    );
+    assert_eq!(
+        manifest["sessions"]["CPSC5001-09-03"]["status"],
+        "unprocessed"
+    );
+    let exports = &manifest["sessions"]["CPSC5001-09-03"]["plaud_exports"];
+    assert_eq!(exports.as_array().map(|a| a.len()), Some(1), "transcript should be attached");
+    assert!(
+        exports[0]["path"].as_str().unwrap_or("").contains("transcript"),
+        "export path should reference the transcript file"
+    );
+}
+
 /// Violation path: mock AI creates a note with a broken wikilink.
 /// The invariant suite should catch it, discard the workspace, and leave
 /// the vault untouched.

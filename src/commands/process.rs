@@ -98,6 +98,8 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         workspace_path: workspace_root.clone(),
         phase: "synthesizing".to_string(),
         error: None,
+        backend: Some(backend_kind),
+        skill_variant: Some(skill_variant),
     });
     manifest.save(&vault_root)?;
 

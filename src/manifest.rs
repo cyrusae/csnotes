@@ -255,6 +255,12 @@ pub struct InProgressRecord {
     /// "synthesizing" | "merging"
     pub phase: String,
     pub error: Option<String>,
+    /// Which backend launched this session (absent in old manifests).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<AiBackend>,
+    /// Which skill variant was used (absent in old manifests).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_variant: Option<SkillVariant>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

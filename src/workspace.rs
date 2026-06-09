@@ -132,6 +132,7 @@ fn copy_instruction_files(
 ) -> Result<()> {
     let instruction_src = config.instruction_source_path(vault_root);
     let synthesis_src = config.synthesis_md_path(vault_root);
+    let report_schema_src = config.report_schema_path(vault_root);
 
     let dest_name = match config.skill_variant {
         SkillVariant::Claude => "CLAUDE.md",
@@ -153,6 +154,11 @@ fn copy_instruction_files(
     if synthesis_src.exists() {
         fs::copy(&synthesis_src, workspace_root.join("synthesis.md"))
             .with_context(|| format!("copying {}", synthesis_src.display()))?;
+    }
+
+    if report_schema_src.exists() {
+        fs::copy(&report_schema_src, workspace_root.join("report_schema.md"))
+            .with_context(|| format!("copying {}", report_schema_src.display()))?;
     }
 
     Ok(())
