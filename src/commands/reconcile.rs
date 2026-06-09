@@ -32,34 +32,52 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
     let mut new_plaud: Vec<(String, String)> = Vec::new(); // (session_id, path)
     let mut space_warnings: Vec<PathBuf> = Vec::new();
 
+    // ── Resolve course roots ──────────────────────────────────────────────────
+    // If `active_courses` is set, raw notes and Plaud exports live under
+    // `{course}/{raw_dir}/` for each course.  Otherwise fall back to the flat
+    // `{raw_dir}/` layout (used in tests and single-course vaults).
+    let course_roots: Vec<PathBuf> = if config.active_courses.is_empty() {
+        vec![vault_root.clone()]
+    } else {
+        config
+            .active_courses
+            .iter()
+            .map(|c| vault_root.join(c))
+            .collect()
+    };
+
     // ── Scan raw_dir ──────────────────────────────────────────────────────────
-    let raw_dir = vault_root.join(&config.raw_dir);
-    if raw_dir.exists() {
-        scan_raw_dir(
-            &raw_dir,
-            &vault_root,
-            &config,
-            &fmt,
-            &args,
-            &mut manifest,
-            &mut new_sessions,
-            &mut space_warnings,
-        )?;
+    for course_root in &course_roots {
+        let raw_dir = course_root.join(&config.raw_dir);
+        if raw_dir.exists() {
+            scan_raw_dir(
+                &raw_dir,
+                &vault_root,
+                &config,
+                &fmt,
+                &args,
+                &mut manifest,
+                &mut new_sessions,
+                &mut space_warnings,
+            )?;
+        }
     }
 
     // ── Scan plaud_dir ────────────────────────────────────────────────────────
-    let plaud_dir = vault_root.join(&config.plaud_dir);
-    if plaud_dir.exists() {
-        scan_plaud_dir(
-            &plaud_dir,
-            &vault_root,
-            &config,
-            &fmt,
-            &args,
-            &mut manifest,
-            &mut new_plaud,
-            &mut space_warnings,
-        )?;
+    for course_root in &course_roots {
+        let plaud_dir = course_root.join(&config.plaud_dir);
+        if plaud_dir.exists() {
+            scan_plaud_dir(
+                &plaud_dir,
+                &vault_root,
+                &config,
+                &fmt,
+                &args,
+                &mut manifest,
+                &mut new_plaud,
+                &mut space_warnings,
+            )?;
+        }
     }
 
     // ── Space warnings ────────────────────────────────────────────────────────

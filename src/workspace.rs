@@ -301,7 +301,8 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
                 out.push_str(&format!("- Course: {}\n", e.course));
                 out.push_str(&format!("- Date: {}\n", e.date));
             }
-            out.push_str(&format!("- Sessions being processed: {}\n\n", session_id));
+            out.push_str(&format!("- Sessions being processed: {}\n", session_id));
+            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
 
             // Inputs
             out.push_str("## Inputs in This Workspace\n");
@@ -337,13 +338,15 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
         WorkspaceScope::Source { source_id } => {
             out.push_str(&format!("# Source Briefing — {}\n\n", source_id));
             out.push_str("## Scope\n");
-            out.push_str(&format!("- Source: {}\n\n", source_id));
+            out.push_str(&format!("- Source: {}\n", source_id));
+            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
         }
         WorkspaceScope::Topic { topic } => {
             out.push_str(&format!("# Study Session — {}\n\n", topic));
             out.push_str("## Scope\n");
             out.push_str(&format!("- Topic: {}\n", topic));
-            out.push_str("- Mode: study/review (no new session input)\n\n");
+            out.push_str("- Mode: study/review (no new session input)\n");
+            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
         }
     }
 

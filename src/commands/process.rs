@@ -73,7 +73,11 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     // ── Assemble workspace ────────────────────────────────────────────────
     let run_id = new_run_id();
     let backend_kind = args.backend.unwrap_or(config.default_backend);
-    let skill_variant = config.skill_variant;
+    let skill_variant = match backend_kind {
+        crate::config::AiBackend::Claude => crate::config::SkillVariant::Claude,
+        crate::config::AiBackend::Agy   => crate::config::SkillVariant::Gemini,
+        crate::config::AiBackend::Mock  => config.skill_variant, // tests may want either
+    };
 
     let ws_params = WorkspaceParams {
         vault_root: &vault_root,
