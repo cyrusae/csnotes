@@ -1,0 +1,45 @@
+[package]
+name = "csnotes"
+version = "0.1.0"
+edition = "2021"
+description = "AI-assisted synthesis of graduate lecture notes"
+license = "MIT"
+
+[[bin]]
+name = "csnotes"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+serde_yml   = "0.0"   # community-maintained successor to deprecated serde_yaml
+toml        = "1"
+
+# Dates
+chrono = { version = "0.4", features = ["serde"] }
+
+# Filesystem
+walkdir  = "2"
+fs_extra = "1"
+
+# IDs / paths
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"
+
+# Error handling
+anyhow    = "1"
+thiserror = "2"
+
+# Regex (Obsidian syntax extraction)
+regex = "1"
+
+# Ordered maps (stable JSON serialization)
+indexmap = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"
