@@ -1,4 +1,4 @@
-/// `csnotes reconcile` — Phase 0/1.
+/// `csnotes reconcile` — Phase 0/1/2.
 ///
 /// Phase 0: scan `raw_dir` for new raw notes, register them as unprocessed
 /// sessions; scan `plaud_dir` for export files and attach them to their
@@ -6,6 +6,10 @@
 ///
 /// Phase 1: scan `sources_dir` for source files (.md), derive heading schemes
 /// via comrak, and register them as unprocessed `SourceEntry` records.
+///
+/// Phase 2: scan `artifacts_dir` per course for slides and code samples,
+/// match them to sessions by filename prefix, and attach them to
+/// `SessionEntry::artifacts`.
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -13,7 +17,7 @@ use chrono::{Datelike, NaiveDate, Utc};
 
 use crate::config::{FilenameFormat, VaultConfig, find_vault_root};
 use crate::manifest::{
-    Manifest, PlaudExport, PlaudKind, SessionEntry, SessionStatus,
+    ArtifactEntry, ArtifactKind, Manifest, PlaudExport, PlaudKind, SessionEntry, SessionStatus,
     SourceEntry, SourceKind, SourceStatus,
 };
 use crate::markdown::{derive_heading_scheme, parse_headings};
@@ -21,18 +25,33 @@ use crate::markdown::{derive_heading_scheme, parse_headings};
 pub struct ReconcileArgs {
     pub notify: bool,
     pub rename_spaces: Option<String>, // "hyphens" | "underscores"
+    /// When true, suppress the "nothing new" message (used by auto-reconcile
+    /// inside `csnotes process`).
+    pub quiet: bool,
 }
 
+/// Entry point for `csnotes reconcile` (CLI invocation).
 pub fn run(args: ReconcileArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
-    let mut manifest = Manifest::load_or_create(&vault_root, &config)?;
+    run_for_vault(&vault_root, &config, args)
+}
+
+/// Core reconcile logic.  Called both by `run` (CLI) and by `process`
+/// (auto-reconcile before launching the AI).
+pub fn run_for_vault(
+    vault_root: &Path,
+    config: &VaultConfig,
+    args: ReconcileArgs,
+) -> Result<()> {
+    let mut manifest = Manifest::load_or_create(vault_root, config)?;
 
     let fmt = FilenameFormat::parse(&config.filename_format)?;
 
     let mut new_sessions: Vec<String> = Vec::new();
-    let mut new_plaud: Vec<(String, String)> = Vec::new(); // (session_id, path)
-    let mut new_sources: Vec<String> = Vec::new();         // source IDs
+    let mut new_plaud: Vec<(String, String)> = Vec::new();   // (session_id, path)
+    let mut new_sources: Vec<String> = Vec::new();            // source IDs
+    let mut new_artifacts: Vec<(String, String)> = Vec::new();// (session_id, path)
     let mut space_warnings: Vec<PathBuf> = Vec::new();
 
     // ── Resolve course roots ──────────────────────────────────────────────────
@@ -40,7 +59,7 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
     // `{course}/{raw_dir}/` for each course.  Otherwise fall back to the flat
     // `{raw_dir}/` layout (used in tests and single-course vaults).
     let course_roots: Vec<PathBuf> = if config.active_courses.is_empty() {
-        vec![vault_root.clone()]
+        vec![vault_root.to_path_buf()]
     } else {
         config
             .active_courses
@@ -55,8 +74,8 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
         if raw_dir.exists() {
             scan_raw_dir(
                 &raw_dir,
-                &vault_root,
-                &config,
+                vault_root,
+                config,
                 &fmt,
                 &args,
                 &mut manifest,
@@ -72,8 +91,8 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
         if plaud_dir.exists() {
             scan_plaud_dir(
                 &plaud_dir,
-                &vault_root,
-                &config,
+                vault_root,
+                config,
                 &fmt,
                 &args,
                 &mut manifest,
@@ -83,10 +102,23 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
         }
     }
 
+    // ── Scan artifacts_dir ────────────────────────────────────────────────────
+    for course_root in &course_roots {
+        let artifacts_dir = course_root.join(&config.artifacts_dir);
+        if artifacts_dir.exists() {
+            scan_artifacts_dir(
+                &artifacts_dir,
+                vault_root,
+                &mut manifest,
+                &mut new_artifacts,
+            )?;
+        }
+    }
+
     // ── Scan sources_dir ──────────────────────────────────────────────────────
     let sources_dir = vault_root.join(&config.sources_dir);
     if sources_dir.exists() {
-        scan_sources_dir(&sources_dir, &vault_root, &mut manifest, &mut new_sources)?;
+        scan_sources_dir(&sources_dir, vault_root, &mut manifest, &mut new_sources)?;
     }
 
     // ── Space warnings ────────────────────────────────────────────────────────
@@ -98,31 +130,43 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
     }
 
     // ── Save + report ─────────────────────────────────────────────────────────
-    manifest.save(&vault_root)?;
+    manifest.save(vault_root)?;
 
-    if new_sessions.is_empty() && new_plaud.is_empty() && new_sources.is_empty() && space_warnings.is_empty() {
-        println!("reconcile: nothing new.");
+    let nothing_new = new_sessions.is_empty()
+        && new_plaud.is_empty()
+        && new_sources.is_empty()
+        && new_artifacts.is_empty()
+        && space_warnings.is_empty();
+
+    if nothing_new {
+        if !args.quiet {
+            println!("reconcile: nothing new.");
+        }
     } else {
         for id in &new_sessions {
-            println!("  + session  {}", id);
+            println!("  + session   {}", id);
         }
         for (session_id, path) in &new_plaud {
-            println!("  + plaud    {} → {}", path, session_id);
+            println!("  + plaud     {} → {}", path, session_id);
+        }
+        for (session_id, path) in &new_artifacts {
+            println!("  + artifact  {} → {}", path, session_id);
         }
         for id in &new_sources {
-            println!("  + source   {}", id);
+            println!("  + source    {}", id);
         }
         if !space_warnings.is_empty() {
             println!("  {} file(s) have spaces in their names", space_warnings.len());
         }
     }
 
-    // ── Desktop notification (macOS only, best-effort) ────────────────────────
-    if args.notify && (!new_sessions.is_empty() || !new_plaud.is_empty() || !new_sources.is_empty()) {
+    // ── Desktop notification (best-effort) ────────────────────────────────────
+    if args.notify && !nothing_new {
         let msg = format!(
-            "{} new session(s), {} new Plaud export(s), {} new source(s)",
+            "{} new session(s), {} Plaud, {} artifact(s), {} source(s)",
             new_sessions.len(),
             new_plaud.len(),
+            new_artifacts.len(),
             new_sources.len(),
         );
         notify(&msg);
@@ -341,6 +385,144 @@ fn plaud_kind(qualifier: &str, config: &VaultConfig) -> PlaudKind {
     }
 }
 
+// ── Artifact scanning ─────────────────────────────────────────────────────────
+
+/// Text-readable file extensions we'll wrap and pass to the AI.
+/// Binary formats (PDF, images, office docs) are skipped — they can't be
+/// read as UTF-8 and the AI can't use them directly.
+const TEXT_ARTIFACT_EXTENSIONS: &[&str] = &[
+    // Markup / documentation
+    "md", "txt", "html", "htm", "tex",
+    // Code
+    "py", "java", "rs", "js", "ts", "jsx", "tsx",
+    "c", "cpp", "h", "hpp", "cc", "cxx",
+    "go", "rb", "swift", "kt", "kts",
+    "cs", "fs", "ml", "mli", "hs", "lhs",
+    "r", "rmd", "sql", "sh", "bash", "zsh", "fish",
+    "yaml", "yml", "toml", "json", "xml", "csv",
+    "ipynb",
+];
+
+/// Extensions that signal lecture slides / handouts (text-format only).
+const SLIDE_EXTENSIONS: &[&str] = &["md", "html", "htm", "tex", "txt"];
+
+/// Qualifier keywords (in the filename suffix) that override kind → Slides.
+const SLIDE_QUALIFIERS: &[&str] = &[
+    "slides", "slide", "deck", "handout", "handouts", "lecture", "notes",
+];
+
+/// Walk `{course}/{artifacts_dir}/` for text-readable files whose stems start
+/// with a known session ID and attach them as `ArtifactEntry` records.
+///
+/// Matching rule (same spirit as Plaud scanning):
+///   `{session_id}.{ext}`       → attached, no qualifier
+///   `{session_id}-{rest}.{ext}`→ attached, qualifier = rest
+///
+/// Kind classification (in priority order):
+/// 1. If qualifier contains a slide keyword → Slides
+/// 2. If extension is in `SLIDE_EXTENSIONS` and no qualifier (bare session) → Slides
+/// 3. If extension is a code extension → Code
+/// 4. Otherwise → Other
+fn scan_artifacts_dir(
+    artifacts_dir: &Path,
+    vault_root: &Path,
+    manifest: &mut Manifest,
+    new_artifacts: &mut Vec<(String, String)>,
+) -> Result<()> {
+    for entry in walkdir::WalkDir::new(artifacts_dir)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+
+        // Only text-readable formats.
+        let ext = match path.extension().and_then(|x| x.to_str()) {
+            Some(e) => e.to_ascii_lowercase(),
+            None => continue,
+        };
+        if !TEXT_ARTIFACT_EXTENSIONS.contains(&ext.as_str()) {
+            continue;
+        }
+
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Try to match stem → (session_id, qualifier).
+        let (session_id, qualifier): (&str, &str) =
+            if manifest.sessions.contains_key(stem) {
+                // Bare `{session_id}.{ext}` — no qualifier.
+                (stem, "")
+            } else if let Some((prefix, suffix)) = stem.split_once('-').and_then(|_| {
+                // We want the longest matching session_id prefix, so we try
+                // `rsplit_once` which gives us the last `-` split.  If the
+                // prefix is a known session, use it.
+                stem.rsplit_once('-')
+            }) {
+                if manifest.sessions.contains_key(prefix) {
+                    (prefix, suffix)
+                } else {
+                    continue; // prefix not a session — skip
+                }
+            } else {
+                continue; // no `-` in stem and not an exact session match
+            };
+
+        let entry_in_manifest = match manifest.sessions.get_mut(session_id) {
+            Some(e) => e,
+            None => continue,
+        };
+
+        let rel_path = path
+            .strip_prefix(vault_root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
+
+        // Skip if already recorded.
+        if entry_in_manifest.artifacts.iter().any(|a| a.path == rel_path) {
+            continue;
+        }
+
+        let kind = classify_artifact_kind(&ext, qualifier);
+        new_artifacts.push((session_id.to_string(), rel_path.clone()));
+        entry_in_manifest.artifacts.push(ArtifactEntry {
+            path: rel_path,
+            kind,
+        });
+    }
+    Ok(())
+}
+
+fn classify_artifact_kind(ext: &str, qualifier: &str) -> ArtifactKind {
+    let q_lower = qualifier.to_ascii_lowercase();
+
+    // Explicit slide qualifier in the filename suffix.
+    if SLIDE_QUALIFIERS.iter().any(|kw| q_lower.contains(kw)) {
+        return ArtifactKind::Slides;
+    }
+    // Markdown / text with no qualifier → treat as slides/handout by default.
+    if qualifier.is_empty() && SLIDE_EXTENSIONS.contains(&ext) {
+        return ArtifactKind::Slides;
+    }
+    // Code extensions.
+    let code_exts = &[
+        "py", "java", "rs", "js", "ts", "jsx", "tsx",
+        "c", "cpp", "h", "hpp", "cc", "cxx",
+        "go", "rb", "swift", "kt", "kts",
+        "cs", "fs", "ml", "mli", "hs", "lhs",
+        "r", "rmd", "sql", "sh", "bash", "zsh", "fish",
+        "ipynb",
+    ];
+    if code_exts.contains(&ext) {
+        return ArtifactKind::Code;
+    }
+    ArtifactKind::Other
+}
+
 // ── Source scanning ───────────────────────────────────────────────────────────
 
 /// Walk `sources_dir` for `.md` files and register any not already in the
@@ -416,8 +598,175 @@ fn scan_sources_dir(
     Ok(())
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
+    use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+    use chrono::NaiveDate;
+    use tempfile::TempDir;
+
+    fn make_manifest_with_session(vault_root: &std::path::Path, session_id: &str) -> Manifest {
+        let cfg = ManifestConfig {
+            raw_dir: "notes".into(),
+            plaud_dir: "plaud".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        };
+        let mut m = Manifest::empty(vault_root.to_path_buf(), cfg);
+        m.sessions.insert(
+            session_id.to_string(),
+            SessionEntry {
+                date: NaiveDate::from_ymd_opt(2026, 9, 3).unwrap(),
+                course: "CPSC5001".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                raw_note: format!("notes/{}.md", session_id),
+                plaud_exports: vec![],
+                artifacts: vec![],
+                plaud_missing: false,
+                status: SessionStatus::Unprocessed,
+                processed_at: None,
+                topics_updated: vec![],
+            },
+        );
+        m
+    }
+
+    fn write_file(dir: &std::path::Path, name: &str, content: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join(name), content).unwrap();
+    }
+
+    // ── classify_artifact_kind ────────────────────────────────────────────────
+
+    #[test]
+    fn classify_slide_by_qualifier() {
+        assert_eq!(classify_artifact_kind("md", "slides"), ArtifactKind::Slides);
+        assert_eq!(classify_artifact_kind("md", "handout"), ArtifactKind::Slides);
+        assert_eq!(classify_artifact_kind("py", "slides"), ArtifactKind::Slides);
+    }
+
+    #[test]
+    fn classify_slide_by_bare_md() {
+        // Bare .md with no qualifier → treat as slide/handout material
+        assert_eq!(classify_artifact_kind("md", ""), ArtifactKind::Slides);
+        assert_eq!(classify_artifact_kind("html", ""), ArtifactKind::Slides);
+    }
+
+    #[test]
+    fn classify_code_by_extension() {
+        assert_eq!(classify_artifact_kind("py", "BST"), ArtifactKind::Code);
+        assert_eq!(classify_artifact_kind("java", "Node"), ArtifactKind::Code);
+        assert_eq!(classify_artifact_kind("rs", ""), ArtifactKind::Code);
+    }
+
+    #[test]
+    fn classify_other() {
+        assert_eq!(classify_artifact_kind("csv", "data"), ArtifactKind::Other);
+        assert_eq!(classify_artifact_kind("json", "schema"), ArtifactKind::Other);
+    }
+
+    // ── scan_artifacts_dir ────────────────────────────────────────────────────
+
+    #[test]
+    fn scan_attaches_slide_by_qualifier() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir, "CPSC5001-09-03-slides.md", "# Slides");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+
+        assert_eq!(new_artifacts.len(), 1);
+        assert_eq!(new_artifacts[0].0, "CPSC5001-09-03");
+        let entry = &manifest.sessions["CPSC5001-09-03"];
+        assert_eq!(entry.artifacts.len(), 1);
+        assert_eq!(entry.artifacts[0].kind, ArtifactKind::Slides);
+    }
+
+    #[test]
+    fn scan_attaches_code_by_extension() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir, "CPSC5001-09-03-BinarySearch.java", "class BinarySearch {}");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+
+        assert_eq!(new_artifacts.len(), 1);
+        assert_eq!(manifest.sessions["CPSC5001-09-03"].artifacts[0].kind, ArtifactKind::Code);
+    }
+
+    #[test]
+    fn scan_skips_binary_extensions() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir, "CPSC5001-09-03-slides.pdf", "%PDF content");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+
+        assert!(new_artifacts.is_empty(), "PDF should be skipped");
+    }
+
+    #[test]
+    fn scan_skips_unmatched_stems() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir, "BinarySearch.java", "class BinarySearch {}");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+
+        assert!(new_artifacts.is_empty(), "Unmatched stem should be skipped");
+    }
+
+    #[test]
+    fn scan_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir, "CPSC5001-09-03-slides.md", "# Slides");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        // Run again — should not double-register.
+        let mut new_artifacts2 = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts2).unwrap();
+
+        assert!(new_artifacts2.is_empty(), "Second scan should add nothing");
+        assert_eq!(manifest.sessions["CPSC5001-09-03"].artifacts.len(), 1);
+    }
+
+    #[test]
+    fn scan_bare_session_id_md_is_slides() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        // File named exactly as the session ID (no qualifier suffix)
+        write_file(&artifacts_dir, "CPSC5001-09-03.md", "# Lecture notes");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+
+        assert_eq!(new_artifacts.len(), 1);
+        assert_eq!(manifest.sessions["CPSC5001-09-03"].artifacts[0].kind, ArtifactKind::Slides);
+    }
+}
+
 fn notify(message: &str) {
-    // macOS: osascript; other platforms: no-op for now (Phase 2: notify-rust)
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("osascript")
@@ -430,8 +779,17 @@ fn notify(message: &str) {
             ])
             .status();
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
-        let _ = message; // suppress unused warning
+        // notify-send is provided by libnotify-bin on Debian/Ubuntu and
+        // equivalent packages on other distros.  Best-effort: silently skip
+        // if not installed.
+        let _ = std::process::Command::new("notify-send")
+            .args(["csnotes", message])
+            .status();
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = message;
     }
 }

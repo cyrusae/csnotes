@@ -1,13 +1,13 @@
 # csnotes — Build Status
 
 > Last updated: 2026-06-09
-> All 58 tests passing (54 unit + 3 lifecycle + 1 property placeholder).
+> All 72 tests passing (64 unit + 3 lifecycle + 5 property).
 
 ---
 
 ## Summary
 
-The CLI is **feature-complete for Phase 0 through Phase 2, plus all Phase 1 items**. Every command that isn't explicitly gated on a future phase is functional. The vault is not yet bootstrapped with real data; first real use is the next milestone.
+The CLI is **feature-complete for Phase 0 through Phase 3** (all items). Every command that isn't explicitly gated on a future phase is functional. The vault is not yet bootstrapped with real data; first real use is the next milestone.
 
 ---
 
@@ -16,8 +16,8 @@ The CLI is **feature-complete for Phase 0 through Phase 2, plus all Phase 1 item
 | Command | Status | Notes |
 |---------|--------|-------|
 | `init` | ✅ Full | Scaffolds dirs, writes `.csnotes`, creates `csnotes.json`. `--instructions-only` refreshes instruction files in an existing vault without touching structure. Embedded real content for `claude.md`, `gemini.md`, `synthesis.md`, `report_schema.md`. |
-| `reconcile` | ✅ Full | Course-root pattern (`active_courses`) wired. Scans `{course}/{raw_dir}/` and `{course}/{plaud_dir}/` per course. `Manifest::load_or_create` bootstraps on first run. `--rename-spaces` renames files with spaces. **Phase 1:** scans `sources_dir/` (flat and one-level subdirs), derives heading schemes via comrak, registers `SourceEntry` records. |
-| `process` | ✅ Full (Phase 0+1) | Full §7 teardown pipeline. `backend`/`skill_variant` stored in `InProgressRecord`. Per-session reports saved to `_generated/reports/<session-id>.json`. `--backend` flag overrides config. **Phase 1:** `rename_topic` structural op fully executed (folder rename + frontmatter update + link rewrite). Source status updated in teardown. `topics_updated` populated on both session and source entries after every teardown. |
+| `reconcile` | ✅ Full | Course-root pattern (`active_courses`) wired. Scans `{course}/{raw_dir}/` and `{course}/{plaud_dir}/` per course. `Manifest::load_or_create` bootstraps on first run. `--rename-spaces` renames files with spaces. **Phase 1:** scans `sources_dir/` (flat and one-level subdirs), derives heading schemes via comrak, registers `SourceEntry` records. **Phase 2:** scans `{course}/{artifacts_dir}/` for text-readable files, matches by session-ID filename prefix, classifies as Slides/Code/Other. Desktop notifications: macOS (osascript) + Linux (notify-send). |
+| `process` | ✅ Full | Full §7 teardown pipeline. `backend`/`skill_variant` stored in `InProgressRecord`. Per-session reports saved to `_generated/reports/<session-id>.json`. `--backend` flag overrides config. **Phase 1:** `rename_topic` structural op fully executed; source status updated; `topics_updated` populated. **Phase 2:** auto-reconcile runs silently before every `process` invocation — new sessions/artifacts/sources are picked up automatically. |
 | `recover` | ✅ Full | Three-path logic: workspace gone → clear; report present → teardown; report absent + `--resume` → re-launch AI using stored `backend`/`skill_variant`. `--discard` cleans up without asking. |
 | `status` | ✅ Full (Phase 0) | Sessions, sources, topics, flags, in-progress warning. |
 | `diff` | ✅ Full | `--session` resolves partial IDs (e.g. `09-03` matches `CPSC5001-09-03`). Reads per-session reports from `_generated/reports/`. Shows creates, updates, structural ops, actionable flags, open questions. |
@@ -70,10 +70,15 @@ These are intentional decisions made during implementation; PLAN.md has not been
 
 ## What's Not Implemented
 
-### Phase 3
+### Phase 3 — Completed
 
-- `proptest` idempotency and transactionality suites (placeholder test exists)
-- Mid-merge crash simulation tests
+| Test | Coverage |
+|------|----------|
+| `reconcile_is_idempotent` | proptest (32 cases): 1–5 random (course, month, day) triples → reconcile twice → byte-identical manifest |
+| `reconcile_registers_all_raw_notes` | proptest (32 cases): 1–5 random session files → reconcile once → all appear in manifest, exact count match |
+| `reconcile_source_registration_is_idempotent` | proptest (32 cases): 1–3 random source stems → reconcile twice → sources section byte-identical |
+| `recover_discard_clears_stale_in_progress` | lifecycle: dangling `session_in_progress` (workspace gone) → `recover --discard` → `session_in_progress` null |
+| `reindex_is_stable_after_clean_process` | lifecycle: `process` → `audit --reindex` → sessions/topics unchanged, processed status preserved |
 
 ### Phase 4 (beyond the three commands already done)
 
@@ -102,8 +107,7 @@ Written and embedded in `init.rs` as raw string constants. Installed to `_csnote
 
 ## Next Steps (Suggested Order)
 
-1. **Bootstrap the real vault.** Write `.csnotes` for the CPSC5001/CPSC5002/CPSC5005 layout, run `csnotes init --instructions-only`, run `csnotes reconcile`. Validate manifest looks correct including source registration.
+1. **Bootstrap the real vault.** Write `.csnotes` for the CPSC5001/CPSC5002/CPSC5005 layout, run `csnotes init --instructions-only`, run `csnotes reconcile`. Validate manifest looks correct including source and artifact registration.
 2. **First real session.** Run `csnotes process` against a CPSC5001 session. This is the first live test of the instruction files and the full teardown pipeline.
-3. **Phase 3 tests.** `proptest` idempotency suite — best done now that Phase 1 structural ops exist and the rename path is real.
-4. **Agy backend.** Implement `AgyBackend` for Gemini/Antigravity sessions.
-5. **Phase 4 structural ops** if real sessions reveal need: `move_atomic`, `promote_atomic`, `demote_topic`, `merge_topics`, `split_topic`, `set_embed`.
+3. **Agy backend.** Implement `AgyBackend` for Gemini/Antigravity sessions.
+4. **Phase 4 structural ops** if real sessions reveal need: `move_atomic`, `promote_atomic`, `demote_topic`, `merge_topics`, `split_topic`, `set_embed`.

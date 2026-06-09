@@ -5,6 +5,7 @@ use chrono::Utc;
 
 use crate::audit::{invariant_suite, precondition_pass};
 use crate::backend::make_backend;
+use crate::commands::reconcile;
 use crate::config::{AiBackend, VaultConfig, find_vault_root};
 use crate::error::CsnotesError;
 use crate::flags::FlagStore;
@@ -30,6 +31,17 @@ pub struct ProcessArgs {
 pub fn run(args: ProcessArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
+
+    // Auto-reconcile: pick up any raw notes, Plaud exports, artifacts, or
+    // sources added since the last run.  Quiet when nothing is new so the
+    // normal process flow isn't cluttered; still prints "+ session …" lines
+    // if new files are discovered.
+    reconcile::run_for_vault(&vault_root, &config, reconcile::ReconcileArgs {
+        notify: false,
+        rename_spaces: None,
+        quiet: true,
+    })?;
+
     let mut manifest = Manifest::load(&vault_root)?;
 
     // ── Guard: existing in-progress session ───────────────────────────────

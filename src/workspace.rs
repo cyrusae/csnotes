@@ -212,10 +212,19 @@ fn wrap_session_inputs(
         make_readonly(&dest)?;
     }
 
-    // Artifacts
+    // Artifacts — text-readable formats only; binary files (PDF, images, etc.)
+    // are silently skipped because the AI cannot consume them.
     for artifact in &entry.artifacts {
         let src = vault_root.join(&artifact.path);
         if !src.exists() {
+            continue;
+        }
+        let ext = src
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !is_text_artifact_ext(&ext) {
             continue;
         }
         let content = fs::read_to_string(&src)?;
@@ -626,4 +635,21 @@ fn make_readonly(path: &Path) -> Result<()> {
 
 fn sanitise(path: &str) -> String {
     path.replace(['/', '\\', '.', ' '], "_")
+}
+
+/// Returns true for file extensions that are safe to read as UTF-8 text and
+/// pass to the AI.  Binary formats (PDF, PPTX, images, …) return false and
+/// are silently skipped during workspace assembly.
+fn is_text_artifact_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "md" | "txt" | "html" | "htm" | "tex"
+            | "py" | "java" | "rs" | "js" | "ts" | "jsx" | "tsx"
+            | "c" | "cpp" | "h" | "hpp" | "cc" | "cxx"
+            | "go" | "rb" | "swift" | "kt" | "kts"
+            | "cs" | "fs" | "ml" | "mli" | "hs" | "lhs"
+            | "r" | "rmd" | "sql" | "sh" | "bash" | "zsh" | "fish"
+            | "yaml" | "yml" | "toml" | "json" | "xml" | "csv"
+            | "ipynb"
+    )
 }

@@ -84,6 +84,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
         } => reconcile::run(reconcile::ReconcileArgs {
             notify,
             rename_spaces,
+            quiet: false,
         }),
 
         Command::Recover { resume, discard } => {
