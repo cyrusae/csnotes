@@ -6,23 +6,31 @@ use anyhow::{Context, Result};
 
 use crate::config::{
     ensure_no_spaces, AiBackend, FilenameFormat, SkillVariant, SnapshotMode, VaultConfig,
+    find_vault_root,
 };
 use crate::flags::FlagStore;
 use crate::manifest::{Manifest, ManifestConfig};
 
 /// `csnotes init`
 ///
-/// Scaffolds a new vault: prompts for configuration, creates the directory
-/// tree, writes `.csnotes`, an empty manifest, an empty flag store, and
-/// instruction stub files.
-pub fn run(vault_root: Option<PathBuf>) -> Result<()> {
+/// With no flags: scaffolds a new vault (prompts for config, creates
+/// directories, writes `.csnotes`, manifest, flag store, instruction files).
+///
+/// With `--instructions-only`: writes/updates the three instruction files in
+/// the current vault's `_csnotes/instructions/` without touching anything else.
+/// Useful for bootstrapping an existing vault or updating stale instructions.
+pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
+    if instructions_only {
+        return run_instructions_only();
+    }
+
     let vault_root = vault_root.unwrap_or_else(|| std::env::current_dir().unwrap());
     let vault_root = vault_root.canonicalize().unwrap_or(vault_root);
 
     println!("Initialising csnotes vault at: {}", vault_root.display());
     println!("(Press Enter to accept defaults)\n");
 
-    // ── Prompts ────────────────────────────────────────────────────────────
+    // ── Prompts ────────────────────────────────────────────────────────────────
     let filename_format = prompt(
         "Filename format [{course}-{mm}-{dd}]: ",
         "{course}-{mm}-{dd}",
@@ -70,162 +78,490 @@ pub fn run(vault_root: Option<PathBuf>) -> Result<()> {
         plaud_qualifiers: vec!["transcript".into(), "summary".into(), "mindmap".into()],
     };
 
-    // ── Create directory tree ──────────────────────────────────────────────
+    // ── Create directory tree ──────────────────────────────────────────────────
     let dirs = [
-        &cfg.raw_dir,
-        &cfg.plaud_dir,
-        &cfg.artifacts_dir,
-        &cfg.sources_dir,
-        &cfg.synthetic_dir,
-        &cfg.generated_dir,
+        cfg.raw_dir.as_str(),
+        cfg.plaud_dir.as_str(),
+        cfg.artifacts_dir.as_str(),
+        cfg.sources_dir.as_str(),
+        cfg.synthetic_dir.as_str(),
+        cfg.generated_dir.as_str(),
     ];
     for d in &dirs {
         let path = vault_root.join(d);
-        fs::create_dir_all(&path)
-            .with_context(|| format!("creating {}", path.display()))?;
+        if !path.exists() {
+            fs::create_dir_all(&path)
+                .with_context(|| format!("creating {}", path.display()))?;
+            println!("  Created: {}/", d);
+        }
     }
 
     // Instructions directory
-    let instructions_dir = vault_root
-        .join(&cfg.csnotes_dir)
-        .join("instructions");
+    let instructions_dir = vault_root.join(&cfg.csnotes_dir).join("instructions");
     fs::create_dir_all(&instructions_dir)?;
 
-    // ── Write .csnotes ─────────────────────────────────────────────────────
-    cfg.save(&vault_root)?;
+    // ── Write .csnotes ─────────────────────────────────────────────────────────
+    let config_path = vault_root.join(".csnotes");
+    if config_path.exists() {
+        println!("  Skipped: .csnotes (already exists)");
+    } else {
+        cfg.save(&vault_root)?;
+        println!("  Created: .csnotes");
+    }
 
-    // ── Write empty manifest ───────────────────────────────────────────────
-    let manifest_config = ManifestConfig::from_vault_config(&cfg);
-    let manifest = Manifest::empty(vault_root.clone(), manifest_config);
-    manifest.save(&vault_root)?;
+    // ── Write empty manifest ───────────────────────────────────────────────────
+    let manifest_path = vault_root.join(crate::manifest::MANIFEST_FILENAME);
+    if manifest_path.exists() {
+        println!("  Skipped: csnotes.json (already exists)");
+    } else {
+        let manifest_config = ManifestConfig::from_vault_config(&cfg);
+        let manifest = Manifest::empty(vault_root.clone(), manifest_config);
+        manifest.save(&vault_root)?;
+        println!("  Created: csnotes.json");
+    }
 
-    // ── Write empty flag store ─────────────────────────────────────────────
-    let flag_store = FlagStore::default();
-    flag_store.save(&vault_root.join(&cfg.generated_dir).join("flags.json"))?;
+    // ── Write empty flag store ─────────────────────────────────────────────────
+    let flags_path = vault_root.join(&cfg.generated_dir).join("flags.json");
+    if !flags_path.exists() {
+        let flag_store = FlagStore::default();
+        flag_store.save(&flags_path)?;
+        println!("  Created: {}/flags.json", cfg.generated_dir);
+    }
 
-    // ── Write instruction files ────────────────────────────────────────────
-    write_instruction_files(&vault_root, &cfg)?;
+    // ── Write instruction files ────────────────────────────────────────────────
+    write_instruction_files(&instructions_dir, &cfg)?;
 
-    // ── Done ───────────────────────────────────────────────────────────────
+    // ── Done ──────────────────────────────────────────────────────────────────
     println!("\nVault initialised.");
-    println!(
-        "  Instruction files: {}/instructions/",
-        cfg.csnotes_dir
-    );
-    println!("  Edit claude.md / gemini.md / synthesis.md before your first session.");
-    println!("\nNext: add a raw note to {}/{}/",  cfg.raw_dir, cfg.active_courses.first().unwrap_or(&"<course>".to_string()));
-    println!("      then run: csnotes process");
-
-    Ok(())
-}
-
-// ── Instruction file stubs ────────────────────────────────────────────────────
-
-fn write_instruction_files(vault_root: &Path, cfg: &VaultConfig) -> Result<()> {
-    let dir = vault_root.join(&cfg.csnotes_dir).join("instructions");
-
-    // claude.md — written only if it doesn't exist
-    let claude_path = dir.join("claude.md");
-    if !claude_path.exists() {
-        fs::write(&claude_path, CLAUDE_MD_STUB)?;
-        println!("  Created: {}", claude_path.display());
-    }
-
-    // gemini.md
-    let gemini_path = dir.join("gemini.md");
-    if !gemini_path.exists() {
-        fs::write(&gemini_path, GEMINI_MD_STUB)?;
-        println!("  Created: {}", gemini_path.display());
-    }
-
-    // synthesis.md
-    let synthesis_path = dir.join("synthesis.md");
-    if !synthesis_path.exists() {
-        fs::write(&synthesis_path, SYNTHESIS_MD_STUB)?;
-        println!("  Created: {}", synthesis_path.display());
+    println!("  Edit _csnotes/instructions/ before your first session.");
+    if let Some(course) = cfg.active_courses.first() {
+        println!("\nNext steps:");
+        println!("  1. Add raw notes to {}/{}/", course, cfg.raw_dir);
+        println!("  2. csnotes reconcile");
+        println!("  3. csnotes process");
+    } else {
+        println!("\nNext steps:");
+        println!("  1. Add your course(s) to active_courses in .csnotes");
+        println!("  2. csnotes reconcile");
+        println!("  3. csnotes process");
     }
 
     Ok(())
 }
 
-// ── Instruction stubs (TODO: replace with real content before first session) ──
+// ── --instructions-only ───────────────────────────────────────────────────────
 
-const CLAUDE_MD_STUB: &str = r#"# csnotes — Claude Instructions
+fn run_instructions_only() -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let vault_root = find_vault_root(&cwd)?;
+    let config = VaultConfig::load(&vault_root)?;
 
-<!-- TODO: Fill in before your first session.  See _docs/PLAN.md §2 for the
-     full directive list.  Key sections to write:
+    let instructions_dir = vault_root.join(&config.csnotes_dir).join("instructions");
+    fs::create_dir_all(&instructions_dir)?;
 
-     1. Role: tutor + synthesiser dual persona
-     2. Vault structure and input XML tags (raw_student_notes, plaud_transcript,
-        plaud_summary, plaud_mindmap, lecture_slides, instructor_code_sample,
-        textbook_source)
-     3. Per-run state: read _session.md for current block IDs, open flags,
-        and existing note coverage
-     4. Tone matching: read raw notes for register before synthesising
-     5. Synthesis rules: extend existing topics; restructure only on reframe/
-        contradiction; label every section with contributing session/source
-     6. Fact-checking asides format: > **[Claude: possible misread]** ...
-     7. Atomisation heuristic (man-page level)
-     8. Intellectual history: Current Understanding + Conceptual History
-     9. Raw notes and Plaud exports are READ-ONLY — never suggest edits to them
-    10. When ready to wrap up: "Reference synthesis.md for the procedure."
--->
+    write_instruction_files(&instructions_dir, &config)?;
+    println!("Instructions written to {}/instructions/", config.csnotes_dir);
 
-You are a tutor and synthesiser for a graduate CS programme.
-This workspace contains your session inputs and a working copy of _synthetic/.
+    Ok(())
+}
 
-**Read _session.md for the current session context before anything else.**
-"#;
+// ── Instruction file writing ──────────────────────────────────────────────────
 
-const GEMINI_MD_STUB: &str = r#"# csnotes — Gemini/Antigravity Instructions
+fn write_instruction_files(dir: &Path, cfg: &VaultConfig) -> Result<()> {
+    // claude.md / gemini.md — variant-specific entry point
+    let (entry_name, entry_content) = match cfg.skill_variant {
+        SkillVariant::Claude => ("claude.md", CLAUDE_MD),
+        SkillVariant::Gemini => ("gemini.md", GEMINI_MD),
+    };
+    write_if_absent(dir, entry_name, entry_content)?;
 
-<!-- TODO: Fill in before your first session.  Mirror of claude.md adapted
-     for Gemini style.  See claude.md comments for the full directive list. -->
+    // Always write the shared files regardless of variant
+    if cfg.skill_variant == SkillVariant::Gemini {
+        write_if_absent(dir, "claude.md", CLAUDE_MD)?;
+    } else {
+        write_if_absent(dir, "gemini.md", GEMINI_MD)?;
+    }
+    write_if_absent(dir, "synthesis.md", SYNTHESIS_MD)?;
+    write_if_absent(dir, "report_schema.md", REPORT_SCHEMA_MD)?;
 
-You are a tutor and synthesiser for a graduate CS programme.
-This workspace contains your session inputs and a working copy of _synthetic/.
+    let _ = entry_name; // suppress unused warning
+    Ok(())
+}
 
-**Read _session.md for the current session context before anything else.**
-"#;
+fn write_if_absent(dir: &Path, filename: &str, content: &str) -> Result<()> {
+    let path = dir.join(filename);
+    if path.exists() {
+        println!("  Skipped: _csnotes/instructions/{} (already exists)", filename);
+    } else {
+        fs::write(&path, content)
+            .with_context(|| format!("writing {}", path.display()))?;
+        println!("  Created: _csnotes/instructions/{}", filename);
+    }
+    Ok(())
+}
 
-const SYNTHESIS_MD_STUB: &str = r#"# Synthesis Procedure
+// ── Embedded instruction files ────────────────────────────────────────────────
 
-<!-- TODO: Fill in the full synthesis wrap-up protocol.  Key sections:
+const CLAUDE_MD: &str = r##"# csnotes session
 
-     1. Pre-synthesis checklist
-        - Have you discussed the material and resolved confusions?
-        - Are there open questions worth flagging?
+You are running as an interactive Claude Code session inside a prepared
+workspace.  The student's vault is not accessible from here — you're working
+in an isolated copy.  When you exit, the CLI validates your work, stamps
+frontmatter, and merges `_synthetic/` into the vault.
 
-     2. For each topic touched this session:
-        a. Decide: create_note (new topic/atomic) or update_note (existing)?
-        b. Write or update the note body:
-           - # Topic heading
-           - ## Current Understanding (best synthesis)
-           - ## Conceptual History (per-contribution with relationship label)
-           - Block anchor ^block-id on atomic notes
-           - ![[atomic#^block-id]] embed lines in index notes
-        c. Fact-check asides for likely transcription errors
+---
 
-     3. Write _session_report.json:
-        - One op per touched note (create_note or update_note)
-        - Provenance deltas with correct relationship labels
-        - review_flags for anything uncertain
-        - change_summary for each op (used by `csnotes diff`)
+## Workspace layout
 
-     4. Verify the report before exiting:
-        - run_id matches the value in _session.md
-        - Every declared path exists in _synthetic/
-        - Every declared block_id has a matching ^anchor in the body
-        - Every declared embed_in target has the ![[...]] line
--->
+```
+_session.md          ← start here: scope, inputs, open flags, known block IDs
+synthesis.md         ← read before writing notes
+report_schema.md     ← read before writing the session report
+input_raw_*.md       ← student's raw notes (XML-wrapped, read-only)
+input_plaud_*.md     ← Plaud transcript/summary (XML-wrapped, read-only)
+input_source_*.md    ← textbook material (XML-wrapped, read-only)
+_synthetic/          ← your writable working copy of the vault's synthetic notes
+_session_report.json ← you write this before exiting
+```
 
-When you are ready to wrap up and write the synthesis:
+---
 
-1. Review what was discussed.
-2. Write or update note bodies in `_synthetic/`.
-3. Write `_session_report.json` following the schema in this workspace.
-4. Confirm the report is complete, then exit the session.
-"#;
+## Phase 1 — Orient
+
+Read `_session.md`.  It tells you the scope, what inputs are present, any open
+flags from previous sessions, and the full list of existing block IDs.  Then
+read the input files.
+
+---
+
+## Phase 2 — Debrief
+
+Before writing anything, talk with the student:
+
+- Ask about concepts that seem important but underdeveloped in the raw notes.
+- Quiz them on the session material — the goal is to understand what actually
+  *landed*, not just what was presented.
+- Surface connections to prior sessions or material you notice.
+
+The conversation shapes what earns a note and how confident the content should
+be.
+
+---
+
+## Phase 3 — Write notes
+
+Read `synthesis.md` before you start writing.
+
+Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphenated.
+
+**Format rules (short version):**
+- No frontmatter — the CLI stamps all `---` fences.  Write body only.
+- Every atomic note must end with `^<slug>` on its own line (same as filename
+  without `.md`).  Without this anchor the note can't be transcluded.
+- Wikilinks: `[[target-slug]]` or `[[target-slug|display text]]`.  Every
+  target must exist in `_synthetic/` already or be created this session.
+  Broken wikilinks cause the CLI to discard all your work.
+
+Write notes as the conversation develops — you don't have to finish the
+debrief first.
+
+---
+
+## Phase 4 — Write the session report
+
+Read `report_schema.md` before writing `_session_report.json`.
+
+---
+
+## Before you exit
+
+- Every atomic note body ends with its block anchor on the last line.
+- Every wikilink target exists in `_synthetic/`.
+- `_session_report.json` is written with the correct `run_id` (from `_session.md`).
+- Every file you created or edited has a corresponding operation in the report.
+
+If you need to do more work, don't exit — it's easier than recovering.
+If you do exit early without writing the report, `csnotes recover --resume`
+will re-launch this session against the same workspace.
+"##;
+
+const GEMINI_MD: &str = r##"# csnotes session
+
+You are running as an interactive Gemini session (via Antigravity) inside a
+prepared workspace.  The student's vault is not accessible from here — you're
+working in an isolated copy.  When you exit, the CLI validates your work,
+stamps frontmatter, and merges `_synthetic/` into the vault.
+
+The workflow is identical to the Claude backend.  See `claude.md` for the full
+phase-by-phase description.  The only difference is the report field:
+`"backend": "gemini"`.
+
+Read `_session.md` first, then proceed through the four phases described in
+`claude.md`.
+"##;
+
+const SYNTHESIS_MD: &str = r##"# csnotes — synthesis philosophy
+
+This file tells you *how* to think about turning raw lecture notes into
+synthetic notes.  Read this alongside `claude.md` (which covers the technical
+output contract).
+
+---
+
+## Voice and style
+
+Write the way you'd debrief a friend who missed class but is smart and cares
+about the material.  Conversational, informal, occasionally irreverent.
+**Not** textbook prose, not neutral-encyclopedic, not "Polymorphism is defined
+as...".  More like "okay so the key thing here is..." or "this is the part
+where it actually matters."
+
+If the raw notes contain a joke, a sarcastic aside, or a bit of personality —
+keep it.  It's there for a reason: it made the concept stick in the moment.
+
+Precision still matters.  Conversational doesn't mean vague.  Get the
+technical content right; just don't write like a Wikipedia article.
+
+---
+
+## What gets a note
+
+**Stable, reusable knowledge gets a note.**  Ask: "would this concept come up
+again in a different context, or is it a one-time artifact of this lecture?"
+If yes → note.  If no → leave it in the raw notes.
+
+**Worked examples** do not get their own notes.  They live in the raw notes
+and are referenced from the concept note that they illustrate:
+> (worked example in CPSC5001 09-03 lecture)
+
+**Procedural steps** (e.g., insertion algorithm for a data structure) get a
+note if the procedure is the point — if understanding it is the goal, not just
+executing it.
+
+**Definitions** get folded into the concept note they define, not their own
+separate note, unless the definition itself is subtle or contested enough to
+be worth isolating.
+
+---
+
+## Granularity
+
+Default to **coarser** notes.  One concept = one atomic note, with subheadings
+inside it if the concept has natural parts.
+
+**Split trigger:** create a separate atomic note when:
+- A sub-concept appears independently across multiple sessions (it's earning
+  its own identity), or
+- You want to wikilink to that sub-concept specifically from an unrelated topic
+  (it needs to be a standalone target).
+
+Until one of those is true, keep it inside the parent concept note with a
+subheading.  You can always split later; merging is harder.
+
+---
+
+## Connections and wikilinks
+
+**Actively make connections.**  If the lecture introduces something that
+relates to a concept from a previous session or the course textbook, weave
+that connection into the note body and add a wikilink.
+
+Don't just record what the new session said in isolation.  The point of
+synthetic notes is accumulated understanding, not a per-session transcript.
+
+If you notice that two things the student wrote in different sessions are the
+same concept under different names, say so in the note and link them.
+
+---
+
+## Handling uncertainty
+
+When you're not sure you understood the raw notes correctly — ambiguous
+handwriting, shorthand you can't resolve, two terms that might be the same
+thing — **make your best guess, write the note, and flag it**.
+
+Use a `review_flag` with kind `uncertain_content` or `ambiguous_term` and
+explain what you weren't sure about and what you decided.  The student will
+see the flag after the session is processed and can correct it then.
+
+Don't leave placeholders or refuse to write the note.  A flagged imperfect
+note is more useful than a blank.
+
+---
+
+## Index notes
+
+The index note for a topic (`_synthetic/<topic>/<topic>.md`) carries:
+
+1. **An orientation paragraph** (2–4 sentences): what this topic is, why it
+   matters in the course, and the shape of the material — what the atomics
+   cover and how they fit together.  Write this in the same conversational
+   voice as the atomics.  It should orient someone who hasn't looked at this
+   topic in three weeks.
+
+2. **The embed list** — `![[atomic-slug#^block-id]]` lines for each atomic.
+   The CLI manages insertion of new embeds; you write the paragraph and
+   maintain ordering.
+
+The orientation paragraph should be updated (via `update_note`) when the scope
+of the topic changes significantly — e.g., when a topic that started as "basic
+sorting" expands to cover advanced variants.  Don't update it after every
+session just because new atomics were added.
+
+---
+
+## On textbook vs. lecture synthesis
+
+The raw lecture notes are the primary input.  If the lecture covers something
+the textbook also covers, synthesise from *the lecture's framing* — what did
+the instructor emphasise, what angle did they take?  The textbook framing can
+be a source of connections and additional precision, but the note should read
+like it came from the course, not from the book.
+
+Cross-chapter synthesis (concepts that span multiple textbook chapters) is
+fine and encouraged.  If the lecture doesn't make the connection explicit,
+add a wikilink and a brief note like "(also see [[related-concept]] —
+connection not yet drawn in lecture)" rather than silently merging them.
+
+---
+
+## What success looks like after a session
+
+After processing a session, the vault should have:
+
+- One index note per topic introduced in the lecture, with an orientation
+  paragraph that would orient you if you read it cold in three weeks.
+- One atomic note per stable concept introduced, written at the granularity
+  that felt natural from the lecture (err coarser; you can split later).
+- Wikilinks to any concepts that connect to prior knowledge, even if those
+  target notes don't exist yet — broken wikilinks get flagged, which is fine;
+  it surfaces what needs to be created in a future session.
+- Any worked examples from class referenced by name in the concept notes, not
+  turned into their own notes.
+- A short list of `review_flags` for anything you weren't sure about.
+
+What it should *not* look like: a reformatted version of the lecture outline,
+or a note-per-slide, or anything that mirrors the textbook chapter structure.
+The question to ask is "would this help me in three weeks?" not "does this
+accurately transcribe what happened in class?"
+"##;
+
+const REPORT_SCHEMA_MD: &str = r##"# Session report schema
+
+Write `_session_report.json` using the schema below.  This is a metadata
+manifest — do NOT include note bodies.  The CLI reads the files you wrote
+directly; the report tells it what you did and why.
+
+---
+
+## Top-level structure
+
+```json
+{
+  "csnotes_report_schema": 1,
+  "run_id": "<copy from _session.md exactly>",
+  "backend": "claude",
+  "started_at": "<ISO 8601 UTC>",
+  "completed_at": "<ISO 8601 UTC>",
+  "scope": {
+    "kind": "session",
+    "sessions": ["<session-id>"],
+    "sources": []
+  },
+  "operations": [ ... ],
+  "review_flags": [ ... ]
+}
+```
+
+**`run_id`** must be copied verbatim from `_session.md`.  A mismatch causes
+the CLI to discard the workspace.
+
+---
+
+## `create_note` operation
+
+One entry for every note file you created.
+
+```json
+{
+  "op": "create_note",
+  "kind": "atomic",
+  "path": "_synthetic/algorithm-analysis/red-black-trees.md",
+  "title": "Red-Black Trees",
+  "topic": "algorithm-analysis",
+  "block_id": "red-black-trees",
+  "embed_in": ["_synthetic/algorithm-analysis/algorithm-analysis.md"],
+  "provenance": {
+    "sessions": [
+      {
+        "course": "CPSC5001",
+        "date": "YYYY-MM-DD",
+        "relationship": "introduced"
+      }
+    ],
+    "sources": []
+  },
+  "change_summary": "One sentence: what this note captures."
+}
+```
+
+| Field | Notes |
+|---|---|
+| `kind` | `"atomic"` or `"index"` |
+| `path` | workspace-relative; matches the file you wrote |
+| `block_id` | required for atomic; omit for index |
+| `embed_in` | index notes this atomic should appear in; `[]` if none |
+| `relationship` | `"introduced"` / `"expanded"` / `"revised"` / `"applied"` |
+
+---
+
+## `update_note` operation
+
+One entry for every existing note you edited.
+
+```json
+{
+  "op": "update_note",
+  "path": "_synthetic/algorithm-analysis/sorting.md",
+  "add_provenance": {
+    "sessions": [
+      {
+        "course": "CPSC5001",
+        "date": "YYYY-MM-DD",
+        "relationship": "expanded"
+      }
+    ],
+    "sources": []
+  },
+  "sections": ["Comparison with heapsort"],
+  "change_summary": "One sentence: what changed and why."
+}
+```
+
+`sections` is an informal list of headings or concepts you touched — used by
+`csnotes diff`, informational only.
+
+---
+
+## Review flags
+
+```json
+{
+  "kind": "possible_misread",
+  "path": "_synthetic/algorithm-analysis/red-black-trees.md",
+  "message": "Raw notes say 'n log n' but rotation analysis is O(log n) — kept O(log n), please confirm."
+}
+```
+
+| Kind | Behaviour |
+|---|---|
+| `"possible_misread"` | Persists; shown in `csnotes status` until resolved |
+| `"needs_confirmation"` | Persists; shown in `csnotes status` until resolved |
+| `"unresolved_question"` | Surfaces in future session briefings; doesn't nag |
+| `"ambiguity"` | Logged only; auto-resolved |
+
+Flags do not block the commit.
+"##;
 
 // ── Prompt helper ─────────────────────────────────────────────────────────────
 

@@ -32,7 +32,7 @@ fn main() {
 
 fn dispatch(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        Command::Init { vault_root } => init::run(vault_root),
+        Command::Init { vault_root, instructions_only } => init::run(vault_root, instructions_only),
 
         Command::Process {
             session,
@@ -126,6 +126,10 @@ enum Command {
         /// Path for the vault root (defaults to current directory).
         #[arg(long)]
         vault_root: Option<PathBuf>,
+        /// Only write instruction files into an existing vault; skip
+        /// directory scaffolding and config prompts.
+        #[arg(long)]
+        instructions_only: bool,
     },
 
     /// Run an AI synthesis session against pending notes.

@@ -47,6 +47,26 @@ impl Manifest {
         Ok(manifest)
     }
 
+    /// Load the manifest, or create and save an empty one if it doesn't exist.
+    /// Used by `reconcile` so that the first run in a new vault bootstraps
+    /// `csnotes.json` without requiring a separate `init` step.
+    pub fn load_or_create(
+        vault_root: &Path,
+        vault_config: &crate::config::VaultConfig,
+    ) -> Result<Self> {
+        let path = vault_root.join(MANIFEST_FILENAME);
+        if path.exists() {
+            return Self::load(vault_root);
+        }
+        let manifest = Manifest::empty(
+            vault_root.to_path_buf(),
+            ManifestConfig::from_vault_config(vault_config),
+        );
+        manifest.save(vault_root)?;
+        println!("Created {}", path.display());
+        Ok(manifest)
+    }
+
     pub fn save(&self, vault_root: &Path) -> Result<()> {
         let path = vault_root.join(MANIFEST_FILENAME);
         let content = serde_json::to_string_pretty(self)

@@ -24,7 +24,7 @@ pub struct ReconcileArgs {
 pub fn run(args: ReconcileArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
-    let mut manifest = Manifest::load(&vault_root)?;
+    let mut manifest = Manifest::load_or_create(&vault_root, &config)?;
 
     let fmt = FilenameFormat::parse(&config.filename_format)?;
 
