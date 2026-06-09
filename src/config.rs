@@ -92,6 +92,13 @@ pub struct VaultConfig {
     /// letters a–z).  Extend as you discover new Plaud output formats.
     #[serde(default = "default_plaud_qualifiers")]
     pub plaud_qualifiers: Vec<String>,
+
+    /// Gemini model to pass to `agy --model`.  When absent the `agy` default
+    /// is used (currently gemini-2.5-pro).  Example values:
+    /// `gemini-2.5-pro`, `gemini-2.0-flash`, `gemini-2.5-flash`.
+    /// Overridden per-run by `--agy-model`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agy_model: Option<String>,
 }
 
 fn default_raw_dir() -> String { "notes".into() }
@@ -491,6 +498,7 @@ mod tests {
             snapshot_mode: default_snapshot_mode(),
             archive_threshold_weeks: default_archive_threshold_weeks(),
             plaud_qualifiers: default_plaud_qualifiers(),
+            agy_model: None,
         };
         assert!(cfg.is_plaud_qualifier("transcript"));
         assert!(cfg.is_plaud_qualifier("summary"));

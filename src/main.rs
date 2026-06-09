@@ -42,6 +42,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             dry_run,
             backend,
             fixture,
+            agy_model,
         } => process::run(process::ProcessArgs {
             session,
             course,
@@ -50,6 +51,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             dry_run,
             backend,
             fixture,
+            agy_model,
         }),
 
         Command::Status => status::run(),
@@ -168,6 +170,11 @@ enum Command {
         /// Fixture set name for --backend mock.
         #[arg(long, hide = true)]
         fixture: Option<String>,
+
+        /// Gemini model to use for this session (overrides agy_model in config).
+        /// Example: gemini-2.5-pro, gemini-2.0-flash, gemini-2.5-flash
+        #[arg(long, hide = true)]
+        agy_model: Option<String>,
     },
 
     /// Show processing status for sessions, sources, topics, and flags.

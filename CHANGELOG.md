@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Agy backend: full GEMINI.md, model selection, report_schema clarification (L4)
 - Phase 2: artifact detection, auto-reconcile, cross-platform notifications (L2)
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 

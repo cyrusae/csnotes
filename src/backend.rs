@@ -38,14 +38,17 @@ pub trait BackendLauncher {
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 /// Construct the appropriate backend from the configured/overridden backend.
+///
+/// `agy_model` is forwarded to `AgyBackend` only; ignored for other backends.
 pub fn make_backend(
     backend: AiBackend,
     skill_variant: SkillVariant,
     fixture: Option<String>,
+    agy_model: Option<String>,
 ) -> Box<dyn BackendLauncher> {
     match backend {
         AiBackend::Claude => Box::new(ClaudeBackend { skill_variant }),
-        AiBackend::Agy => Box::new(AgyBackend { skill_variant }),
+        AiBackend::Agy => Box::new(AgyBackend { skill_variant, model: agy_model }),
         AiBackend::Mock => Box::new(MockBackend { fixture }),
     }
 }
@@ -85,22 +88,35 @@ impl BackendLauncher for ClaudeBackend {
 
 pub struct AgyBackend {
     pub skill_variant: SkillVariant,
+    /// Optional Gemini model override passed to `agy --model`.
+    /// When `None`, `agy` uses its own default (currently gemini-2.5-pro).
+    pub model: Option<String>,
 }
 
 impl BackendLauncher for AgyBackend {
     fn launch(&self, workspace: &Path) -> Result<()> {
-        // agy does not auto-load GEMINI.md from cwd; we bootstrap with `-i`
-        // to explicitly instruct the model to read it, and `--add-dir` to
-        // make the workspace files accessible.
+        // `agy` does not auto-load GEMINI.md from cwd (unlike Claude Code,
+        // which auto-discovers CLAUDE.md).  We bootstrap with `-i` to
+        // instruct the model to read the instruction file immediately, and
+        // `--add-dir` to make all workspace files accessible as context.
         let workspace_str = workspace.to_string_lossy();
-        let status = Command::new("agy")
-            .args([
-                "-i",
-                "Read GEMINI.md in this workspace for your instructions.",
-                "--add-dir",
-                &workspace_str,
-            ])
-            .current_dir(workspace)
+
+        let mut cmd = Command::new("agy");
+
+        // Model selection — omit entirely if not set so `agy` uses its default.
+        if let Some(ref m) = self.model {
+            cmd.args(["--model", m]);
+        }
+
+        cmd.args([
+            "-i",
+            "Read GEMINI.md in this workspace — it contains your full instructions for this session.",
+            "--add-dir",
+            &workspace_str,
+        ])
+        .current_dir(workspace);
+
+        let status = cmd
             .status()
             .map_err(|e| CsnotesError::BackendFailed(format!("agy: {e}")))?;
 

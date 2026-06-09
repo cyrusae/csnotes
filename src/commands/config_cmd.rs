@@ -425,6 +425,13 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
                 .parse()
                 .map_err(|_| anyhow::anyhow!("archive_threshold_weeks must be a positive integer"))?;
         }
+        "agy_model" => {
+            if value.is_empty() {
+                config.agy_model = None;
+            } else {
+                config.agy_model = Some(value.to_string());
+            }
+        }
         _ => bail!(crate::error::CsnotesError::InvalidConfigKey { key: key.to_string() }),
     }
     Ok(())

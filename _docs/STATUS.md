@@ -7,7 +7,7 @@
 
 ## Summary
 
-The CLI is **feature-complete for Phase 0 through Phase 3** (all items). Every command that isn't explicitly gated on a future phase is functional. The vault is not yet bootstrapped with real data; first real use is the next milestone.
+The CLI is **feature-complete for Phase 0 through Phase 3 plus the Agy backend** (all items). Every command that isn't explicitly gated on a future phase is functional. The vault is not yet bootstrapped with real data; first real use is the next milestone.
 
 ---
 
@@ -86,9 +86,15 @@ These are intentional decisions made during implementation; PLAN.md has not been
 - Shadow-git snapshot mode (`snapshot_mode = shadow_git`)
 - `cross_embedded_in` rebuild during merge-back (field exists in frontmatter, rebuild step is stubbed)
 
-### Agy (Antigravity) backend
+### Agy (Antigravity) backend — Completed
 
-- `AgyBackend` is stubbed (`todo!()`). Launch signature is `agy -i "Read GEMINI.md..." --add-dir <workspace>`.
+| Feature | Implementation |
+|---------|---------------|
+| `AgyBackend::launch` | `agy [--model <model>] -i "Read GEMINI.md…" --add-dir <workspace>`. Blocks until session exits. |
+| Model selection | `agy_model` config key + `--agy-model` per-run CLI override. When absent, `agy` uses its default (gemini-2.5-pro). `config --set agy_model=<model>` persists it. |
+| `GEMINI.md` instruction file | Full standalone file: workspace layout, four phases (Orient → Debrief → Write notes → Write report), format rules, exit checklist. No longer a redirect to `claude.md`. |
+| `report_schema.md` | `"backend"` field now documents both `"claude"` and `"gemini"` values. Template placeholder updated from hardcoded `"claude"`. |
+| `recover --resume` | Passes `config.agy_model` to `make_backend` so re-launched Agy sessions use the correct model. |
 
 ---
 
@@ -109,5 +115,4 @@ Written and embedded in `init.rs` as raw string constants. Installed to `_csnote
 
 1. **Bootstrap the real vault.** Write `.csnotes` for the CPSC5001/CPSC5002/CPSC5005 layout, run `csnotes init --instructions-only`, run `csnotes reconcile`. Validate manifest looks correct including source and artifact registration.
 2. **First real session.** Run `csnotes process` against a CPSC5001 session. This is the first live test of the instruction files and the full teardown pipeline.
-3. **Agy backend.** Implement `AgyBackend` for Gemini/Antigravity sessions.
-4. **Phase 4 structural ops** if real sessions reveal need: `move_atomic`, `promote_atomic`, `demote_topic`, `merge_topics`, `split_topic`, `set_embed`.
+3. **Phase 4 structural ops** if real sessions reveal need: `move_atomic`, `promote_atomic`, `demote_topic`, `merge_topics`, `split_topic`, `set_embed`.

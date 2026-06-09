@@ -76,6 +76,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         snapshot_mode: SnapshotMode::PreMerge,
         archive_threshold_weeks: 8,
         plaud_qualifiers: vec!["transcript".into(), "summary".into(), "mindmap".into()],
+        agy_model: None,
     };
 
     // ── Create directory tree ──────────────────────────────────────────────────
@@ -292,12 +293,87 @@ prepared workspace.  The student's vault is not accessible from here — you're
 working in an isolated copy.  When you exit, the CLI validates your work,
 stamps frontmatter, and merges `_synthetic/` into the vault.
 
-The workflow is identical to the Claude backend.  See `claude.md` for the full
-phase-by-phase description.  The only difference is the report field:
-`"backend": "gemini"`.
+---
 
-Read `_session.md` first, then proceed through the four phases described in
-`claude.md`.
+## Workspace layout
+
+```
+_session.md          ← start here: scope, inputs, open flags, known block IDs
+synthesis.md         ← read before writing notes
+report_schema.md     ← read before writing the session report
+input_raw_*.md       ← student's raw notes (XML-wrapped, read-only)
+input_plaud_*.md     ← Plaud transcript/summary (XML-wrapped, read-only)
+input_source_*.md    ← textbook material (XML-wrapped, read-only)
+_synthetic/          ← your writable working copy of the vault's synthetic notes
+_session_report.json ← you write this before exiting
+```
+
+All workspace files were loaded via `--add-dir` when this session started —
+you can read any of them.  Write only to `_synthetic/` and `_session_report.json`.
+
+---
+
+## Phase 1 — Orient
+
+Read `_session.md`.  It tells you the scope, what inputs are present, any open
+flags from previous sessions, and the full list of existing block IDs grouped
+by topic.  Then read the input files.
+
+---
+
+## Phase 2 — Debrief
+
+Before writing anything, talk with the student:
+
+- Ask about concepts that seem important but underdeveloped in the raw notes.
+- Quiz them on the session material — the goal is to understand what actually
+  *landed*, not just what was presented.
+- Surface connections to prior sessions or material you notice.
+
+The conversation shapes what earns a note and how confident the content should
+be.
+
+---
+
+## Phase 3 — Write notes
+
+Read `synthesis.md` before you start writing.
+
+Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphenated.
+
+**Format rules:**
+- No frontmatter — the CLI stamps all `---` fences.  Write body only.
+- Every atomic note must end with `^<slug>` on its own line (same as the
+  filename without `.md`).  Without this anchor the note can't be transcluded.
+- Wikilinks: `[[target-slug]]` or `[[target-slug|display text]]`.  Every
+  target must already exist in `_synthetic/` or be created this session.
+  Broken wikilinks cause the CLI to discard all your work.
+
+Write notes as the conversation develops — you don't have to finish the
+debrief before touching `_synthetic/`.
+
+---
+
+## Phase 4 — Write the session report
+
+Read `report_schema.md` before writing `_session_report.json`.
+
+**Important:** the `"backend"` field in your report must be `"gemini"`.
+
+---
+
+## Before you exit
+
+- Every atomic note body ends with its block anchor on the last line.
+- Every wikilink target exists in `_synthetic/`.
+- `_session_report.json` is written with the correct `run_id` (copy verbatim
+  from `_session.md` — a mismatch causes the CLI to discard all work).
+- `"backend": "gemini"` appears in the report top-level object.
+- Every file you created or edited has a corresponding operation in the report.
+
+If you need to do more work, don't exit — it's easier than recovering.
+If you exit early without writing the report, `csnotes recover --resume`
+will re-launch this session against the same workspace.
 "##;
 
 const SYNTHESIS_MD: &str = r##"# csnotes — synthesis philosophy
@@ -460,7 +536,7 @@ directly; the report tells it what you did and why.
 {
   "csnotes_report_schema": 1,
   "run_id": "<copy from _session.md exactly>",
-  "backend": "claude",
+  "backend": "<claude | gemini>",
   "started_at": "<ISO 8601 UTC>",
   "completed_at": "<ISO 8601 UTC>",
   "scope": {
@@ -475,6 +551,9 @@ directly; the report tells it what you did and why.
 
 **`run_id`** must be copied verbatim from `_session.md`.  A mismatch causes
 the CLI to discard the workspace.
+
+**`backend`** — use `"claude"` for Claude Code sessions, `"gemini"` for
+Gemini/Agy sessions.
 
 ---
 
