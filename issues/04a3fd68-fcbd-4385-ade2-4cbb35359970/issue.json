@@ -2,11 +2,12 @@
   "uuid": "04a3fd68-fcbd-4385-ade2-4cbb35359970",
   "display_id": null,
   "title": "Agy backend: full GEMINI.md, model selection, report_schema clarification",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-06-09T23:50:06.793862Z",
-  "updated_at": "2026-06-09T23:50:06.909876Z",
+  "updated_at": "2026-06-09T23:53:28.889681Z",
+  "closed_at": "2026-06-09T23:53:28.889681Z",
   "labels": [
     "feature"
   ]
