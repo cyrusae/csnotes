@@ -1,0 +1,10 @@
+{
+  "uuid": "f5737871-2b9b-4add-b742-d4f15f0a11b1",
+  "display_id": null,
+  "title": "colorize CLI output: rainbow header + semantic colors in status/reconcile/process",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-06-10T08:26:15.933094Z",
+  "updated_at": "2026-06-10T08:26:15.933094Z"
+}
