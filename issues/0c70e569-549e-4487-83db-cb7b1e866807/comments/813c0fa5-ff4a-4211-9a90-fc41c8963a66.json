@@ -1,0 +1,10 @@
+{
+  "uuid": "813c0fa5-ff4a-4211-9a90-fc41c8963a66",
+  "issue_uuid": "0c70e569-549e-4487-83db-cb7b1e866807",
+  "author": "3owj",
+  "content": "L6: removed ShadowGit variant from SnapshotMode enum (was unimplemented; only PreMerge ever ran). L7: added recover_restores_from_mid_merge_snapshot lifecycle test — constructs crash state manually (snapshot dir + partial merge + missing workspace) and verifies restore_snapshot + session_in_progress clearance. L8: replaced stale shadow-git gap bullet in STATUS.md with LiveSync limitation note. 106 tests passing.",
+  "created_at": "2026-06-10T08:11:52.085740Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAXzIOKlmzSq9Q0JgYuDviHhlWRhg0oYnaGBU+9cWkECaKnCvF240SJ8JIkXIxSBpsnH6ybtxeXRjbgYqzMKtXCg=="
+}
