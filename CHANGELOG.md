@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- cross_embedded_in rebuild in merge_back + dry_run scope output (L6)
 - Phase 4: move_atomic, promote_atomic, demote_topic, merge_topics, split_topic, set_embed (L5)
 - Agy backend: full GEMINI.md, model selection, report_schema clarification (L4)
 - Phase 2: artifact detection, auto-reconcile, cross-platform notifications (L2)

@@ -106,7 +106,35 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     let workspace_root = assemble(&ws_params)?;
 
     if args.dry_run {
-        println!("dry-run: would launch {} against {}", backend_kind, workspace_root.display());
+        // Print scope summary
+        match &ws_params.scope {
+            WorkspaceScope::Session { session_id } => {
+                println!("dry-run  scope   : session {}", session_id);
+                if let Some(entry) = manifest.sessions.get(session_id) {
+                    println!("         raw note: {}", entry.raw_note);
+                    println!("         plaud   : {} export{}", entry.plaud_exports.len(),
+                        if entry.plaud_exports.len() == 1 { "" } else { "s" });
+                    if !entry.artifacts.is_empty() {
+                        println!("         artifacts: {}", entry.artifacts.len());
+                    }
+                }
+            }
+            WorkspaceScope::Source { source_id } => {
+                println!("dry-run  scope   : source {}", source_id);
+                if let Some(entry) = manifest.sources.get(source_id) {
+                    println!("         path    : {}", entry.path);
+                    println!("         kind    : {:?}", entry.kind);
+                }
+            }
+            WorkspaceScope::Topic { topic } => {
+                println!("dry-run  scope   : topic {}", topic);
+                if let Some(entry) = manifest.topics.get(topic) {
+                    println!("         atomics : {}", entry.atomic_notes.len());
+                }
+            }
+        }
+        println!("dry-run  backend : {}", backend_kind);
+        println!("dry-run  workspace: {}", workspace_root.display());
         return Ok(());
     }
 

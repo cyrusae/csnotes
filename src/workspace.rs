@@ -563,6 +563,111 @@ pub fn merge_back(
         }
     }
 
+    // After all files are in place, rebuild the `cross_embedded_in` reverse
+    // index so every atomic note knows which index notes embed it.
+    rebuild_cross_embedded_in(&vault_synthetic)?;
+
+    Ok(())
+}
+
+/// Rebuild the `cross_embedded_in` frontmatter field for every atomic note in
+/// `synthetic_root`.
+///
+/// Scans all `.md` files for `![[stem#^block-id]]` embed links, builds a
+/// reverse map `atomic_stem → [index_stems_that_embed_it]`, then updates only
+/// the notes whose stored value differs from the computed one.
+pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
+    use std::collections::HashMap;
+
+    // Phase 1: forward scan — which index notes embed which atomics?
+    let mut embedded_by: HashMap<String, Vec<String>> = HashMap::new();
+
+    for entry in walkdir::WalkDir::new(synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+    {
+        let content = match fs::read_to_string(entry.path()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let embeds = crate::obsidian::extract_embeds(&content);
+        if embeds.is_empty() {
+            continue;
+        }
+
+        let index_stem = match entry.path().file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+
+        for embed in embeds {
+            if embed.is_block_anchor() {
+                embedded_by
+                    .entry(embed.file.clone())
+                    .or_default()
+                    .push(index_stem.clone());
+            }
+        }
+    }
+
+    // Deduplicate and sort for stable output.
+    for list in embedded_by.values_mut() {
+        list.sort();
+        list.dedup();
+    }
+
+    // Phase 2: update atomic notes whose stored value differs.
+    for entry in walkdir::WalkDir::new(synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+    {
+        let stem = match entry.path().file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+
+        let content = match fs::read_to_string(entry.path()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let (yaml, body) = match crate::frontmatter::split_frontmatter(&content) {
+            Some(pair) => pair,
+            None => continue,
+        };
+
+        let mut fm: crate::frontmatter::NoteFrontmatter = match serde_yml::from_str(yaml) {
+            Ok(fm) => fm,
+            Err(_) => continue,
+        };
+
+        // Only atomic notes carry cross_embedded_in.
+        if fm.block_id.is_none() {
+            continue;
+        }
+
+        let new_value: Option<Vec<String>> = {
+            let v = embedded_by.get(&stem).cloned().unwrap_or_default();
+            if v.is_empty() { None } else { Some(v) }
+        };
+
+        // Only write when the value actually changes to avoid unnecessary
+        // file rewrites.
+        let unchanged = match (&fm.cross_embedded_in, &new_value) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        };
+
+        if !unchanged {
+            fm.cross_embedded_in = new_value;
+            crate::frontmatter::write_frontmatter(entry.path(), &fm, body)?;
+        }
+    }
+
     Ok(())
 }
 
@@ -652,4 +757,137 @@ fn is_text_artifact_ext(ext: &str) -> bool {
             | "yaml" | "yml" | "toml" | "json" | "xml" | "csv"
             | "ipynb"
     )
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_file(root: &std::path::Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
+    fn atomic_note(topic: &str, slug: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: {topic}\ntitle: {slug}\n\
+             block_id: {slug}\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n---\n\
+             \nBody text.\n\n^{slug}\n"
+        )
+    }
+
+    fn index_note_with_embeds(topic: &str, embeds: &[&str]) -> String {
+        let embed_lines: String = embeds
+            .iter()
+            .map(|s| format!("![[{}#^{}]]\n", s, s))
+            .collect();
+        format!(
+            "---\ncsnotes_schema: 1\nkind: index\ntopic: {topic}\ntitle: {topic}\n\
+             embeds: [{}]\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n---\n\
+             \n{embed_lines}",
+            embeds
+                .iter()
+                .map(|s| format!("\"{}\"", s))
+                .collect::<Vec<_>>()
+                .join(", "),
+            embed_lines = embed_lines,
+        )
+    }
+
+    /// Basic rebuild: one index embeds two atomics.
+    #[test]
+    fn rebuild_cross_embedded_in_sets_embedders() {
+        let tmp = TempDir::new().unwrap();
+        let syn = tmp.path();
+
+        write_file(syn, "cs/sorting.md", &atomic_note("cs", "sorting"));
+        write_file(syn, "cs/searching.md", &atomic_note("cs", "searching"));
+        write_file(syn, "cs/cs.md", &index_note_with_embeds("cs", &["sorting", "searching"]));
+
+        rebuild_cross_embedded_in(syn).unwrap();
+
+        let sorting = std::fs::read_to_string(syn.join("cs/sorting.md")).unwrap();
+        assert!(
+            sorting.contains("cross_embedded_in:"),
+            "cross_embedded_in should be set on sorting"
+        );
+        assert!(sorting.contains("cs"), "sorting should list cs as embedder");
+
+        let searching = std::fs::read_to_string(syn.join("cs/searching.md")).unwrap();
+        assert!(searching.contains("cross_embedded_in:"));
+        assert!(searching.contains("cs"));
+    }
+
+    /// Atomic not embedded anywhere should have cross_embedded_in: null / absent.
+    #[test]
+    fn rebuild_clears_cross_embedded_in_when_no_embedders() {
+        let tmp = TempDir::new().unwrap();
+        let syn = tmp.path();
+
+        // Atomic with a stale cross_embedded_in value (e.g. from a previous session)
+        write_file(
+            syn,
+            "cs/orphan.md",
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: orphan\n\
+             block_id: orphan\ncontributing_sessions: []\ncontributing_sources: []\n\
+             cross_embedded_in:\n  - old-index\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n---\n\
+             \nBody.\n\n^orphan\n",
+        );
+        // No index note that embeds it
+        write_file(syn, "cs/cs.md", &index_note_with_embeds("cs", &[]));
+
+        rebuild_cross_embedded_in(syn).unwrap();
+
+        let orphan = std::fs::read_to_string(syn.join("cs/orphan.md")).unwrap();
+        // After rebuild, stale value should be cleared (None → not serialised)
+        assert!(
+            !orphan.contains("old-index"),
+            "stale embedder should have been removed"
+        );
+    }
+
+    /// Rebuild is idempotent: running it twice gives the same result.
+    #[test]
+    fn rebuild_cross_embedded_in_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let syn = tmp.path();
+
+        write_file(syn, "cs/sorting.md", &atomic_note("cs", "sorting"));
+        write_file(syn, "cs/cs.md", &index_note_with_embeds("cs", &["sorting"]));
+
+        rebuild_cross_embedded_in(syn).unwrap();
+        let after_first = std::fs::read_to_string(syn.join("cs/sorting.md")).unwrap();
+
+        rebuild_cross_embedded_in(syn).unwrap();
+        let after_second = std::fs::read_to_string(syn.join("cs/sorting.md")).unwrap();
+
+        assert_eq!(
+            after_first, after_second,
+            "rebuild should be idempotent"
+        );
+    }
+
+    /// Cross-topic embed: index in topic A embeds atomic from topic B.
+    #[test]
+    fn rebuild_handles_cross_topic_embeds() {
+        let tmp = TempDir::new().unwrap();
+        let syn = tmp.path();
+
+        write_file(syn, "algorithms/sorting.md", &atomic_note("algorithms", "sorting"));
+        // Index in a different topic embeds the atomic
+        write_file(syn, "overview/overview.md", &index_note_with_embeds("overview", &["sorting"]));
+
+        rebuild_cross_embedded_in(syn).unwrap();
+
+        let sorting = std::fs::read_to_string(syn.join("algorithms/sorting.md")).unwrap();
+        assert!(sorting.contains("cross_embedded_in:"));
+        assert!(sorting.contains("overview"));
+    }
 }

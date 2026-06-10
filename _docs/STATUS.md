@@ -1,7 +1,7 @@
 # csnotes — Build Status
 
 > Last updated: 2026-06-09
-> All 88 tests passing (80 unit + 3 lifecycle + 5 property).
+> All 92 tests passing (84 unit + 3 lifecycle + 5 property).
 
 ---
 
@@ -93,9 +93,13 @@ These are intentional decisions made during implementation; PLAN.md has not been
 
 All six ops wired into the `process` teardown pipeline (step 5).  16 unit tests added (7 op-level, 2 for precise `replace_note_links`).  `report_schema.md` updated with JSON examples for all ops.
 
+| Feature | Implementation |
+|---------|---------------|
+| `cross_embedded_in` rebuild | `workspace::rebuild_cross_embedded_in` walks the synthetic dir after every `merge_back`. Builds an embedder map from all `![[stem#^id]]` links in index notes, then updates only atomic notes whose `cross_embedded_in` differs. 4 unit tests. |
+| `process --dry-run` scope output | Prints resolved scope (session ID + raw note / plaud count / artifact count, or source path/kind, or topic atomic count), backend, and workspace path before exiting without launching AI. |
+
 **Still not implemented (known gaps):**
 - Shadow-git snapshot mode (`snapshot_mode = shadow_git`)
-- `cross_embedded_in` rebuild during merge-back (field exists in frontmatter, rebuild step is stubbed)
 
 ### Agy (Antigravity) backend — Completed
 
