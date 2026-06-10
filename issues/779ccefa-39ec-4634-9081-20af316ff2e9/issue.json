@@ -1,0 +1,10 @@
+{
+  "uuid": "779ccefa-39ec-4634-9081-20af316ff2e9",
+  "display_id": null,
+  "title": "CRLF normalization on file read + unit tests",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-10T04:11:48.150325Z",
+  "updated_at": "2026-06-10T04:11:48.150325Z"
+}
