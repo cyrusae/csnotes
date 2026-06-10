@@ -1,0 +1,10 @@
+{
+  "uuid": "b74163fa-9b8d-4298-97ca-c6a40bc90ce3",
+  "display_id": null,
+  "title": "lifecycle test: crash simulation mid-merge + snapshot restore",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-10T08:09:03.719277Z",
+  "updated_at": "2026-06-10T08:09:03.719277Z"
+}
