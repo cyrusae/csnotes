@@ -191,33 +191,37 @@ pub fn run_teardown(
         return Err(e);
     }
 
-    // Step 5: Structural ops — Phase 1 supports rename_topic; Phase 4 ops bail.
+    // Step 5: Structural ops.  All ops run against the workspace copy before
+    // any content ops so the directory layout is stable for step 6.
     for op in &report.operations {
-        match op {
-            Op::RenameTopic(op) => {
-                if let Err(e) = crate::ops::structural::execute_rename_topic(
-                    op,
-                    workspace_root,
-                    &config.synthetic_dir,
-                ) {
-                    eprintln!("rename_topic failed: {}", e);
-                    cleanup(workspace_root, vault_root, run_id)?;
-                    manifest.session_in_progress = None;
-                    manifest.save(vault_root)?;
-                    return Err(e);
-                }
-            }
-            op if op.is_structural() => {
-                eprintln!(
-                    "Structural op '{}' is not yet supported (Phase 4). Discarding workspace.",
-                    op.kind_str()
-                );
-                cleanup(workspace_root, vault_root, run_id)?;
-                manifest.session_in_progress = None;
-                manifest.save(vault_root)?;
-                bail!("structural op '{}' not yet implemented", op.kind_str());
-            }
-            _ => {} // content ops handled in step 6
+        let result = match op {
+            Op::RenameTopic(o) => crate::ops::structural::execute_rename_topic(
+                o, workspace_root, &config.synthetic_dir,
+            ),
+            Op::MoveAtomic(o) => crate::ops::structural::execute_move_atomic(
+                o, workspace_root, &config.synthetic_dir,
+            ),
+            Op::PromoteAtomic(o) => crate::ops::structural::execute_promote_atomic(
+                o, workspace_root, &config.synthetic_dir,
+            ),
+            Op::DemoteTopic(o) => crate::ops::structural::execute_demote_topic(
+                o, workspace_root, &config.synthetic_dir,
+            ),
+            Op::MergeTopics(o) => crate::ops::structural::execute_merge_topics(
+                o, workspace_root, &config.synthetic_dir,
+            ),
+            Op::SplitTopic(o) => crate::ops::structural::execute_split_topic(
+                o, workspace_root, &config.synthetic_dir,
+            ),
+            Op::SetEmbed(o) => crate::ops::structural::execute_set_embed(o, workspace_root),
+            _ => continue, // content ops handled in step 6
+        };
+        if let Err(e) = result {
+            eprintln!("{} failed: {}", op.kind_str(), e);
+            cleanup(workspace_root, vault_root, run_id)?;
+            manifest.session_in_progress = None;
+            manifest.save(vault_root)?;
+            return Err(e);
         }
     }
 

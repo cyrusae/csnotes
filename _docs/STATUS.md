@@ -1,13 +1,13 @@
 # csnotes — Build Status
 
 > Last updated: 2026-06-09
-> All 72 tests passing (64 unit + 3 lifecycle + 5 property).
+> All 88 tests passing (80 unit + 3 lifecycle + 5 property).
 
 ---
 
 ## Summary
 
-The CLI is **feature-complete for Phase 0 through Phase 3 plus the Agy backend** (all items). Every command that isn't explicitly gated on a future phase is functional. The vault is not yet bootstrapped with real data; first real use is the next milestone.
+The CLI is **feature-complete for Phase 0 through Phase 4** (all items). Every planned command and structural op is implemented. The vault is not yet bootstrapped with real data; first real use is the next milestone.
 
 ---
 
@@ -80,9 +80,20 @@ These are intentional decisions made during implementation; PLAN.md has not been
 | `recover_discard_clears_stale_in_progress` | lifecycle: dangling `session_in_progress` (workspace gone) → `recover --discard` → `session_in_progress` null |
 | `reindex_is_stable_after_clean_process` | lifecycle: `process` → `audit --reindex` → sessions/topics unchanged, processed status preserved |
 
-### Phase 4 (beyond the three commands already done)
+### Phase 4 — Completed
 
-- Full structural op suite: `move_atomic`, `promote_atomic`, `demote_topic`, `merge_topics`, `split_topic`, `set_embed`
+| Op | Implementation |
+|----|----------------|
+| `move_atomic` | Moves note to existing topic; updates frontmatter + precise wikilink rewrite (terminator-checked, no false prefix matches) |
+| `promote_atomic` | Creates new topic folder, moves note; same frontmatter/link updates |
+| `demote_topic` | Folds all notes from source into existing target; conflict-checked, source folder deleted |
+| `merge_topics` | Folds N source topics into one target (created if absent); per-source conflict check |
+| `split_topic` | Distributes listed atomics to new targets; unlisted notes remain in source; source removed if empty |
+| `set_embed` | Adds/removes `![[slug#^block-id]]` from index body and keeps `embeds` frontmatter in sync; idempotent |
+
+All six ops wired into the `process` teardown pipeline (step 5).  16 unit tests added (7 op-level, 2 for precise `replace_note_links`).  `report_schema.md` updated with JSON examples for all ops.
+
+**Still not implemented (known gaps):**
 - Shadow-git snapshot mode (`snapshot_mode = shadow_git`)
 - `cross_embedded_in` rebuild during merge-back (field exists in frontmatter, rebuild step is stubbed)
 
@@ -115,4 +126,4 @@ Written and embedded in `init.rs` as raw string constants. Installed to `_csnote
 
 1. **Bootstrap the real vault.** Write `.csnotes` for the CPSC5001/CPSC5002/CPSC5005 layout, run `csnotes init --instructions-only`, run `csnotes reconcile`. Validate manifest looks correct including source and artifact registration.
 2. **First real session.** Run `csnotes process` against a CPSC5001 session. This is the first live test of the instruction files and the full teardown pipeline.
-3. **Phase 4 structural ops** if real sessions reveal need: `move_atomic`, `promote_atomic`, `demote_topic`, `merge_topics`, `split_topic`, `set_embed`.
+3. **Bootstrap and first real session** — everything is implemented; real use is the remaining validation step.

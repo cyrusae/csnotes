@@ -94,8 +94,7 @@ pub struct VaultConfig {
     pub plaud_qualifiers: Vec<String>,
 
     /// Gemini model to pass to `agy --model`.  When absent the `agy` default
-    /// is used (currently gemini-2.5-pro).  Example values:
-    /// `gemini-2.5-pro`, `gemini-2.0-flash`, `gemini-2.5-flash`.
+    /// is used.  Example values: `gemini-2.5-flash`, `gemini-2.5-pro`.
     /// Overridden per-run by `--agy-model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agy_model: Option<String>,

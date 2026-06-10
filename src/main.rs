@@ -172,8 +172,8 @@ enum Command {
         fixture: Option<String>,
 
         /// Gemini model to use for this session (overrides agy_model in config).
-        /// Example: gemini-2.5-pro, gemini-2.0-flash, gemini-2.5-flash
-        #[arg(long, hide = true)]
+        /// Example: gemini-2.5-flash, gemini-2.5-pro
+        #[arg(long)]
         agy_model: Option<String>,
     },
 

@@ -640,6 +640,92 @@ One entry for every existing note you edited.
 | `"ambiguity"` | Logged only; auto-resolved |
 
 Flags do not block the commit.
+
+---
+
+## Structural ops
+
+These ops mutate the vault's topic/note layout.  Include them in `operations`
+alongside `create_note` / `update_note`.  The CLI executes structural ops first
+(before writing note bodies), so new folders from `promote_atomic` or
+`split_topic` are available when content ops run.
+
+### `rename_topic`
+
+```json
+{ "op": "rename_topic", "from": "old-topic", "to": "new-topic",
+  "reason": "clearer name" }
+```
+
+### `move_atomic`
+
+Move a note into an **existing** topic folder.
+
+```json
+{ "op": "move_atomic",
+  "from_path": "_synthetic/algorithms/sorting.md",
+  "to_topic": "data-structures",
+  "reason": "better conceptual fit" }
+```
+
+### `promote_atomic`
+
+Move a note into a **new** topic folder (you must also `create_note` the index).
+
+```json
+{ "op": "promote_atomic",
+  "from_path": "_synthetic/algorithms/red-black-trees.md",
+  "to_topic": "balanced-trees",
+  "reason": "topic large enough to stand alone" }
+```
+
+### `demote_topic`
+
+Fold all notes from one topic into an **existing** target topic.
+
+```json
+{ "op": "demote_topic", "from_topic": "graphs",
+  "into_topic": "algorithms", "reason": "too small to stand alone" }
+```
+
+### `merge_topics`
+
+Fold multiple source topics into one target (created if absent).  `into` may be
+one of the `from` entries (keep it, absorb the others).
+
+```json
+{ "op": "merge_topics",
+  "from": ["red-black-trees", "avl-trees"],
+  "into": "balanced-trees",
+  "reason": "unified concept" }
+```
+
+### `split_topic`
+
+Distribute atomics from one topic into several targets.  Notes not listed in
+any target remain in `from`.  New topic folders are created automatically.
+
+```json
+{ "op": "split_topic", "from": "algorithms",
+  "into": [
+    { "topic": "sorting",   "atomics": ["quicksort", "mergesort"] },
+    { "topic": "searching", "atomics": ["binary-search"] }
+  ],
+  "reason": "topic grew too broad" }
+```
+
+### `set_embed`
+
+Add or remove a transclusion link from an index note.
+
+```json
+{ "op": "set_embed",
+  "atomic_path": "_synthetic/algorithms/mergesort.md",
+  "index_path":  "_synthetic/algorithms/algorithms.md",
+  "present": true }
+```
+
+`present: false` removes the embed.  Both operations are idempotent.
 "##;
 
 // ── Prompt helper ─────────────────────────────────────────────────────────────
