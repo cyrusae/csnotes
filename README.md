@@ -8,7 +8,7 @@ AI-assisted synthesis of graduate lecture notes into an Obsidian vault.
 
 ## How it works
 
-```
+```text
 raw notes + Plaud exports + slides
           │
           ▼
@@ -71,6 +71,7 @@ csnotes init
 ```
 
 `init` will prompt for:
+
 - **Filename format** — how your raw note files are named. Default: `{course}-{mm}-{dd}`. Tokens: `{course}`, `{yyyy}`, `{mm}`, `{dd}`.
 - **Default course** — e.g. `CPSC5001`. Added to `active_courses`. You can skip this and add courses later.
 - **Raw notes directory** — where you drop raw lecture notes. Default: `notes`.
@@ -78,11 +79,11 @@ csnotes init
 
 It creates:
 
-```
-notes/                ← raw lecture notes (one .md per session)
-plaud/                ← Plaud voice recorder exports
-artifacts/            ← slides, code handouts, etc.
-sources/              ← textbook chapters, papers
+```text
+notes/                ← flat fallback dirs (only used if active_courses is empty)
+plaud/
+artifacts/
+sources/              ← textbook chapters, papers (always vault-level)
 _synthetic/           ← AI-maintained atomic notes (do not edit manually)
 _generated/           ← manifests, reports, extracts, flag store
 _csnotes/
@@ -94,6 +95,15 @@ _csnotes/
 .csnotes              ← TOML config (see below)
 csnotes.json          ← manifest (sessions, sources, topics, in-progress state)
 ```
+
+**Important:** when `active_courses` is set, `reconcile` looks for files under `{course}/notes/`, `{course}/plaud/`, and `{course}/artifacts/` — not the flat `notes/` directory that `init` creates. Create those per-course directories yourself (they just need to exist):
+
+```sh
+mkdir -p CPSC5001/notes CPSC5001/plaud CPSC5001/artifacts
+mkdir -p CPSC5002/notes CPSC5002/plaud CPSC5002/artifacts
+```
+
+The flat `notes/`, `plaud/`, `artifacts/` at the vault root are only scanned when `active_courses = []`.
 
 ### 2. Add courses
 
@@ -123,7 +133,7 @@ csnotes reconcile
 ```toml
 # Courses currently being taken.  No spaces allowed in names.
 # Add with: csnotes config --add-course CPSC5001
-active_courses = ["CPSC5001", "CPSC5002"]
+active_courses = ["CPSC5001"]
 
 # How raw note files are named.
 # Tokens: {course} {yyyy} {mm} {dd}
@@ -147,7 +157,7 @@ plaud_qualifiers = ["transcript", "summary", "mindmap"]
 archive_threshold_weeks = 8
 
 # Agy/Gemini model (optional — omit to use agy's default)
-# agy_model = "gemini-2.5-flash"
+# agy_model = "gemini-3.5-flash"
 ```
 
 ### Configuring via CLI
@@ -249,28 +259,32 @@ csnotes config --migrate --apply  # execute renames + update manifest
 
 ---
 
-## Vault layout inside a course
+## Vault layout
 
-`csnotes` expects one flat directory per course under your `active_courses` list. Files are matched by the `filename_format` you configured:
+When `active_courses` is set, each course gets its own subdirectory and the per-session directories nest inside it:
 
-```
-notes/
-  CPSC5001-09-03.md       ← raw lecture note
-  CPSC5001-09-10.md
+```text
+CPSC5001/
+  notes/
+    CPSC5001-09-03.md           ← raw lecture note
+    CPSC5001-09-10.md
+  plaud/
+    CPSC5001-09-03-transcript.md  ← Plaud export (matched by course+date prefix)
+    CPSC5001-09-03-summary.md     ← second export for the same session
+  artifacts/
+    CPSC5001-09-03-slides.pdf     ← matched by session prefix, classified as Slides
 
-plaud/
-  CPSC5001-09-03-transcript.md   ← Plaud export (matched by course+date prefix)
-  CPSC5001-09-03-summary.md      ← second export for the same session
+CPSC5002/
+  notes/
+  plaud/
+  artifacts/
 
-artifacts/
-  CPSC5001-09-03-slides.pdf      ← matched by session prefix, classified as Slides
-
-sources/
+sources/                        ← vault-level, not per-course
   SICP/
-    ch01.md                      ← source ID: SICP/ch01
-  dragon-book.md                 ← source ID: dragon-book
+    ch01.md                     ← source ID: SICP/ch01
+  dragon-book.md                ← source ID: dragon-book
 
-_synthetic/
+_synthetic/                     ← vault-level, AI-managed
   sorting-algorithms/
     index.md
     quicksort.md
@@ -278,7 +292,11 @@ _synthetic/
   …
 ```
 
-Plaud exports are matched to sessions by the filename prefix (`{course}-{mm}-{dd}`). Any file in `plaud/` whose name starts with a known session prefix and contains one of the `plaud_qualifiers` strings (`transcript`, `summary`, `mindmap` by default) is attached to that session.
+The subdirectory names (`notes`, `plaud`, `artifacts`) are the values of `raw_dir`, `plaud_dir`, and `artifacts_dir` in `.csnotes`. `sources/` and `_synthetic/` are always at the vault root.
+
+If `active_courses` is empty, the fallback is a flat layout with `raw_dir`, `plaud_dir`, and `artifacts_dir` directly at the vault root — useful for single-course or test setups.
+
+Plaud exports are matched to sessions by filename prefix (`{course}-{mm}-{dd}`). Any file whose name starts with a known session prefix and contains one of the `plaud_qualifiers` strings (`transcript`, `summary`, `mindmap` by default) is attached to that session.
 
 ---
 
