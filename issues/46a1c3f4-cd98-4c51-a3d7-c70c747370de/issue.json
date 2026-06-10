@@ -1,6 +1,6 @@
 {
   "uuid": "46a1c3f4-cd98-4c51-a3d7-c70c747370de",
-  "display_id": null,
+  "display_id": 6,
   "title": "cross_embedded_in rebuild in merge_back + dry_run scope output",
   "status": "closed",
   "priority": "medium",

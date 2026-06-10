@@ -1,6 +1,6 @@
 {
   "uuid": "a4589748-95fb-4f88-8f70-0022c4b64ea5",
-  "display_id": null,
+  "display_id": 3,
   "title": "Phase 3: proptest idempotency, transactionality, and crash-recovery suites",
   "status": "closed",
   "priority": "high",
