@@ -1,0 +1,10 @@
+{
+  "uuid": "00dd0277-cab1-472e-832a-31363efaa37c",
+  "display_id": null,
+  "title": "document run_interactive SIGINT: signal lines are cfg(unix) and intentionally untestable by unit tests",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-06-11T18:11:48.789644Z",
+  "updated_at": "2026-06-11T18:11:48.789644Z"
+}
