@@ -1,0 +1,10 @@
+{
+  "uuid": "0c1688bb-16ac-4fc2-bc9f-5c1231dc492b",
+  "issue_uuid": "379c333e-e73a-4278-a86f-ed15278519e8",
+  "author": "3owj",
+  "content": "L25 done: changed resolve_session_id date filter from == to full==session||full.ends_with('-{session}'); added resolve_session_{full_date,partial_mm_dd,ambiguous,no_match} tests. 122 tests pass.",
+  "created_at": "2026-06-11T18:31:24.576911Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAkBj3Dt0Sv2Eh23zjSn4qgbI3STGYavRjbc/InNPyveRxnSpoUvyDjFSKWg12/Ym3F6GgMhlxN/shrLOGZgS9Cw=="
+}
