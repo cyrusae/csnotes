@@ -1,0 +1,10 @@
+{
+  "uuid": "988063fe-8b60-4f68-aec5-6250b36e9573",
+  "issue_uuid": "24cf2098-7222-4096-8f35-905d80294f1d",
+  "author": "3owj",
+  "content": "L27 done: course regex [A-Za-z][A-Za-z0-9]* → [A-Za-z][A-Za-z0-9_-]* in config.rs build_regex; added parse_stem_course_with_hyphen and parse_stem_course_with_underscore tests. 125 tests pass.",
+  "created_at": "2026-06-11T18:36:38.194596Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAtWZna79Ft7RLnXXtutMXEqXL3FtG6/F6y7+ECB4le3/x2oFkmEncZW6zQEgHQNEgvFUwnvbv/KYjZo5rJVPUAg=="
+}
