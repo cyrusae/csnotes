@@ -1,0 +1,10 @@
+{
+  "uuid": "497499b0-d1f6-41d0-99a2-a481304551b8",
+  "issue_uuid": "1aa8f53c-6ca0-48f3-a4ca-15d1bc4cd2d3",
+  "author": "3owj",
+  "content": "L24 done: topic_from_path now takes synthetic_dir param and strips it explicitly (not heuristic _-prefix); open_for_topic takes synthetic_dir instead of hardcoding '_synthetic'; threaded through topics_touched_by_report, update_session_status, update_source_status, run_teardown, and workspace.rs call site. Added topic_from_path_respects_configured_synthetic_dir test. 118 tests pass.",
+  "created_at": "2026-06-11T18:15:10.778513Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAEJxsFEq6M5VN9f2hq7FcVc4+qjw0qcuXB8Rq4uRgsnfFEG3blZiaeHJ8DJIDk3oT2Zkme8Mv2fQq7SEiOvB/Cw=="
+}
