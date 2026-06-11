@@ -717,6 +717,8 @@ mod tests {
                 last_processed_at: None,
                 heading_scheme: vec![],
                 topics_updated: vec![],
+                summary: None,
+                tags: vec![],
             },
         );
 

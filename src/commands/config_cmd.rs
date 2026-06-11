@@ -440,6 +440,13 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
                 config.agy_model = Some(value.to_string());
             }
         }
+        "scan_ai_conversations" => {
+            config.scan_ai_conversations = match value {
+                "true" | "1" | "yes" => true,
+                "false" | "0" | "no" => false,
+                _ => bail!("scan_ai_conversations must be true or false"),
+            };
+        }
         _ => bail!(crate::error::CsnotesError::InvalidConfigKey { key: key.to_string() }),
     }
     Ok(())

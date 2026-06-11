@@ -201,12 +201,19 @@ pub struct SourceEntry {
     /// e.g. ["chapter", "section", "subsection"]
     pub heading_scheme: Vec<String>,
     pub topics_updated: Vec<String>,
+    /// Short description from the source file's YAML frontmatter `summary:` field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Topic tags from the source file's YAML frontmatter `tags:` field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     Textbook,
+    AiConversation,
     Paper,
     AssignmentFeedback,
     Other,

@@ -107,6 +107,12 @@ pub struct VaultConfig {
     /// Overridden per-run by `--agy-model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agy_model: Option<String>,
+
+    /// When true, `reconcile` registers files under `sources/AI-Conversations/`
+    /// as `AiConversation` sources (frontmatter required to register).
+    /// Set to false to ignore that subtree entirely.
+    #[serde(default = "default_scan_ai_conversations")]
+    pub scan_ai_conversations: bool,
 }
 
 fn default_raw_dir() -> String { "notes".into() }
@@ -125,6 +131,7 @@ fn default_recording_qualifiers() -> Vec<String> {
     vec!["transcript".into(), "summary".into(), "mindmap".into()]
 }
 fn default_require_recordings() -> bool { true }
+fn default_scan_ai_conversations() -> bool { true }
 
 impl VaultConfig {
     pub fn load(vault_root: &Path) -> Result<Self> {
@@ -534,6 +541,7 @@ mod tests {
             agy_model: None,
             require_recordings: true,
             courses_without_recordings: vec![],
+            scan_ai_conversations: true,
         };
         assert!(cfg.is_recording_qualifier("transcript"));
         assert!(cfg.is_recording_qualifier("summary"));

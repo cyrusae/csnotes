@@ -127,7 +127,7 @@ pub fn run_for_vault(
     // ── Scan sources_dir ──────────────────────────────────────────────────────
     let sources_dir = vault_root.join(&config.sources_dir);
     if sources_dir.exists() {
-        scan_sources_dir(&sources_dir, vault_root, &mut manifest, &mut new_sources)?;
+        scan_sources_dir(&sources_dir, vault_root, &mut manifest, config.scan_ai_conversations, &mut new_sources)?;
     }
 
     // ── Space warnings ────────────────────────────────────────────────────────
@@ -542,15 +542,23 @@ fn classify_artifact_kind(ext: &str, qualifier: &str) -> ArtifactKind {
 /// manifest.
 ///
 /// Source IDs follow the path structure relative to `sources_dir`:
-/// - Flat file:       `{stem}`           e.g. `SICP-ch01`
-/// - In subdirectory: `{subdir}/{stem}`  e.g. `SICP/SICP-ch01`
+/// - Flat file:         `{stem}`                    e.g. `SICP-ch01`
+/// - In subdirectory:   `{subdir}/{stem}`            e.g. `Textbooks/SICP/Chapter-01`
 ///
-/// Heading schemes are derived immediately via `comrak` so the AI can
-/// reference textbook locations precisely in session briefings.
+/// Kind is inferred from the top-level subdirectory:
+/// - `AI-Conversations/` → `AiConversation` (skipped when `scan_ai_conversations` is false;
+///   requires YAML frontmatter — files without it are silently skipped)
+/// - `Textbooks/` → `Textbook`
+/// - Everything else → `Other`
+///
+/// Heading schemes are derived via `comrak` for all kinds except `AiConversation`
+/// (conversations use blockquotes, not chapter/section headings).
+/// Summary and tags are read from YAML frontmatter when present.
 fn scan_sources_dir(
     sources_dir: &Path,
     vault_root: &Path,
     manifest: &mut Manifest,
+    scan_ai_conversations: bool,
     new_sources: &mut Vec<String>,
 ) -> Result<()> {
     for entry in walkdir::WalkDir::new(sources_dir)
@@ -564,9 +572,24 @@ fn scan_sources_dir(
         }
 
         // Derive the source ID from the path relative to sources_dir.
-        let rel_to_sources = path
-            .strip_prefix(sources_dir)
-            .unwrap_or(path);
+        let rel_to_sources = path.strip_prefix(sources_dir).unwrap_or(path);
+
+        // Infer kind from the top-level subdirectory name.
+        let top_dir = rel_to_sources
+            .components()
+            .next()
+            .and_then(|c| c.as_os_str().to_str())
+            .unwrap_or("");
+        let kind = match top_dir {
+            "AI-Conversations" => SourceKind::AiConversation,
+            "Textbooks" => SourceKind::Textbook,
+            _ => SourceKind::Other,
+        };
+
+        if kind == SourceKind::AiConversation && !scan_ai_conversations {
+            continue;
+        }
+
         let source_id = match (
             rel_to_sources.parent().and_then(|p| p.to_str()),
             path.file_stem().and_then(|s| s.to_str()),
@@ -588,26 +611,61 @@ fn scan_sources_dir(
             .to_string_lossy()
             .to_string();
 
-        // Derive heading scheme via comrak.
-        let heading_scheme = match crate::frontmatter::read_note(path) {
-            Ok(content) => derive_heading_scheme(&parse_headings(&content)),
-            Err(_) => vec![],
+        // Read content once; used for heading scheme and frontmatter extraction.
+        let content = match crate::frontmatter::read_note(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        // AI conversations require YAML frontmatter — skip unprocessed files.
+        if kind == SourceKind::AiConversation
+            && crate::frontmatter::split_frontmatter(&content).is_none()
+        {
+            continue;
+        }
+
+        // Extract summary and tags from frontmatter when present.
+        let (summary, tags) = extract_source_meta(&content);
+
+        // Heading scheme: meaningful only for structured documents (not conversations).
+        let heading_scheme = if kind == SourceKind::AiConversation {
+            vec![]
+        } else {
+            derive_heading_scheme(&parse_headings(&content))
         };
 
         manifest.sources.insert(
             source_id.clone(),
             SourceEntry {
                 path: rel_path,
-                kind: SourceKind::Textbook, // default; user can update via config
+                kind,
                 status: SourceStatus::Unprocessed,
                 last_processed_at: None,
                 heading_scheme,
                 topics_updated: vec![],
+                summary,
+                tags,
             },
         );
         new_sources.push(source_id);
     }
     Ok(())
+}
+
+/// Extract `summary` and `tags` from a source file's YAML frontmatter.
+/// Returns `(None, vec![])` when there is no frontmatter or the fields are absent.
+fn extract_source_meta(content: &str) -> (Option<String>, Vec<String>) {
+    let Some((yaml, _)) = crate::frontmatter::split_frontmatter(content) else {
+        return (None, vec![]);
+    };
+    #[derive(serde::Deserialize, Default)]
+    struct SourceFrontmatter {
+        summary: Option<String>,
+        #[serde(default)]
+        tags: Vec<String>,
+    }
+    let meta: SourceFrontmatter = serde_yml::from_str(yaml).unwrap_or_default();
+    (meta.summary, meta.tags)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -777,15 +835,8 @@ mod tests {
         assert_eq!(new_artifacts.len(), 1, "artifact in subdirectory should be found");
     }
 
-    #[test]
-    fn scan_sources_finds_three_level_nesting() {
-        let tmp = TempDir::new().unwrap();
-        let sources_dir = tmp.path().join("sources");
-        // Three levels deep: sources/AI-Conversations/Gemini/file.md
-        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
-        write_file(&deep_dir, "sorting-questions.md", "# Sorting Q&A\n");
-
-        let cfg = ManifestConfig {
+    fn make_empty_manifest_for_sources(vault_root: &std::path::Path) -> Manifest {
+        Manifest::empty(vault_root.to_path_buf(), ManifestConfig {
             raw_dir: "notes".into(),
             recordings_dir: "recordings".into(),
             artifacts_dir: "artifacts".into(),
@@ -796,13 +847,101 @@ mod tests {
             default_backend: AiBackend::Mock,
             skill_variant: SkillVariant::Claude,
             snapshot_mode: SnapshotMode::PreMerge,
-        };
-        let mut manifest = Manifest::empty(tmp.path().to_path_buf(), cfg);
-        let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, &mut new_sources).unwrap();
+        })
+    }
 
-        assert_eq!(new_sources.len(), 1, "3-level source should be registered");
+    #[test]
+    fn scan_sources_ai_conversation_with_frontmatter_is_registered() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
+        write_file(
+            &deep_dir,
+            "sorting-questions.md",
+            "---\nsummary: Discussion about sorting algorithms\ntags: [algorithms, sorting]\n---\n\n# Sorting Q&A\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        assert_eq!(new_sources.len(), 1, "AI conversation with frontmatter should be registered");
         assert_eq!(new_sources[0], "AI-Conversations/Gemini/sorting-questions");
+        let entry = &manifest.sources["AI-Conversations/Gemini/sorting-questions"];
+        assert_eq!(entry.kind, crate::manifest::SourceKind::AiConversation);
+        assert_eq!(entry.summary.as_deref(), Some("Discussion about sorting algorithms"));
+        assert_eq!(entry.tags, vec!["algorithms", "sorting"]);
+        assert!(entry.heading_scheme.is_empty(), "AI conversations should have no heading scheme");
+    }
+
+    #[test]
+    fn scan_sources_ai_conversation_without_frontmatter_is_skipped() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
+        write_file(&deep_dir, "sorting-questions.md", "# Sorting Q&A\n\nNo frontmatter here.\n");
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        assert!(new_sources.is_empty(), "AI conversation without frontmatter must be skipped");
+    }
+
+    #[test]
+    fn scan_sources_ai_conversations_skipped_when_flag_false() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
+        write_file(
+            &deep_dir,
+            "sorting-questions.md",
+            "---\nsummary: Has frontmatter\n---\n\nContent.\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, false, &mut new_sources).unwrap();
+
+        assert!(new_sources.is_empty(), "AI conversations should be ignored when scan_ai_conversations is false");
+    }
+
+    #[test]
+    fn scan_sources_textbook_registered_without_frontmatter() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let chapter_dir = sources_dir.join("Textbooks").join("SICP");
+        write_file(&chapter_dir, "Chapter-01.md", "# Chapter 1: Building Abstractions\n\nContent.\n");
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        assert_eq!(new_sources.len(), 1, "textbook chapter should register without frontmatter");
+        let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
+        assert_eq!(entry.kind, crate::manifest::SourceKind::Textbook);
+        assert!(entry.summary.is_none());
+        assert!(entry.tags.is_empty());
+    }
+
+    #[test]
+    fn scan_sources_textbook_extracts_frontmatter_when_present() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let chapter_dir = sources_dir.join("Textbooks").join("SICP");
+        write_file(
+            &chapter_dir,
+            "Chapter-01.md",
+            "---\nsummary: Procedures and processes\ntags: [lisp, recursion]\n---\n\n# Chapter 1\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
+        assert_eq!(entry.summary.as_deref(), Some("Procedures and processes"));
+        assert_eq!(entry.tags, vec!["lisp", "recursion"]);
     }
 
     #[test]

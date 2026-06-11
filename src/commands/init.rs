@@ -86,6 +86,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         agy_model: None,
         require_recordings: true,
         courses_without_recordings: vec![],
+        scan_ai_conversations: true,
     };
 
     // ── Create directory tree ──────────────────────────────────────────────────
@@ -956,6 +957,7 @@ mod tests {
             agy_model: None,
             require_recordings: false,
             courses_without_recordings: vec![],
+            scan_ai_conversations: true,
         }
     }
 
