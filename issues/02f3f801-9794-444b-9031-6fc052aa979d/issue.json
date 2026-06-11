@@ -1,0 +1,10 @@
+{
+  "uuid": "02f3f801-9794-444b-9031-6fc052aa979d",
+  "display_id": null,
+  "title": "AppleScript injection in notify() via unsanitized message",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-11T19:04:24.602261Z",
+  "updated_at": "2026-06-11T19:04:24.602261Z"
+}
