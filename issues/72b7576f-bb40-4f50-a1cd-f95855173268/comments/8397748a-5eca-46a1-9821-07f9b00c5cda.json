@@ -1,0 +1,10 @@
+{
+  "uuid": "8397748a-5eca-46a1-9821-07f9b00c5cda",
+  "issue_uuid": "72b7576f-bb40-4f50-a1cd-f95855173268",
+  "author": "3owj",
+  "content": "L38 done: extracted notify_macos_args() helper so the security test checks argument structure without spawning osascript. Test asserts injection payload lands as the final argv element and is absent from all script strings. 137 tests pass, no real notifications during test run.",
+  "created_at": "2026-06-11T19:07:59.472151Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAEafJjZsK/Bh7JOYB/cDJlJO1FGlbp3wXhBMnSOwQ8llG1dP3jHwrkXpZMRKSkL0xosc5NVYC4BQQz0e/S94xDg=="
+}
