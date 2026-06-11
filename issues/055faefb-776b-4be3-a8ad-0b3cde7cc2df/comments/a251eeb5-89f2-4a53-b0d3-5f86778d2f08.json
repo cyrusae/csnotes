@@ -1,0 +1,10 @@
+{
+  "uuid": "a251eeb5-89f2-4a53-b0d3-5f86778d2f08",
+  "issue_uuid": "055faefb-776b-4be3-a8ad-0b3cde7cc2df",
+  "author": "3owj",
+  "content": "L23 done: note_exists_in_tree uses eq_ignore_ascii_case; rebuild_cross_embedded_in normalizes embed.file and stem to lowercase before HashMap insert/lookup; check_orphan_atomics normalizes both sides of the contains check. Added note_exists_case_insensitive test. 117 tests pass.",
+  "created_at": "2026-06-11T18:09:26.179825Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAxpq5V76E5bk5mRwM/bMFGl6zQlF7md0BDUPwTZyVIqRGPd/XvtzXfgZeEPVUDf2bSDkcEEJRcpqdTvus3MmnCQ=="
+}
