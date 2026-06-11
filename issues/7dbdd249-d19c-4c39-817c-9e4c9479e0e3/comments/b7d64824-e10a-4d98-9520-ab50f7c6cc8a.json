@@ -1,0 +1,10 @@
+{
+  "uuid": "b7d64824-e10a-4d98-9520-ab50f7c6cc8a",
+  "issue_uuid": "7dbdd249-d19c-4c39-817c-9e4c9479e0e3",
+  "author": "3owj",
+  "content": "L41 done: added 9 tests for precondition_pass error branches in audit.rs — CreateNote file missing, CreateNote existing frontmatter (clobber), CreateNote fresh file (pass), CreateNote embed_in target missing, UpdateNote missing, UpdateNote exists (pass), RenameTopic source missing, RenameTopic dest exists, empty report. Also updated write() helper to create subdirectories, added make_report/csnotes_note/create_op/update_op/rename_op test helpers. 147 tests pass.",
+  "created_at": "2026-06-11T19:19:37.008232Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAN67dZKtOT4F+21uRdm1pT/DPd9IanJC7mI96NKD3extYESTbopEO/5ejNk36CDo15Zp2ldDNmeoQRihbZqyBDg=="
+}
