@@ -12,7 +12,7 @@ directly; the report tells it what you did and why.
 {
   "csnotes_report_schema": 1,
   "run_id": "<copy from _session.md exactly>",
-  "backend": "claude",
+  "backend": "claude|gemini",
   "started_at": "<ISO 8601 UTC>",
   "completed_at": "<ISO 8601 UTC>",
   "scope": {
@@ -26,7 +26,7 @@ directly; the report tells it what you did and why.
 ```
 
 **`run_id`** must be copied verbatim from `_session.md`.  A mismatch causes
-the CLI to discard the workspace.
+the CLI to discard the workspace. Specify your model name in `backend`.
 
 ---
 
