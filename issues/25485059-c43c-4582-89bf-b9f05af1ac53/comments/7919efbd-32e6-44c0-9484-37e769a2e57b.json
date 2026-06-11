@@ -1,0 +1,10 @@
+{
+  "uuid": "7919efbd-32e6-44c0-9484-37e769a2e57b",
+  "issue_uuid": "25485059-c43c-4582-89bf-b9f05af1ac53",
+  "author": "3owj",
+  "content": "L21 already fully fixed: pathutil::safe_join rejects absolute paths, parent traversal, and NUL bytes; used consistently across content.rs, audit.rs, and all structural ops. 7 unit tests cover the attack vectors. No code changes needed.",
+  "created_at": "2026-06-11T17:58:53.437270Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAEcXTOsJm4ontkAkcbLH0kNMutHJg7A25qAemqCyOQmJrymuqj+N0miJx0y0NsazKIU1ycCxW7B86/gsiioNKDA=="
+}
