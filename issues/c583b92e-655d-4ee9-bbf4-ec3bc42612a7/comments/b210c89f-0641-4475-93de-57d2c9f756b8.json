@@ -1,0 +1,10 @@
+{
+  "uuid": "b210c89f-0641-4475-93de-57d2c9f756b8",
+  "issue_uuid": "c583b92e-655d-4ee9-bbf4-ec3bc42612a7",
+  "author": "3owj",
+  "content": "L22 done: changed WIKILINK_RE from consuming (?:^|[^!]) prefix to capturing (!?) group; extract_wikilinks now filters cap[1]==\"!\" and reads target from cap[2]. Fixes adjacent [[a]][[b]] parsing. Added adjacent_wikilinks_both_matched test. 116 tests pass.",
+  "created_at": "2026-06-11T18:06:11.637743Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAKTEjblh1BRd/FfWdERC4Fw6HDQVhhraJbouojFBzi1Thd5BtYyh3JPZZ+GHmRcHkasi4U+0iobrJjw8Faa7vDg=="
+}
