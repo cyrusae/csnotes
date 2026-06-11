@@ -1,0 +1,10 @@
+{
+  "uuid": "6cb9e5b4-5989-4b20-999a-0b3ec3baee81",
+  "issue_uuid": "0870427a-b500-49fa-97ac-3c87f0627330",
+  "author": "3owj",
+  "content": "L42 done: added 6 tests for check_links_resolve and check_orphan_atomics callers — 3 via audit_vault (no synthetic dir warns, broken wikilink is hard violation, orphan atomic is soft warning) and 3 via invariant_suite (same scenarios). Added make_vault_config() using serde_json defaults and make_empty_manifest() helpers. 153 tests pass.",
+  "created_at": "2026-06-11T19:23:00.963209Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABACJLQw/5XqyuA6XRWQOtHYtpzJFqpNcZbA+/6fMj+rS+/Fa6QO6STBLkd+X7hZyy+6FdNCHEhN0aJwiM/zJpWAA=="
+}
