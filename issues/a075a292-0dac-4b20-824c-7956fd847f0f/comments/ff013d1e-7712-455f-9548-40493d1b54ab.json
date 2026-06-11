@@ -1,0 +1,10 @@
+{
+  "uuid": "ff013d1e-7712-455f-9548-40493d1b54ab",
+  "issue_uuid": "a075a292-0dac-4b20-824c-7956fd847f0f",
+  "author": "3owj",
+  "content": "L44 done: SourceEntry.courses field (from frontmatter); source_visible_for_course logic (non-Textbook=always, untagged Textbook=always, tagged Textbook=course-filtered); copy_sources_to_workspace + write_sources_index + sources_for_scope in workspace.rs; sources/ subdirectory in workspace with XML-wrapped files using <source kind=...> tag; _sources_index.md generated for every scope; WorkspaceScope::Source {source_ids: Vec<String>}; expand_source_ids with prefix expansion (Textbooks/SICP -> all chapters); --source accepts multiple values; skill files updated (layout + Phase 1 lazy-load instructions); 7 new workspace tests; 164 tests green",
+  "created_at": "2026-06-11T23:05:24.930619Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAurGryDfRUq5jjVIWeSnKJyB1Ez534vPEFlujVCs2C/UHkB5HnNq3XOtRhHqaXpAeSmijb+iUphHPNDohzlkZCA=="
+}
