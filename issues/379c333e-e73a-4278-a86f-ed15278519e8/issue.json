@@ -1,0 +1,10 @@
+{
+  "uuid": "379c333e-e73a-4278-a86f-ed15278519e8",
+  "display_id": null,
+  "title": "Partial date matching broken in resolve_session_id",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-11T17:55:12.984316Z",
+  "updated_at": "2026-06-11T17:55:12.984316Z"
+}
