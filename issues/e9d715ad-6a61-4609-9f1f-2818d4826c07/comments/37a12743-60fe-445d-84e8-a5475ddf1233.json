@@ -1,0 +1,10 @@
+{
+  "uuid": "37a12743-60fe-445d-84e8-a5475ddf1233",
+  "issue_uuid": "e9d715ad-6a61-4609-9f1f-2818d4826c07",
+  "author": "3owj",
+  "content": "L28 done: pre-collect note stems into HashSet before outer loop in check_links_resolve; replaced two note_exists_in_tree calls (each O(N) WalkDir) with O(1) HashSet lookups. Added collect_note_stems helper. Added collect_note_stems_lowercases_all, check_links_resolve_accepts_case_insensitive_links, check_links_resolve_flags_broken_link tests. 128 tests pass.",
+  "created_at": "2026-06-11T18:39:11.251821Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA9tglcc6S3LKOLG9TlOulpmuNvF6V7d9/eupWUsX+UNDVNPf7gRCK6xmsA5Bpr569WWP1rY+jW6eO70WfT8y7Bw=="
+}
