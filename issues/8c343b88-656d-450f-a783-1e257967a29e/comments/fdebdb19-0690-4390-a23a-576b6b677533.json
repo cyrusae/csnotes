@@ -1,0 +1,10 @@
+{
+  "uuid": "fdebdb19-0690-4390-a23a-576b6b677533",
+  "issue_uuid": "8c343b88-656d-450f-a783-1e257967a29e",
+  "author": "3owj",
+  "content": "L18 done: fresh-vault init now asks 'Use per-course folder layout? [Y/n]' before the courses prompt; when candidates are detected the question is skipped (intent is implied). Added prompt_bool helper. 115 tests pass.",
+  "created_at": "2026-06-11T14:10:20.261308Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABANnh5zBABhJBZJLPh2VGbQiCB40Gh3BXMr9NEPGR8R+RPEOjqJ9vnHPJNs1a5+gJorzcNs8S2A+CZ1hwA209PAg=="
+}
