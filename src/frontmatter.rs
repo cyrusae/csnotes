@@ -182,9 +182,21 @@ pub fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
     Some((yaml, body))
 }
 
+/// Read a markdown file from disk, normalizing CRLF → LF so that all
+/// downstream parsing (frontmatter, regex anchors, wikilinks) works
+/// regardless of how the file was saved.
+pub fn read_note(path: &Path) -> std::io::Result<String> {
+    let raw = std::fs::read_to_string(path)?;
+    if raw.contains('\r') {
+        Ok(raw.replace("\r\n", "\n").replace('\r', "\n"))
+    } else {
+        Ok(raw)
+    }
+}
+
 /// Parse the frontmatter from a markdown file on disk.
 pub fn read_frontmatter(path: &Path) -> Result<NoteFrontmatter> {
-    let content = std::fs::read_to_string(path)
+    let content = read_note(path)
         .with_context(|| format!("reading {}", path.display()))?;
     parse_frontmatter(&content, path)
 }
@@ -240,7 +252,7 @@ pub fn update_frontmatter<F>(path: &Path, f: F) -> Result<()>
 where
     F: FnOnce(&mut NoteFrontmatter),
 {
-    let content = std::fs::read_to_string(path)
+    let content = read_note(path)
         .with_context(|| format!("reading {}", path.display()))?;
     let (yaml, body) = split_frontmatter(&content)
         .ok_or_else(|| CsnotesError::NoFrontmatter(path.to_path_buf()))?;
@@ -348,5 +360,39 @@ Body content here. ^polymorphism-core
         assert_eq!(parsed.kind, NoteKind::Atomic);
         assert_eq!(parsed.block_id.as_deref(), Some("algo-intro"));
         assert!(content.contains("Big-O notation."), "body must be preserved");
+    }
+
+    // ── CRLF normalization tests ───────────────────────────────────────────
+
+    #[test]
+    fn read_note_strips_crlf() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        // Write a file with CRLF line endings
+        let crlf_content = "---\r\nkey: value\r\n---\r\nbody\r\n";
+        std::fs::write(tmp.path(), crlf_content).unwrap();
+
+        let result = read_note(tmp.path()).unwrap();
+        assert!(!result.contains('\r'), "read_note must strip \\r");
+        assert_eq!(result, "---\nkey: value\n---\nbody\n");
+    }
+
+    #[test]
+    fn split_frontmatter_works_after_crlf_normalization() {
+        // Simulate a CRLF note normalized by read_note
+        let crlf = "---\r\ncsnotes_schema: 1\r\nkind: atomic\r\ntopic: t\r\ntitle: T\r\nblock_id: x\r\ncontributing_sessions: []\r\ncontributing_sources: []\r\ncreated: \"2026-01-01T00:00:00Z\"\r\nlast_updated: \"2026-01-01T00:00:00Z\"\r\n---\r\nbody\r\n";
+        let normalized = crlf.replace("\r\n", "\n");
+        let (yaml, body) = split_frontmatter(&normalized).expect("should parse after normalization");
+        assert!(!yaml.contains('\r'));
+        assert_eq!(body.trim(), "body");
+    }
+
+    #[test]
+    fn read_note_passthrough_when_no_crlf() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let lf_content = "---\nkey: value\n---\nbody\n";
+        std::fs::write(tmp.path(), lf_content).unwrap();
+
+        let result = read_note(tmp.path()).unwrap();
+        assert_eq!(result, lf_content, "LF-only content must be returned unchanged");
     }
 }

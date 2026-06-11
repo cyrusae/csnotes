@@ -145,7 +145,7 @@ pub fn collect_all_block_ids(synthetic_root: &Path) -> Result<HashMap<String, St
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match std::fs::read_to_string(entry.path()) {
+        let content = match crate::frontmatter::read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -257,5 +257,56 @@ mod tests {
         let collisions = find_collisions(files.iter().map(|(c, p)| (*c, *p)));
         assert!(collisions.contains_key("foo"));
         assert!(!collisions.contains_key("bar"));
+    }
+
+    // ── Proptest: panic safety for arbitrary markdown input ───────────────────
+
+    proptest::proptest! {
+        /// `extract_block_ids` must never panic on arbitrary input and must
+        /// only return IDs that actually appear in the input as `^<id>`.
+        #[test]
+        fn block_ids_no_panic_and_consistent(s in ".*") {
+            let ids = extract_block_ids(&s);
+            for id in &ids {
+                // Every returned ID must appear in the original string
+                // preceded by `^`.
+                assert!(s.contains(&format!("^{}", id)));
+            }
+        }
+
+        /// `extract_wikilinks` must never panic on arbitrary input and must
+        /// only return targets whose text (with `[[`) appears in the input.
+        #[test]
+        fn wikilinks_no_panic_and_consistent(s in ".*") {
+            let links = extract_wikilinks(&s);
+            for link in &links {
+                // The target (possibly with a path qualifier) must appear
+                // somewhere in the original string.
+                assert!(s.contains(&link.target) || link.target.is_empty());
+            }
+        }
+
+        /// `extract_embeds` must never panic on arbitrary input and must only
+        /// return file names whose text (inside `![[`) appears in the input.
+        #[test]
+        fn embeds_no_panic_and_consistent(s in ".*") {
+            let embeds = extract_embeds(&s);
+            for embed in &embeds {
+                assert!(s.contains(&embed.file) || embed.file.is_empty());
+            }
+        }
+
+        /// All three parsers together must handle extremely long inputs
+        /// (e.g. unclosed brackets) without panicking or hanging.
+        #[test]
+        fn parsers_handle_long_malformed_input(
+            prefix in "[\\[!]{0,4}",
+            body in ".{0,200}",
+        ) {
+            let s = format!("{}{}", prefix, body);
+            let _ = extract_block_ids(&s);
+            let _ = extract_wikilinks(&s);
+            let _ = extract_embeds(&s);
+        }
     }
 }

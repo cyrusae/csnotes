@@ -1,7 +1,7 @@
 # csnotes — Build Status
 
-> Last updated: 2026-06-09
-> All 92 tests passing (84 unit + 3 lifecycle + 5 property).
+> Last updated: 2026-06-10
+> All 106 tests passing (97 unit + 4 lifecycle + 5 property).
 
 ---
 
@@ -98,8 +98,18 @@ All six ops wired into the `process` teardown pipeline (step 5).  16 unit tests 
 | `cross_embedded_in` rebuild | `workspace::rebuild_cross_embedded_in` walks the synthetic dir after every `merge_back`. Builds an embedder map from all `![[stem#^id]]` links in index notes, then updates only atomic notes whose `cross_embedded_in` differs. 4 unit tests. |
 | `process --dry-run` scope output | Prints resolved scope (session ID + raw note / plaud count / artifact count, or source path/kind, or topic atomic count), backend, and workspace path before exiting without launching AI. |
 
-**Still not implemented (known gaps):**
-- Shadow-git snapshot mode (`snapshot_mode = shadow_git`)
+**Known limitations:**
+- **LiveSync + merge-back window**: If Obsidian LiveSync is active during `process`, it may sync `_synthetic/` mid-merge (between the snapshot and the final cleanup). The window is short (seconds), but a sync at that moment could push a partially-merged tree. Mitigation: pause LiveSync before running `process`, or accept the risk given the snapshot makes recovery straightforward.
+
+### Security & Quality — Completed (from CSN feedback)
+
+| Item | Implementation |
+|------|---------------|
+| Path traversal (CSN-001) | `src/pathutil.rs` — `safe_join(root, unsafe_path)` rejects absolute paths, `..` components, and NUL bytes. Applied at every AI-produced path join in `content.rs`, `structural.rs`, and `audit.rs`. 6 unit tests. |
+| CRLF normalization (CSN-004) | `frontmatter::read_note(path)` normalizes `\r\n` → `\n` on every disk read. Replaces all `std::fs::read_to_string` calls on `.md` files across `frontmatter.rs`, `content.rs`, `structural.rs`, `audit.rs`, `workspace.rs`, `obsidian.rs`. 3 unit tests. |
+| AppleScript injection (CSN-002) | `reconcile::notify` now passes the message as argv to `osascript` instead of interpolating it into the script string. |
+| Proptest for markdown parsers (CSN test rec.) | 4 proptest cases in `obsidian.rs`: `extract_block_ids`, `extract_wikilinks`, `extract_embeds` never panic on arbitrary input; returned values are consistent with the input string. |
+| Concurrent locking (CSN-003) | Tracked as backlog (L5). `session_in_progress` guard already covers the worst case; `reconcile` is idempotent per proptest. |
 
 ### Agy (Antigravity) backend — Completed
 

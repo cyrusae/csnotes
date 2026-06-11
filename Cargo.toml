@@ -40,6 +40,9 @@ comrak = { version = "0.29", default-features = false }
 # Regex (Obsidian syntax extraction)
 regex = "1"
 
+# Terminal color output
+owo-colors = { version = "3", features = ["supports-colors"] }
+
 # Ordered maps (stable JSON serialization)
 indexmap = { version = "2", features = ["serde"] }
 

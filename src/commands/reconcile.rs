@@ -1,7 +1,7 @@
 /// `csnotes reconcile` — Phase 0/1/2.
 ///
 /// Phase 0: scan `raw_dir` for new raw notes, register them as unprocessed
-/// sessions; scan `plaud_dir` for export files and attach them to their
+/// sessions; scan `recordings_dir` for export files and attach them to their
 /// sessions.
 ///
 /// Phase 1: scan `sources_dir` for source files (.md), derive heading schemes
@@ -17,7 +17,7 @@ use chrono::{Datelike, NaiveDate, Utc};
 
 use crate::config::{FilenameFormat, VaultConfig, find_vault_root};
 use crate::manifest::{
-    ArtifactEntry, ArtifactKind, Manifest, PlaudExport, PlaudKind, SessionEntry, SessionStatus,
+    ArtifactEntry, ArtifactKind, Manifest, RecordingExport, RecordingKind, SessionEntry, SessionStatus,
     SourceEntry, SourceKind, SourceStatus,
 };
 use crate::markdown::{derive_heading_scheme, parse_headings};
@@ -49,24 +49,27 @@ pub fn run_for_vault(
     let fmt = FilenameFormat::parse(&config.filename_format)?;
 
     let mut new_sessions: Vec<String> = Vec::new();
-    let mut new_plaud: Vec<(String, String)> = Vec::new();   // (session_id, path)
+    let mut new_recordings: Vec<(String, String)> = Vec::new();   // (session_id, path)
     let mut new_sources: Vec<String> = Vec::new();            // source IDs
     let mut new_artifacts: Vec<(String, String)> = Vec::new();// (session_id, path)
     let mut space_warnings: Vec<PathBuf> = Vec::new();
 
     // ── Resolve course roots ──────────────────────────────────────────────────
-    // If `active_courses` is set, raw notes and Plaud exports live under
+    // If `active_courses` is set, raw notes and recording exports live under
     // `{course}/{raw_dir}/` for each course.  Otherwise fall back to the flat
     // `{raw_dir}/` layout (used in tests and single-course vaults).
-    let course_roots: Vec<PathBuf> = if config.active_courses.is_empty() {
-        vec![vault_root.to_path_buf()]
+    // Each entry is (Option<course_name>, path) so per-course recording checks work.
+    let course_entries: Vec<(Option<String>, PathBuf)> = if config.active_courses.is_empty() {
+        vec![(None, vault_root.to_path_buf())]
     } else {
         config
             .active_courses
             .iter()
-            .map(|c| vault_root.join(c))
+            .map(|c| (Some(c.clone()), vault_root.join(c)))
             .collect()
     };
+    // Flat view used by scans that don't need the course name.
+    let course_roots: Vec<PathBuf> = course_entries.iter().map(|(_, p)| p.clone()).collect();
 
     // ── Scan raw_dir ──────────────────────────────────────────────────────────
     for course_root in &course_roots {
@@ -85,18 +88,23 @@ pub fn run_for_vault(
         }
     }
 
-    // ── Scan plaud_dir ────────────────────────────────────────────────────────
-    for course_root in &course_roots {
-        let plaud_dir = course_root.join(&config.plaud_dir);
-        if plaud_dir.exists() {
-            scan_plaud_dir(
-                &plaud_dir,
+    // ── Scan recordings_dir ──────────────────────────────────────────────────
+    for (course_name, course_root) in &course_entries {
+        let required = match course_name.as_deref() {
+            Some(c) => config.recordings_required_for(c),
+            None    => config.require_recordings,
+        };
+        if !required { continue; }
+        let recordings_dir = course_root.join(&config.recordings_dir);
+        if recordings_dir.exists() {
+            scan_recordings_dir(
+                &recordings_dir,
                 vault_root,
                 config,
                 &fmt,
                 &args,
                 &mut manifest,
-                &mut new_plaud,
+                &mut new_recordings,
                 &mut space_warnings,
             )?;
         }
@@ -133,39 +141,44 @@ pub fn run_for_vault(
     manifest.save(vault_root)?;
 
     let nothing_new = new_sessions.is_empty()
-        && new_plaud.is_empty()
+        && new_recordings.is_empty()
         && new_sources.is_empty()
         && new_artifacts.is_empty()
         && space_warnings.is_empty();
 
     if nothing_new {
         if !args.quiet {
-            println!("reconcile: nothing new.");
+            use owo_colors::OwoColorize;
+            println!("{}", "reconcile: nothing new.".dimmed());
         }
     } else {
+        use owo_colors::OwoColorize;
         for id in &new_sessions {
-            println!("  + session   {}", id);
+            println!("  {} {}   {}", "+".green().bold(), "session".dimmed(), id);
         }
-        for (session_id, path) in &new_plaud {
-            println!("  + plaud     {} → {}", path, session_id);
+        for (session_id, path) in &new_recordings {
+            println!("  {} {}  {} {} {}", "+".green().bold(), "recording".dimmed(), path, "→".dimmed(), session_id);
         }
         for (session_id, path) in &new_artifacts {
-            println!("  + artifact  {} → {}", path, session_id);
+            println!("  {} {}  {} {} {}", "+".green().bold(), "artifact".dimmed(), path, "→".dimmed(), session_id);
         }
         for id in &new_sources {
-            println!("  + source    {}", id);
+            println!("  {} {}    {}", "+".green().bold(), "source".dimmed(), id);
         }
         if !space_warnings.is_empty() {
-            println!("  {} file(s) have spaces in their names", space_warnings.len());
+            println!(
+                "  {}",
+                format!("{} file(s) have spaces in their names", space_warnings.len()).yellow()
+            );
         }
     }
 
     // ── Desktop notification (best-effort) ────────────────────────────────────
     if args.notify && !nothing_new {
         let msg = format!(
-            "{} new session(s), {} Plaud, {} artifact(s), {} source(s)",
+            "{} new session(s), {} recording(s), {} artifact(s), {} source(s)",
             new_sessions.len(),
-            new_plaud.len(),
+            new_recordings.len(),
             new_artifacts.len(),
             new_sources.len(),
         );
@@ -240,9 +253,9 @@ fn scan_raw_dir(
                 course: parsed.course.clone(),
                 filename_format: config.filename_format.clone(),
                 raw_note: rel_path,
-                plaud_exports: vec![],
+                recording_exports: vec![],
                 artifacts: vec![],
-                plaud_missing: false,
+                recording_missing: false,
                 status: SessionStatus::Unprocessed,
                 processed_at: None,
                 topics_updated: vec![],
@@ -253,19 +266,19 @@ fn scan_raw_dir(
     Ok(())
 }
 
-// ── Plaud export scanning ─────────────────────────────────────────────────────
+// ── Recording export scanning ─────────────────────────────────────────────────
 
-fn scan_plaud_dir(
-    plaud_dir: &Path,
+fn scan_recordings_dir(
+    recordings_dir: &Path,
     vault_root: &Path,
     config: &VaultConfig,
     fmt: &FilenameFormat,
     args: &ReconcileArgs,
     manifest: &mut Manifest,
-    new_plaud: &mut Vec<(String, String)>,
+    new_recordings: &mut Vec<(String, String)>,
     space_warnings: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    for entry in walkdir::WalkDir::new(plaud_dir)
+    for entry in walkdir::WalkDir::new(recordings_dir)
         .max_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -287,7 +300,7 @@ fn scan_plaud_dir(
             None => continue,
         };
 
-        // A Plaud file is `{session_stem}-{qualifier}`.
+        // A recording file is `{session_stem}-{qualifier}`.
         // Split on the last `-` and check if the qualifier is recognized
         // and the prefix is a known session ID.
         let (session_id, qualifier) = match stem.rsplit_once('-') {
@@ -295,7 +308,7 @@ fn scan_plaud_dir(
             None => continue,
         };
 
-        if !config.is_plaud_qualifier(qualifier) {
+        if !config.is_recording_qualifier(qualifier) {
             continue;
         }
 
@@ -317,13 +330,13 @@ fn scan_plaud_dir(
             .to_string();
 
         // Skip if already recorded
-        if entry.plaud_exports.iter().any(|p| p.path == rel_path) {
+        if entry.recording_exports.iter().any(|p| p.path == rel_path) {
             continue;
         }
 
-        let kind = plaud_kind(qualifier, config);
-        new_plaud.push((session_id.to_string(), rel_path.clone()));
-        entry.plaud_exports.push(PlaudExport { path: rel_path, kind });
+        let kind = recording_kind(qualifier, config);
+        new_recordings.push((session_id.to_string(), rel_path.clone()));
+        entry.recording_exports.push(RecordingExport { path: rel_path, kind });
     }
     Ok(())
 }
@@ -369,18 +382,18 @@ fn handle_spaces(
     }
 }
 
-fn plaud_kind(qualifier: &str, config: &VaultConfig) -> PlaudKind {
+fn recording_kind(qualifier: &str, config: &VaultConfig) -> RecordingKind {
     match qualifier {
-        "transcript" => PlaudKind::Transcript,
-        "summary" => PlaudKind::Summary,
-        "mindmap" => PlaudKind::Mindmap,
+        "transcript" => RecordingKind::Transcript,
+        "summary" => RecordingKind::Summary,
+        "mindmap" => RecordingKind::Mindmap,
         q if q.len() == 1 && q.chars().next().map_or(false, |c| c.is_ascii_lowercase()) => {
-            PlaudKind::Anonymous
+            RecordingKind::Anonymous
         }
         _ => {
-            // Must be a custom qualifier from config.plaud_qualifiers
-            let _ = config; // used implicitly via is_plaud_qualifier upstream
-            PlaudKind::Custom
+            // Must be a custom qualifier from config.recording_qualifiers
+            let _ = config; // used implicitly via is_recording_qualifier upstream
+            RecordingKind::Custom
         }
     }
 }
@@ -414,7 +427,7 @@ const SLIDE_QUALIFIERS: &[&str] = &[
 /// Walk `{course}/{artifacts_dir}/` for text-readable files whose stems start
 /// with a known session ID and attach them as `ArtifactEntry` records.
 ///
-/// Matching rule (same spirit as Plaud scanning):
+/// Matching rule (same spirit as recording scanning):
 ///   `{session_id}.{ext}`       → attached, no qualifier
 ///   `{session_id}-{rest}.{ext}`→ attached, qualifier = rest
 ///
@@ -611,7 +624,7 @@ mod tests {
     fn make_manifest_with_session(vault_root: &std::path::Path, session_id: &str) -> Manifest {
         let cfg = ManifestConfig {
             raw_dir: "notes".into(),
-            plaud_dir: "plaud".into(),
+            recordings_dir: "recordings".into(),
             artifacts_dir: "artifacts".into(),
             sources_dir: "sources".into(),
             synthetic_dir: "_synthetic".into(),
@@ -629,9 +642,9 @@ mod tests {
                 course: "CPSC5001".into(),
                 filename_format: "{course}-{mm}-{dd}".into(),
                 raw_note: format!("notes/{}.md", session_id),
-                plaud_exports: vec![],
+                recording_exports: vec![],
                 artifacts: vec![],
-                plaud_missing: false,
+                recording_missing: false,
                 status: SessionStatus::Unprocessed,
                 processed_at: None,
                 topics_updated: vec![],
@@ -769,13 +782,15 @@ mod tests {
 fn notify(message: &str) {
     #[cfg(target_os = "macos")]
     {
+        // Pass the message as argv rather than interpolating into the script
+        // string, so that quotes or backslashes in the message can't break
+        // the AppleScript syntax.
         let _ = std::process::Command::new("osascript")
             .args([
-                "-e",
-                &format!(
-                    "display notification \"{}\" with title \"csnotes\"",
-                    message
-                ),
+                "-e", "on run argv",
+                "-e", "display notification (item 1 of argv) with title \"csnotes\"",
+                "-e", "end run",
+                message,
             ])
             .status();
     }

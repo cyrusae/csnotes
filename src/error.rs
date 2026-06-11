@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CsnotesError {
     // ── Vault / config ────────────────────────────────────────────────────────
-    #[error("no .csnotes config file found (searched upward from {0})")]
+    #[error("no csnotes.toml config file found (searched upward from {0})")]
     VaultNotFound(PathBuf),
 
     #[error("invalid filename_format '{format}': {reason}")]

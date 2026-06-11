@@ -186,25 +186,25 @@ fn wrap_session_inputs(
     // Raw notes
     let raw_path = vault_root.join(&entry.raw_note);
     if raw_path.exists() {
-        let content = fs::read_to_string(&raw_path)?;
+        let content = crate::frontmatter::read_note(&raw_path)?;
         let wrapped = xml_wrap(&content, "raw_student_notes", &[("course", course), ("date", &date)]);
         let dest = workspace_root.join(format!("input_raw_{}.md", sanitise(&entry.raw_note)));
         fs::write(&dest, wrapped)?;
         make_readonly(&dest)?;
     }
 
-    // Plaud exports
-    for export in &entry.plaud_exports {
+    // Recording exports
+    for export in &entry.recording_exports {
         let src = vault_root.join(&export.path);
         if !src.exists() {
             continue;
         }
-        let content = fs::read_to_string(&src)?;
+        let content = crate::frontmatter::read_note(&src)?;
         let tag = match export.kind {
-            crate::manifest::PlaudKind::Transcript => "plaud_transcript",
-            crate::manifest::PlaudKind::Summary => "plaud_summary",
-            crate::manifest::PlaudKind::Mindmap => "plaud_mindmap",
-            _ => "plaud_export",
+            crate::manifest::RecordingKind::Transcript => "recording_transcript",
+            crate::manifest::RecordingKind::Summary => "recording_summary",
+            crate::manifest::RecordingKind::Mindmap => "recording_mindmap",
+            _ => "recording_export",
         };
         let wrapped = xml_wrap(&content, tag, &[("course", course), ("date", &date)]);
         let dest = workspace_root.join(format!("input_{}.md", sanitise(&export.path)));
@@ -227,7 +227,7 @@ fn wrap_session_inputs(
         if !is_text_artifact_ext(&ext) {
             continue;
         }
-        let content = fs::read_to_string(&src)?;
+        let content = crate::frontmatter::read_note(&src)?;
         let (tag, extra_attrs);
         let file_name = Path::new(&artifact.path)
             .file_name()
@@ -271,7 +271,7 @@ fn wrap_source_input(
     if !src.exists() {
         return Ok(());
     }
-    let content = fs::read_to_string(&src)?;
+    let content = crate::frontmatter::read_note(&src)?;
     // book and unit are derived from the source_id path structure
     let (book, unit) = parse_source_id(source_id);
     let wrapped = xml_wrap(
@@ -317,19 +317,19 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
             out.push_str("## Inputs in This Workspace\n");
             if let Some(e) = entry {
                 out.push_str(&format!("- Raw notes: `<raw_student_notes>` tag\n"));
-                if e.plaud_missing {
+                if e.recording_missing {
                     out.push_str(
-                        "- Plaud: **not available** — synthesise from raw notes only\n",
+                        "- Recording: **not available** — synthesise from raw notes only\n",
                     );
-                } else if e.plaud_exports.is_empty() {
-                    out.push_str("- Plaud: none\n");
+                } else if e.recording_exports.is_empty() {
+                    out.push_str("- Recording: none\n");
                 } else {
                     let kinds: Vec<_> = e
-                        .plaud_exports
+                        .recording_exports
                         .iter()
                         .map(|p| format!("{:?}", p.kind).to_lowercase())
                         .collect();
-                    out.push_str(&format!("- Plaud: {}\n", kinds.join(", ")));
+                    out.push_str(&format!("- Recording: {}\n", kinds.join(", ")));
                 }
                 if e.artifacts.is_empty() {
                     out.push_str("- Artifacts: none\n");
@@ -587,7 +587,7 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match fs::read_to_string(entry.path()) {
+        let content = match crate::frontmatter::read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -629,7 +629,7 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
             None => continue,
         };
 
-        let content = match fs::read_to_string(entry.path()) {
+        let content = match crate::frontmatter::read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };

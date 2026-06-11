@@ -14,7 +14,7 @@ use crate::manifest::{Manifest, ManifestConfig};
 /// `csnotes init`
 ///
 /// With no flags: scaffolds a new vault (prompts for config, creates
-/// directories, writes `.csnotes`, manifest, flag store, instruction files).
+/// directories, writes `csnotes.toml`, manifest, flag store, instruction files).
 ///
 /// With `--instructions-only`: writes/updates the three instruction files in
 /// the current vault's `_csnotes/instructions/` without touching anything else.
@@ -59,7 +59,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
 
     let cfg = VaultConfig {
         raw_dir,
-        plaud_dir: "plaud".into(),
+        recordings_dir: "recordings".into(),
         artifacts_dir: "artifacts".into(),
         sources_dir: "sources".into(),
         synthetic_dir: "_synthetic".into(),
@@ -75,14 +75,16 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         skill_variant,
         snapshot_mode: SnapshotMode::PreMerge,
         archive_threshold_weeks: 8,
-        plaud_qualifiers: vec!["transcript".into(), "summary".into(), "mindmap".into()],
+        recording_qualifiers: vec!["transcript".into(), "summary".into(), "mindmap".into()],
         agy_model: None,
+        require_recordings: true,
+        courses_without_recordings: vec![],
     };
 
     // ── Create directory tree ──────────────────────────────────────────────────
     let dirs = [
         cfg.raw_dir.as_str(),
-        cfg.plaud_dir.as_str(),
+        cfg.recordings_dir.as_str(),
         cfg.artifacts_dir.as_str(),
         cfg.sources_dir.as_str(),
         cfg.synthetic_dir.as_str(),
@@ -101,13 +103,13 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
     let instructions_dir = vault_root.join(&cfg.csnotes_dir).join("instructions");
     fs::create_dir_all(&instructions_dir)?;
 
-    // ── Write .csnotes ─────────────────────────────────────────────────────────
-    let config_path = vault_root.join(".csnotes");
+    // ── Write csnotes.toml ────────────────────────────────────────────────────
+    let config_path = vault_root.join("csnotes.toml");
     if config_path.exists() {
-        println!("  Skipped: .csnotes (already exists)");
+        println!("  Skipped: csnotes.toml (already exists)");
     } else {
         cfg.save(&vault_root)?;
-        println!("  Created: .csnotes");
+        println!("  Created: csnotes.toml");
     }
 
     // ── Write empty manifest ───────────────────────────────────────────────────
@@ -142,7 +144,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         println!("  3. csnotes process");
     } else {
         println!("\nNext steps:");
-        println!("  1. Add your course(s) to active_courses in .csnotes");
+        println!("  1. Add your course(s) to active_courses in csnotes.toml");
         println!("  2. csnotes reconcile");
         println!("  3. csnotes process");
     }
@@ -219,7 +221,7 @@ _session.md          ← start here: scope, inputs, open flags, known block IDs
 synthesis.md         ← read before writing notes
 report_schema.md     ← read before writing the session report
 input_raw_*.md       ← student's raw notes (XML-wrapped, read-only)
-input_plaud_*.md     ← Plaud transcript/summary (XML-wrapped, read-only)
+input_recording_*.md ← recording transcript/summary (XML-wrapped, read-only)
 input_source_*.md    ← textbook material (XML-wrapped, read-only)
 _synthetic/          ← your writable working copy of the vault's synthetic notes
 _session_report.json ← you write this before exiting
@@ -302,7 +304,7 @@ _session.md          ← start here: scope, inputs, open flags, known block IDs
 synthesis.md         ← read before writing notes
 report_schema.md     ← read before writing the session report
 input_raw_*.md       ← student's raw notes (XML-wrapped, read-only)
-input_plaud_*.md     ← Plaud transcript/summary (XML-wrapped, read-only)
+input_recording_*.md ← recording transcript/summary (XML-wrapped, read-only)
 input_source_*.md    ← textbook material (XML-wrapped, read-only)
 _synthetic/          ← your writable working copy of the vault's synthetic notes
 _session_report.json ← you write this before exiting

@@ -21,6 +21,7 @@ use crate::error::CsnotesError;
 use crate::frontmatter::{
     write_frontmatter, NoteFrontmatter, NoteKind,
 };
+use crate::pathutil::safe_join;
 use crate::report::{CreateNoteOp, UpdateNoteOp};
 
 // ── create_note ───────────────────────────────────────────────────────────────
@@ -37,11 +38,11 @@ pub fn execute_create_note(
     workspace_root: &Path,
     now: DateTime<Utc>,
 ) -> Result<()> {
-    let note_path = workspace_root.join(&op.path);
+    let note_path = safe_join(workspace_root, &op.path)?;
 
     // Read the existing body (the AI wrote this).
     let body = if note_path.exists() {
-        let raw = std::fs::read_to_string(&note_path)?;
+        let raw = crate::frontmatter::read_note(&note_path)?;
         // Strip any accidental frontmatter the AI may have written (we own it).
         match crate::frontmatter::split_frontmatter(&raw) {
             Some((_fm, body)) => body.to_string(),
@@ -80,13 +81,13 @@ pub fn execute_update_note(
     workspace_root: &Path,
     now: DateTime<Utc>,
 ) -> Result<()> {
-    let note_path = workspace_root.join(&op.path);
+    let note_path = safe_join(workspace_root, &op.path)?;
 
     if !note_path.exists() {
         bail!(CsnotesError::UpdateNotePathMissing(op.path.clone()));
     }
 
-    let content = std::fs::read_to_string(&note_path)?;
+    let content = crate::frontmatter::read_note(&note_path)?;
     let (yaml, body) = crate::frontmatter::split_frontmatter(&content)
         .ok_or_else(|| CsnotesError::NoFrontmatter(note_path.clone()))?;
 

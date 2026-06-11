@@ -14,6 +14,7 @@ use crate::error::CsnotesError;
 use crate::frontmatter::{parse_frontmatter, NoteKind};
 use crate::manifest::Manifest;
 use crate::obsidian::{collect_all_block_ids, extract_block_ids, extract_embeds, extract_wikilinks};
+use crate::pathutil::safe_join;
 use crate::report::{Op, SessionReport};
 
 // ── Result types ──────────────────────────────────────────────────────────────
@@ -52,13 +53,13 @@ pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Resul
     for op in &report.operations {
         match op {
             Op::CreateNote(op) => {
-                let path = workspace_root.join(&op.path);
+                let path = safe_join(workspace_root, &op.path)?;
                 // The file must ALREADY exist — the AI wrote it.
                 // `create_note` on an existing csnotes-frontmatter path is the
                 // precondition failure (would clobber an existing note).
                 if path.exists() {
                     // Check if it already has csnotes frontmatter
-                    if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(content) = crate::frontmatter::read_note(&path) {
                         if crate::frontmatter::split_frontmatter(&content).is_some() {
                             return Err(CsnotesError::CreateNotePathExists(op.path.clone()).into());
                         }
@@ -74,7 +75,7 @@ pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Resul
 
                 // embed_in targets must exist
                 for target in &op.embed_in {
-                    let target_path = workspace_root.join(target);
+                    let target_path = safe_join(workspace_root, target)?;
                     if !target_path.exists() {
                         return Err(CsnotesError::EmbedInTargetMissing(target.clone()).into());
                     }
@@ -95,12 +96,12 @@ pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Resul
             }
 
             Op::UpdateNote(op) => {
-                let path = workspace_root.join(&op.path);
+                let path = safe_join(workspace_root, &op.path)?;
                 if !path.exists() {
                     return Err(CsnotesError::UpdateNotePathMissing(op.path.clone()).into());
                 }
                 // Must have parseable csnotes frontmatter
-                let content = std::fs::read_to_string(&path)?;
+                let content = crate::frontmatter::read_note(&path)?;
                 parse_frontmatter(&content, &path)?;
             }
 
@@ -109,17 +110,18 @@ pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Resul
                 // (The config synthetic_dir is not available here, so we scan
                 // for the folder under any direct child of the workspace root
                 // that looks like a synthetic dir.)
+                let synthetic = workspace_root.join("_synthetic");
                 let possible_dirs = [
-                    workspace_root.join("_synthetic").join(&op.from),
-                    workspace_root.join(&op.from),
+                    safe_join(&synthetic, &op.from)?,
+                    safe_join(workspace_root, &op.from)?,
                 ];
                 let from_exists = possible_dirs.iter().any(|d| d.exists());
                 if !from_exists {
                     return Err(CsnotesError::RenameTopicSourceMissing(op.from.clone()).into());
                 }
                 let possible_dests = [
-                    workspace_root.join("_synthetic").join(&op.to),
-                    workspace_root.join(&op.to),
+                    safe_join(&synthetic, &op.to)?,
+                    safe_join(workspace_root, &op.to)?,
                 ];
                 if possible_dests.iter().any(|d| d.exists()) {
                     return Err(CsnotesError::RenameTopicDestExists(op.to.clone()).into());
@@ -165,21 +167,33 @@ pub fn invariant_suite(
     // 2. For each note declared in ops, verify schema-valid frontmatter
     for op in &report.operations {
         if let Op::CreateNote(op) = op {
-            let path = workspace_root.join(&op.path);
-            if let Err(e) = parse_frontmatter_from_path(&path) {
-                result.hard_violations.push(format!(
-                    "note '{}' has invalid frontmatter after create_note: {}",
-                    op.path, e
-                ));
+            match safe_join(workspace_root, &op.path) {
+                Ok(path) => {
+                    if let Err(e) = parse_frontmatter_from_path(&path) {
+                        result.hard_violations.push(format!(
+                            "note '{}' has invalid frontmatter after create_note: {}",
+                            op.path, e
+                        ));
+                    }
+                }
+                Err(e) => result.hard_violations.push(format!(
+                    "unsafe path in create_note op '{}': {}", op.path, e
+                )),
             }
         }
         if let Op::UpdateNote(op) = op {
-            let path = workspace_root.join(&op.path);
-            if let Err(e) = parse_frontmatter_from_path(&path) {
-                result.hard_violations.push(format!(
-                    "note '{}' has invalid frontmatter after update_note: {}",
-                    op.path, e
-                ));
+            match safe_join(workspace_root, &op.path) {
+                Ok(path) => {
+                    if let Err(e) = parse_frontmatter_from_path(&path) {
+                        result.hard_violations.push(format!(
+                            "note '{}' has invalid frontmatter after update_note: {}",
+                            op.path, e
+                        ));
+                    }
+                }
+                Err(e) => result.hard_violations.push(format!(
+                    "unsafe path in update_note op '{}': {}", op.path, e
+                )),
             }
         }
     }
@@ -191,7 +205,7 @@ pub fn invariant_suite(
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
         {
-            let content = match std::fs::read_to_string(entry.path()) {
+            let content = match crate::frontmatter::read_note(entry.path()) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -333,7 +347,7 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
         {
-            let content = match std::fs::read_to_string(entry.path()) {
+            let content = match crate::frontmatter::read_note(entry.path()) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -414,13 +428,13 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn parse_frontmatter_from_path(path: &Path) -> Result<crate::frontmatter::NoteFrontmatter> {
-    let content = std::fs::read_to_string(path)?;
+    let content = crate::frontmatter::read_note(path)?;
     parse_frontmatter(&content, path)
 }
 
 fn check_block_id_anchor(workspace_root: &Path, note_path: &str, block_id: &str) -> Result<()> {
     let path = workspace_root.join(note_path);
-    let content = std::fs::read_to_string(&path)?;
+    let content = crate::frontmatter::read_note(&path)?;
     let ids = extract_block_ids(&content);
     if !ids.contains(&block_id.to_string()) {
         return Err(CsnotesError::BlockIdAnchorMissing {
@@ -442,7 +456,7 @@ fn check_embed_line_present(
     if !path.exists() {
         return Ok(()); // target missing is caught separately
     }
-    let content = std::fs::read_to_string(&path)?;
+    let content = crate::frontmatter::read_note(&path)?;
     let embeds = extract_embeds(&content);
     let found = embeds.iter().any(|e| {
         e.file == atomic_stem && e.block_id() == Some(block_id)
@@ -596,7 +610,7 @@ pub fn apply_fixes(fixes: &[FixItem]) -> Result<usize> {
     for fix in fixes {
         match &fix.action {
             FixAction::AppendAnchor { path, block_id } => {
-                let content = std::fs::read_to_string(path)
+                let content = crate::frontmatter::read_note(path)
                     .with_context(|| format!("reading {}", path.display()))?;
                 // Append anchor on its own line, preceded by a blank line if
                 // the body doesn't already end with one.

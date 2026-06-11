@@ -8,7 +8,9 @@ mod manifest;
 mod markdown;
 mod obsidian;
 mod ops;
+mod pathutil;
 mod report;
+mod ui;
 mod workspace;
 
 mod commands;
@@ -22,6 +24,7 @@ use commands::{
 use config::AiBackend;
 
 fn main() {
+    crate::ui::init_color();
     let cli = Cli::parse();
     let result = dispatch(cli);
     if let Err(e) = result {

@@ -104,7 +104,7 @@ impl Manifest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ManifestConfig {
     pub raw_dir: String,
-    pub plaud_dir: String,
+    pub recordings_dir: String,
     pub artifacts_dir: String,
     pub sources_dir: String,
     pub synthetic_dir: String,
@@ -119,7 +119,7 @@ impl ManifestConfig {
     pub fn from_vault_config(cfg: &crate::config::VaultConfig) -> Self {
         ManifestConfig {
             raw_dir: cfg.raw_dir.clone(),
-            plaud_dir: cfg.plaud_dir.clone(),
+            recordings_dir: cfg.recordings_dir.clone(),
             artifacts_dir: cfg.artifacts_dir.clone(),
             sources_dir: cfg.sources_dir.clone(),
             synthetic_dir: cfg.synthetic_dir.clone(),
@@ -141,9 +141,9 @@ pub struct SessionEntry {
     /// The filename_format that was active when this session was registered.
     pub filename_format: String,
     pub raw_note: String,
-    pub plaud_exports: Vec<PlaudExport>,
+    pub recording_exports: Vec<RecordingExport>,
     pub artifacts: Vec<ArtifactEntry>,
-    pub plaud_missing: bool,
+    pub recording_missing: bool,
     pub status: SessionStatus,
     pub processed_at: Option<DateTime<Utc>>,
     pub topics_updated: Vec<String>,
@@ -158,20 +158,20 @@ pub enum SessionStatus {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PlaudExport {
+pub struct RecordingExport {
     pub path: String,
-    pub kind: PlaudKind,
+    pub kind: RecordingKind,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum PlaudKind {
+pub enum RecordingKind {
     Transcript,
     Summary,
     Mindmap,
     /// Anonymous recording export (e.g., `-a`, `-b`).
     Anonymous,
-    /// User-defined qualifier from `plaud_qualifiers` config.
+    /// User-defined qualifier from `recording_qualifiers` config.
     Custom,
 }
 
@@ -302,7 +302,7 @@ mod tests {
         let vault_root = PathBuf::from("/tmp/test-vault");
         let config = ManifestConfig {
             raw_dir: "notes".into(),
-            plaud_dir: "plaud".into(),
+            recordings_dir: "recordings".into(),
             artifacts_dir: "artifacts".into(),
             sources_dir: "sources".into(),
             synthetic_dir: "_synthetic".into(),

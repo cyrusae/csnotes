@@ -12,6 +12,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use walkdir::WalkDir;
 
+use crate::pathutil::safe_join;
 use crate::report::*;
 
 /// Execute a `rename_topic` op against the workspace.
@@ -26,8 +27,8 @@ pub fn execute_rename_topic(
     synthetic_dir: &str,
 ) -> Result<()> {
     let synthetic_root = workspace_root.join(synthetic_dir);
-    let from_dir = synthetic_root.join(&op.from);
-    let to_dir = synthetic_root.join(&op.to);
+    let from_dir = safe_join(&synthetic_root, &op.from)?;
+    let to_dir = safe_join(&synthetic_root, &op.to)?;
 
     if !from_dir.exists() {
         bail!(
@@ -91,7 +92,7 @@ pub fn execute_move_atomic(
     synthetic_dir: &str,
 ) -> Result<()> {
     let synthetic_root = workspace_root.join(synthetic_dir);
-    let from_abs = workspace_root.join(&op.from_path);
+    let from_abs = safe_join(workspace_root, &op.from_path)?;
 
     let from_p = std::path::Path::new(&op.from_path);
     let slug = from_p
@@ -104,7 +105,7 @@ pub fn execute_move_atomic(
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow::anyhow!("move_atomic: cannot parse topic from '{}'", op.from_path))?;
 
-    let to_dir = synthetic_root.join(&op.to_topic);
+    let to_dir = safe_join(&synthetic_root, &op.to_topic)?;
     let to_abs = to_dir.join(format!("{}.md", slug));
 
     if !from_abs.exists() {
@@ -158,7 +159,7 @@ pub fn execute_promote_atomic(
     synthetic_dir: &str,
 ) -> Result<()> {
     let synthetic_root = workspace_root.join(synthetic_dir);
-    let from_abs = workspace_root.join(&op.from_path);
+    let from_abs = safe_join(workspace_root, &op.from_path)?;
 
     let from_p = std::path::Path::new(&op.from_path);
     let slug = from_p
@@ -171,7 +172,7 @@ pub fn execute_promote_atomic(
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow::anyhow!("promote_atomic: cannot parse topic from '{}'", op.from_path))?;
 
-    let to_dir = synthetic_root.join(&op.to_topic);
+    let to_dir = safe_join(&synthetic_root, &op.to_topic)?;
     let to_abs = to_dir.join(format!("{}.md", slug));
 
     if !from_abs.exists() {
@@ -224,8 +225,8 @@ pub fn execute_demote_topic(
     synthetic_dir: &str,
 ) -> Result<()> {
     let synthetic_root = workspace_root.join(synthetic_dir);
-    let from_dir = synthetic_root.join(&op.from_topic);
-    let into_dir = synthetic_root.join(&op.into_topic);
+    let from_dir = safe_join(&synthetic_root, &op.from_topic)?;
+    let into_dir = safe_join(&synthetic_root, &op.into_topic)?;
 
     if op.from_topic == op.into_topic {
         bail!("demote_topic: source and target are the same topic '{}'", op.from_topic);
@@ -266,7 +267,7 @@ pub fn execute_merge_topics(
     synthetic_dir: &str,
 ) -> Result<()> {
     let synthetic_root = workspace_root.join(synthetic_dir);
-    let into_dir = synthetic_root.join(&op.into);
+    let into_dir = safe_join(&synthetic_root, &op.into)?;
 
     if op.from.is_empty() {
         bail!("merge_topics: 'from' list is empty");
@@ -293,7 +294,7 @@ pub fn execute_merge_topics(
         if from_topic == &op.into {
             continue;
         }
-        let from_dir = synthetic_root.join(from_topic);
+        let from_dir = safe_join(&synthetic_root, from_topic)?;
         if !from_dir.exists() {
             bail!("merge_topics: source topic '{}' does not exist", from_topic);
         }
@@ -318,7 +319,7 @@ pub fn execute_merge_topics(
         if from_topic == &op.into {
             continue;
         }
-        let from_dir = synthetic_root.join(from_topic);
+        let from_dir = safe_join(&synthetic_root, from_topic)?;
         move_topic_notes(&from_dir, &into_dir, from_topic, &op.into)?;
         rewrite_links(
             &synthetic_root,
@@ -345,7 +346,7 @@ pub fn execute_split_topic(
     synthetic_dir: &str,
 ) -> Result<()> {
     let synthetic_root = workspace_root.join(synthetic_dir);
-    let from_dir = synthetic_root.join(&op.from);
+    let from_dir = safe_join(&synthetic_root, &op.from)?;
 
     if !from_dir.exists() {
         bail!("split_topic: source topic '{}' does not exist", op.from);
@@ -358,7 +359,7 @@ pub fn execute_split_topic(
         if target.topic == op.from {
             continue; // some notes stay in source — valid, nothing to create
         }
-        let target_dir = synthetic_root.join(&target.topic);
+        let target_dir = safe_join(&synthetic_root, &target.topic)?;
         if !target_dir.exists() {
             std::fs::create_dir_all(&target_dir).with_context(|| {
                 format!("split_topic: creating folder '{}'", target.topic)
@@ -419,8 +420,8 @@ pub fn execute_split_topic(
 /// `present: true`  → ensure the embed line exists (idempotent if already there).
 /// `present: false` → remove the embed line (idempotent if already absent).
 pub fn execute_set_embed(op: &SetEmbedOp, workspace_root: &Path) -> Result<()> {
-    let index_abs = workspace_root.join(&op.index_path);
-    let atomic_abs = workspace_root.join(&op.atomic_path);
+    let index_abs = safe_join(workspace_root, &op.index_path)?;
+    let atomic_abs = safe_join(workspace_root, &op.atomic_path)?;
 
     if !index_abs.exists() {
         bail!("set_embed: index note '{}' not found", op.index_path);
@@ -445,7 +446,7 @@ pub fn execute_set_embed(op: &SetEmbedOp, workspace_root: &Path) -> Result<()> {
     let embed_line = format!("![[{}#^{}]]", atomic_slug, block_id);
 
     // Read index note, split frontmatter from body.
-    let raw = std::fs::read_to_string(&index_abs)
+    let raw = crate::frontmatter::read_note(&index_abs)
         .with_context(|| format!("set_embed: reading '{}'", op.index_path))?;
     let (yaml, body) = crate::frontmatter::split_frontmatter(&raw)
         .ok_or_else(|| anyhow::anyhow!("set_embed: '{}' has no frontmatter", op.index_path))?;
@@ -551,7 +552,7 @@ pub fn rewrite_links(root: &Path, old_target: &str, new_target: &str) -> Result<
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = std::fs::read_to_string(entry.path())?;
+        let content = crate::frontmatter::read_note(entry.path())?;
         if content.contains(&old_wiki) || content.contains(&old_embed) {
             let updated = content
                 .replace(&old_embed, &new_embed) // embeds first (longer prefix)
@@ -578,7 +579,7 @@ fn rewrite_note_links(root: &Path, old_stem: &str, new_stem: &str) -> Result<usi
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = std::fs::read_to_string(entry.path())?;
+        let content = crate::frontmatter::read_note(entry.path())?;
         let updated = replace_note_links(&content, old_stem, new_stem);
         if updated != content {
             std::fs::write(entry.path(), &updated)?;

@@ -18,7 +18,7 @@ use tempfile::TempDir;
 /// compiled-in defaults.
 fn write_config(vault_root: &Path) {
     fs::write(
-        vault_root.join(".csnotes"),
+        vault_root.join("csnotes.toml"),
         "default_backend = \"mock\"\n",
     )
     .unwrap();
@@ -34,7 +34,7 @@ fn write_manifest(vault_root: &Path) {
   "vault_root": {vault_str_json},
   "config": {{
     "raw_dir": "notes",
-    "plaud_dir": "plaud",
+    "recordings_dir": "recordings",
     "artifacts_dir": "artifacts",
     "sources_dir": "sources",
     "synthetic_dir": "_synthetic",
@@ -50,9 +50,9 @@ fn write_manifest(vault_root: &Path) {
       "course": "CPSC5001",
       "filename_format": "{{course}}-{{mm}}-{{dd}}",
       "raw_note": "notes/CPSC5001-09-03.md",
-      "plaud_exports": [],
+      "recording_exports": [],
       "artifacts": [],
-      "plaud_missing": true,
+      "recording_missing": true,
       "status": "unprocessed",
       "processed_at": null,
       "topics_updated": []
@@ -168,28 +168,28 @@ fn happy_path_creates_two_notes() {
 }
 
 /// `csnotes reconcile` registers a raw note as a new session and matches a
-/// Plaud export to it.
+/// recording export to it.
 #[test]
-fn reconcile_registers_session_and_plaud() {
+fn reconcile_registers_session_and_recording() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
 
     // Minimal vault with no sessions yet
     fs::create_dir_all(root.join("notes")).unwrap();
-    fs::create_dir_all(root.join("plaud")).unwrap();
+    fs::create_dir_all(root.join("recordings")).unwrap();
     fs::create_dir_all(root.join("_synthetic")).unwrap();
     write_config(root);
     // Write a manifest with no sessions
     let vault_str = root.to_string_lossy();
     let manifest = format!(
-        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","plaud_dir":"plaud","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
+        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","recordings_dir":"recordings","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
         vs = serde_json::to_string(&vault_str).unwrap(),
     );
     fs::write(root.join("csnotes.json"), &manifest).unwrap();
 
-    // Drop a raw note and a matching Plaud transcript
+    // Drop a raw note and a matching recording transcript
     fs::write(root.join("notes/CPSC5001-09-03.md"), "# Lecture 1\n").unwrap();
-    fs::write(root.join("plaud/CPSC5001-09-03-transcript.md"), "Transcript text.\n").unwrap();
+    fs::write(root.join("recordings/CPSC5001-09-03-transcript.md"), "Transcript text.\n").unwrap();
 
     let status = Command::new(env!("CARGO_BIN_EXE_csnotes"))
         .arg("reconcile")
@@ -209,11 +209,126 @@ fn reconcile_registers_session_and_plaud() {
         manifest["sessions"]["CPSC5001-09-03"]["status"],
         "unprocessed"
     );
-    let exports = &manifest["sessions"]["CPSC5001-09-03"]["plaud_exports"];
+    let exports = &manifest["sessions"]["CPSC5001-09-03"]["recording_exports"];
     assert_eq!(exports.as_array().map(|a| a.len()), Some(1), "transcript should be attached");
     assert!(
         exports[0]["path"].as_str().unwrap_or("").contains("transcript"),
         "export path should reference the transcript file"
+    );
+}
+
+/// Crash simulation: snapshot present + partial merge + workspace gone → `recover --discard`
+/// restores `_synthetic/` from the snapshot and clears `session_in_progress`.
+///
+/// This exercises the path in `recover::run` where a pre-merge snapshot is detected,
+/// `restore_snapshot` is called, and then the missing workspace causes the record to be
+/// cleared without prompting (because `--discard` is set).
+#[test]
+fn recover_restores_from_mid_merge_snapshot() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let run_id = "crash-sim-test";
+    let fake_workspace = root.join(format!("_ws_{}", run_id));
+
+    // Set up vault directories
+    fs::create_dir_all(root.join("notes")).unwrap();
+    fs::create_dir_all(root.join("_synthetic/cpsc5001")).unwrap();
+    write_config(root);
+
+    // Pre-merge snapshot with the known-good note content
+    let good_content = "\
+---
+csnotes_schema: 1
+kind: atomic
+topic: cpsc5001
+title: Good Note
+block_id: good-note-id
+contributing_sessions: []
+contributing_sources: []
+created: \"2026-09-03T00:00:00Z\"
+last_updated: \"2026-09-03T00:00:00Z\"
+---
+
+Good content. ^good-note-id
+";
+    let snapshot_dir = root.join(format!("_synthetic_snapshot_{}", run_id));
+    fs::create_dir_all(snapshot_dir.join("cpsc5001")).unwrap();
+    fs::write(snapshot_dir.join("cpsc5001/good-note.md"), good_content).unwrap();
+
+    // Simulate a partial merge: _synthetic/ has garbage (merge started but crashed)
+    fs::write(
+        root.join("_synthetic/cpsc5001/good-note.md"),
+        "PARTIAL GARBAGE — merge was interrupted\n",
+    )
+    .unwrap();
+
+    // Write a manifest with session_in_progress pointing to a nonexistent workspace
+    let vault_str = root.to_string_lossy();
+    let workspace_str = fake_workspace.to_string_lossy();
+    let manifest = format!(
+        r#"{{
+  "version": "2",
+  "vault_root": {vault_json},
+  "config": {{
+    "raw_dir": "notes",
+    "recordings_dir": "recordings",
+    "artifacts_dir": "artifacts",
+    "sources_dir": "sources",
+    "synthetic_dir": "_synthetic",
+    "generated_dir": "_generated",
+    "filename_format": "{{course}}-{{mm}}-{{dd}}",
+    "default_backend": "mock",
+    "skill_variant": "claude",
+    "snapshot_mode": "pre_merge"
+  }},
+  "sessions": {{}},
+  "sources": {{}},
+  "topics": {{}},
+  "session_in_progress": {{
+    "run_id": {run_id_json},
+    "started_at": "2026-09-03T10:00:00Z",
+    "workspace_path": {workspace_json},
+    "phase": "merge_back",
+    "error": null,
+    "backend": "mock",
+    "skill_variant": "claude"
+  }},
+  "flags_path": "_generated/flags.json"
+}}"#,
+        vault_json = serde_json::to_string(&vault_str).unwrap(),
+        run_id_json = serde_json::to_string(run_id).unwrap(),
+        workspace_json = serde_json::to_string(&workspace_str).unwrap(),
+    );
+    fs::write(root.join("csnotes.json"), &manifest).unwrap();
+
+    // Run recover --discard (non-interactive)
+    let status = Command::new(env!("CARGO_BIN_EXE_csnotes"))
+        .args(["recover", "--discard"])
+        .current_dir(root)
+        .status()
+        .expect("failed to spawn csnotes");
+    assert!(status.success(), "recover --discard should succeed");
+
+    // _synthetic/ must contain the restored note, not the garbage
+    let restored = fs::read_to_string(root.join("_synthetic/cpsc5001/good-note.md")).unwrap();
+    assert_eq!(
+        restored, good_content,
+        "_synthetic/ should be restored from snapshot"
+    );
+
+    // session_in_progress must be cleared
+    let manifest_raw = fs::read_to_string(root.join("csnotes.json")).unwrap();
+    let manifest_val: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();
+    assert!(
+        manifest_val["session_in_progress"].is_null(),
+        "session_in_progress should be cleared after recover"
+    );
+
+    // Snapshot dir is consumed by restore_snapshot (renamed to _synthetic/)
+    assert!(
+        !snapshot_dir.exists(),
+        "snapshot dir should be gone after restore"
     );
 }
 

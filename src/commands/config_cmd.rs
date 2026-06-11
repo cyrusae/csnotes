@@ -88,8 +88,8 @@ struct SessionRename {
     old_id: String,
     new_id: String,
     new_raw_note: String,
-    /// `(plaud_export_index, new_rel_path)`
-    new_plaud: Vec<(usize, String)>,
+    /// `(recording_export_index, new_rel_path)`
+    new_recordings: Vec<(usize, String)>,
     /// `(artifact_index, new_rel_path)`
     new_artifacts: Vec<(usize, String)>,
     files: Vec<FileRename>,
@@ -120,7 +120,7 @@ fn run_migrate(
             old_id: session_id.clone(),
             new_id: new_stem.clone(),
             new_raw_note: String::new(),
-            new_plaud: Vec::new(),
+            new_recordings: Vec::new(),
             new_artifacts: Vec::new(),
             files: Vec::new(),
         };
@@ -135,8 +135,8 @@ fn run_migrate(
         });
         sr.new_raw_note = new_raw_rel;
 
-        // Plaud exports
-        for (i, p) in entry.plaud_exports.iter().enumerate() {
+        // Recording exports
+        for (i, p) in entry.recording_exports.iter().enumerate() {
             if let Some(new_rel) = try_rename_in_path(&p.path, session_id, &new_stem) {
                 sr.files.push(FileRename {
                     old_abs: vault_root.join(&p.path),
@@ -144,7 +144,7 @@ fn run_migrate(
                     old_rel: p.path.clone(),
                     new_rel: new_rel.clone(),
                 });
-                sr.new_plaud.push((i, new_rel));
+                sr.new_recordings.push((i, new_rel));
             }
         }
 
@@ -233,8 +233,8 @@ fn run_migrate(
         // Update manifest: remove old key, insert under new key
         if let Some(mut entry) = new_manifest.sessions.shift_remove(&sr.old_id) {
             entry.raw_note = sr.new_raw_note.clone();
-            for (i, new_path) in &sr.new_plaud {
-                entry.plaud_exports[*i].path = new_path.clone();
+            for (i, new_path) in &sr.new_recordings {
+                entry.recording_exports[*i].path = new_path.clone();
             }
             for (i, new_path) in &sr.new_artifacts {
                 entry.artifacts[*i].path = new_path.clone();
@@ -400,9 +400,16 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
             ensure_no_spaces(value, "raw_dir")?;
             config.raw_dir = value.to_string();
         }
-        "plaud_dir" => {
-            ensure_no_spaces(value, "plaud_dir")?;
-            config.plaud_dir = value.to_string();
+        "recordings_dir" => {
+            ensure_no_spaces(value, "recordings_dir")?;
+            config.recordings_dir = value.to_string();
+        }
+        "require_recordings" => {
+            config.require_recordings = match value {
+                "true" | "1" | "yes" => true,
+                "false" | "0" | "no" => false,
+                _ => bail!("require_recordings must be true or false"),
+            };
         }
         "artifacts_dir" => {
             ensure_no_spaces(value, "artifacts_dir")?;

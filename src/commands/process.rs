@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Result};
 use chrono::Utc;
+use owo_colors::OwoColorize;
 
 use crate::audit::{invariant_suite, precondition_pass};
 use crate::backend::make_backend;
@@ -35,7 +36,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
 
-    // Auto-reconcile: pick up any raw notes, Plaud exports, artifacts, or
+    // Auto-reconcile: pick up any raw notes, recording exports, artifacts, or
     // sources added since the last run.  Quiet when nothing is new so the
     // normal process flow isn't cluttered; still prints "+ session …" lines
     // if new files are discovered.
@@ -60,27 +61,28 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     // ── Auto-reconcile ────────────────────────────────────────────────────
     // (Phase 2: reconcile runs here automatically)
 
-    // ── No-Plaud prompt ───────────────────────────────────────────────────
+    // ── No-recording prompt ──────────────────────────────────────────────
     if let WorkspaceScope::Session { session_id } = &scope {
-        let needs_prompt = manifest
-            .sessions
-            .get(session_id)
-            .map_or(false, |e| e.plaud_exports.is_empty() && !e.plaud_missing);
-        if needs_prompt {
-            let choice = prompt_no_plaud(session_id)?;
-            match choice {
-                PlaudChoice::Continue => {
-                    manifest
-                        .sessions
-                        .get_mut(session_id)
-                        .unwrap()
-                        .plaud_missing = true;
+        if let Some(entry) = manifest.sessions.get(session_id) {
+            let needs_prompt = config.recordings_required_for(&entry.course)
+                && entry.recording_exports.is_empty()
+                && !entry.recording_missing;
+            if needs_prompt {
+                let choice = prompt_no_recording(session_id)?;
+                match choice {
+                    RecordingChoice::Continue => {
+                        manifest
+                            .sessions
+                            .get_mut(session_id)
+                            .unwrap()
+                            .recording_missing = true;
+                    }
+                    RecordingChoice::Pause => {
+                        println!("Paused. Add recording exports and run `csnotes process` again.");
+                        return Ok(());
+                    }
+                    RecordingChoice::Quit => return Ok(()),
                 }
-                PlaudChoice::Pause => {
-                    println!("Paused. Add Plaud exports and run `csnotes process` again.");
-                    return Ok(());
-                }
-                PlaudChoice::Quit => return Ok(()),
             }
         }
     }
@@ -106,35 +108,41 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     let workspace_root = assemble(&ws_params)?;
 
     if args.dry_run {
-        // Print scope summary
+        let tag = "dry-run".yellow().bold().to_string();
+        let dim_colon = |label: &str, value: &str| {
+            println!("{}  {} {}", tag, label.dimmed(), value);
+        };
+        let continuation = |label: &str, value: &str| {
+            println!("         {} {}", label.dimmed(), value);
+        };
         match &ws_params.scope {
             WorkspaceScope::Session { session_id } => {
-                println!("dry-run  scope   : session {}", session_id);
+                dim_colon("scope   :", &format!("session {}", session_id));
                 if let Some(entry) = manifest.sessions.get(session_id) {
-                    println!("         raw note: {}", entry.raw_note);
-                    println!("         plaud   : {} export{}", entry.plaud_exports.len(),
-                        if entry.plaud_exports.len() == 1 { "" } else { "s" });
+                    continuation("raw note:", &entry.raw_note);
+                    continuation("recordings:", &format!("{} export{}", entry.recording_exports.len(),
+                        if entry.recording_exports.len() == 1 { "" } else { "s" }));
                     if !entry.artifacts.is_empty() {
-                        println!("         artifacts: {}", entry.artifacts.len());
+                        continuation("artifacts:", &entry.artifacts.len().to_string());
                     }
                 }
             }
             WorkspaceScope::Source { source_id } => {
-                println!("dry-run  scope   : source {}", source_id);
+                dim_colon("scope   :", &format!("source {}", source_id));
                 if let Some(entry) = manifest.sources.get(source_id) {
-                    println!("         path    : {}", entry.path);
-                    println!("         kind    : {:?}", entry.kind);
+                    continuation("path    :", &entry.path);
+                    continuation("kind    :", &format!("{:?}", entry.kind));
                 }
             }
             WorkspaceScope::Topic { topic } => {
-                println!("dry-run  scope   : topic {}", topic);
+                dim_colon("scope   :", &format!("topic {}", topic));
                 if let Some(entry) = manifest.topics.get(topic) {
-                    println!("         atomics : {}", entry.atomic_notes.len());
+                    continuation("atomics :", &entry.atomic_notes.len().to_string());
                 }
             }
         }
-        println!("dry-run  backend : {}", backend_kind);
-        println!("dry-run  workspace: {}", workspace_root.display());
+        dim_colon("backend :", &backend_kind.to_string());
+        dim_colon("workspace:", &workspace_root.display().to_string());
         return Ok(());
     }
 
@@ -157,9 +165,9 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     let launch_result = backend.launch(&workspace_root);
 
     if let Err(e) = launch_result {
-        eprintln!("Backend exited with error: {}", e);
+        eprintln!("{} {}", "Backend exited with error:".red().bold(), e);
         eprintln!("Workspace preserved at: {}", workspace_root.display());
-        eprintln!("Run `csnotes recover` to resume or discard.");
+        eprintln!("Run {} to resume or discard.", "`csnotes recover`".bold());
         // Record the error in the manifest
         if let Some(ref mut rec) = manifest.session_in_progress {
             rec.error = Some(e.to_string());
@@ -185,18 +193,18 @@ pub fn run_teardown(
     // Step 2: Locate + parse report
     let report_path = workspace_root.join(REPORT_FILENAME);
     if !report_path.exists() {
-        eprintln!("No session report found at {}.", report_path.display());
+        eprintln!("{}", "No session report found.".red().bold());
         eprintln!("Re-enter the session and have the AI write the report:");
-        eprintln!("  csnotes recover --resume");
+        eprintln!("  {}", "csnotes recover --resume".bold());
         return Ok(());
     }
 
     let report = match SessionReport::load(workspace_root) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Session report parse error: {}", e);
+            eprintln!("{} {}", "Session report parse error:".red().bold(), e);
             eprintln!("Workspace preserved. Re-enter and fix the report:");
-            eprintln!("  csnotes recover --resume");
+            eprintln!("  {}", "csnotes recover --resume".bold());
             return Ok(());
         }
     };
@@ -211,7 +219,7 @@ pub fn run_teardown(
 
     // Step 4: Precondition pass
     if let Err(e) = precondition_pass(&report, workspace_root) {
-        eprintln!("Precondition failure — discarding workspace.");
+        eprintln!("{}", "Precondition failure — discarding workspace.".red().bold());
         eprintln!("  {}", e);
         cleanup(workspace_root, vault_root, run_id)?;
         manifest.session_in_progress = None;
@@ -282,7 +290,7 @@ pub fn run_teardown(
     )?;
 
     if !audit.is_clean() {
-        eprintln!("Invariant violations — discarding workspace.");
+        eprintln!("{}", "Invariant violations — discarding workspace.".red().bold());
         audit.print();
         cleanup(workspace_root, vault_root, run_id)?;
         manifest.session_in_progress = None;
@@ -329,13 +337,20 @@ pub fn run_teardown(
     // Cleanup
     cleanup(workspace_root, vault_root, run_id)?;
 
-    println!("Session committed.");
+    println!("{}", "Session committed.".green().bold());
     let n_ops = report.operations.len();
     let n_flags = report.review_flags.iter().filter(|f| f.kind.is_actionable()).count();
     println!("  {} operation{}", n_ops, if n_ops == 1 { "" } else { "s" });
     if n_flags > 0 {
-        println!("  {} actionable flag{} — run `csnotes flags list`",
-            n_flags, if n_flags == 1 { "" } else { "s" });
+        println!(
+            "  {}",
+            format!(
+                "{} actionable flag{} — run `csnotes flags list`",
+                n_flags,
+                if n_flags == 1 { "" } else { "s" }
+            )
+            .yellow()
+        );
     }
 
     Ok(())
@@ -584,7 +599,7 @@ mod tests {
 
         let cfg = ManifestConfig {
             raw_dir: "notes".into(),
-            plaud_dir: "plaud".into(),
+            recordings_dir: "recordings".into(),
             artifacts_dir: "artifacts".into(),
             sources_dir: "sources".into(),
             synthetic_dir: "_synthetic".into(),
@@ -626,26 +641,26 @@ mod tests {
     }
 }
 
-// ── No-Plaud prompt ───────────────────────────────────────────────────────────
+// ── No-recording prompt ───────────────────────────────────────────────────────
 
-enum PlaudChoice {
+enum RecordingChoice {
     Continue,
     Pause,
     Quit,
 }
 
-fn prompt_no_plaud(session_id: &str) -> Result<PlaudChoice> {
+fn prompt_no_recording(session_id: &str) -> Result<RecordingChoice> {
     use std::io::{self, BufRead, Write};
     print!(
-        "No Plaud exports found for {}. [c]ontinue / [p]ause / [q]uit: ",
+        "No recording exports found for {}. [c]ontinue / [p]ause / [q]uit: ",
         session_id
     );
     io::stdout().flush()?;
     let stdin = io::stdin();
     let line = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
     Ok(match line.trim() {
-        "p" => PlaudChoice::Pause,
-        "q" => PlaudChoice::Quit,
-        _ => PlaudChoice::Continue,
+        "p" => RecordingChoice::Pause,
+        "q" => RecordingChoice::Quit,
+        _ => RecordingChoice::Continue,
     })
 }

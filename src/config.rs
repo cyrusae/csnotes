@@ -40,20 +40,19 @@ pub enum SkillVariant {
 #[serde(rename_all = "snake_case")]
 pub enum SnapshotMode {
     PreMerge,
-    ShadowGit,
 }
 
 // ── VaultConfig ───────────────────────────────────────────────────────────────
 
-/// Contents of `.csnotes` — the TOML config file at the vault root.
+/// Contents of `csnotes.toml` — the TOML config file at the vault root.
 /// `vault_root` is NOT stored here; it is derived from the file's location.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VaultConfig {
     // Directory names (relative to vault root)
     #[serde(default = "default_raw_dir")]
     pub raw_dir: String,
-    #[serde(default = "default_plaud_dir")]
-    pub plaud_dir: String,
+    #[serde(default = "default_recordings_dir")]
+    pub recordings_dir: String,
     #[serde(default = "default_artifacts_dir")]
     pub artifacts_dir: String,
     #[serde(default = "default_sources_dir")]
@@ -65,7 +64,7 @@ pub struct VaultConfig {
     #[serde(default = "default_csnotes_dir")]
     pub csnotes_dir: String,
 
-    /// Filename template for raw notes and Plaud exports.
+    /// Filename template for raw notes and recording exports.
     /// Tokens: `{course}`, `{yyyy}`, `{mm}`, `{dd}`.  Must contain `{course}`
     /// and at least one date token; all tokens separated by `-`.
     #[serde(default = "default_filename_format")]
@@ -88,10 +87,20 @@ pub struct VaultConfig {
     #[serde(default = "default_archive_threshold_weeks")]
     pub archive_threshold_weeks: u32,
 
-    /// Recognized Plaud export qualifiers (beyond always-recognized single
-    /// letters a–z).  Extend as you discover new Plaud output formats.
-    #[serde(default = "default_plaud_qualifiers")]
-    pub plaud_qualifiers: Vec<String>,
+    /// Recognized recording export qualifiers (beyond always-recognized single
+    /// letters a–z).  Extend as you discover new recording output formats.
+    #[serde(default = "default_recording_qualifiers")]
+    pub recording_qualifiers: Vec<String>,
+
+    /// Set to false to never expect or prompt for recording exports globally.
+    #[serde(default = "default_require_recordings")]
+    pub require_recordings: bool,
+
+    /// Courses that never have recording exports. Takes effect even when
+    /// `require_recordings` is true.  Edit `csnotes.toml` directly to manage
+    /// this list.
+    #[serde(default)]
+    pub courses_without_recordings: Vec<String>,
 
     /// Gemini model to pass to `agy --model`.  When absent the `agy` default
     /// is used.  Example values: `gemini-2.5-flash`, `gemini-2.5-pro`.
@@ -101,7 +110,7 @@ pub struct VaultConfig {
 }
 
 fn default_raw_dir() -> String { "notes".into() }
-fn default_plaud_dir() -> String { "plaud".into() }
+fn default_recordings_dir() -> String { "recordings".into() }
 fn default_artifacts_dir() -> String { "artifacts".into() }
 fn default_sources_dir() -> String { "sources".into() }
 fn default_synthetic_dir() -> String { "_synthetic".into() }
@@ -112,13 +121,14 @@ fn default_backend() -> AiBackend { AiBackend::Claude }
 fn default_skill_variant() -> SkillVariant { SkillVariant::Claude }
 fn default_snapshot_mode() -> SnapshotMode { SnapshotMode::PreMerge }
 fn default_archive_threshold_weeks() -> u32 { 8 }
-fn default_plaud_qualifiers() -> Vec<String> {
+fn default_recording_qualifiers() -> Vec<String> {
     vec!["transcript".into(), "summary".into(), "mindmap".into()]
 }
+fn default_require_recordings() -> bool { true }
 
 impl VaultConfig {
     pub fn load(vault_root: &Path) -> Result<Self> {
-        let path = vault_root.join(".csnotes");
+        let path = vault_root.join("csnotes.toml");
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
         let cfg: VaultConfig = toml::from_str(&content)
@@ -127,9 +137,9 @@ impl VaultConfig {
     }
 
     pub fn save(&self, vault_root: &Path) -> Result<()> {
-        let path = vault_root.join(".csnotes");
+        let path = vault_root.join("csnotes.toml");
         let content = toml::to_string_pretty(self)
-            .context("serializing .csnotes")?;
+            .context("serializing csnotes.toml")?;
         std::fs::write(&path, content)
             .with_context(|| format!("writing {}", path.display()))?;
         Ok(())
@@ -144,16 +154,22 @@ impl VaultConfig {
         Ok(())
     }
 
-    /// Does this qualifier string (after the base stem) count as a Plaud export?
+    /// Does this qualifier string (after the base stem) count as a recording export?
     /// Always-recognized: single lowercase ASCII letter.
-    /// Also recognized: anything in `plaud_qualifiers`.
-    pub fn is_plaud_qualifier(&self, qualifier: &str) -> bool {
+    /// Also recognized: anything in `recording_qualifiers`.
+    pub fn is_recording_qualifier(&self, qualifier: &str) -> bool {
         if qualifier.len() == 1
             && qualifier.chars().next().map_or(false, |c| c.is_ascii_lowercase())
         {
             return true;
         }
-        self.plaud_qualifiers.iter().any(|q| q == qualifier)
+        self.recording_qualifiers.iter().any(|q| q == qualifier)
+    }
+
+    /// True when recording exports are expected for the given course.
+    pub fn recordings_required_for(&self, course: &str) -> bool {
+        self.require_recordings
+            && !self.courses_without_recordings.iter().any(|c| c == course)
     }
 
     /// Instruction file path in the vault (to be copied into the workspace).
@@ -182,12 +198,12 @@ impl VaultConfig {
 
 // ── Vault root discovery ──────────────────────────────────────────────────────
 
-/// Walk upward from `start` until we find a directory containing `.csnotes`.
-/// Returns the vault root (the directory containing `.csnotes`).
+/// Walk upward from `start` until we find a directory containing `csnotes.toml`.
+/// Returns the vault root (the directory containing `csnotes.toml`).
 pub fn find_vault_root(start: &Path) -> Result<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join(".csnotes").exists() {
+        if current.join("csnotes.toml").exists() {
             return Ok(current);
         }
         match current.parent() {
@@ -481,10 +497,10 @@ mod tests {
     }
 
     #[test]
-    fn plaud_qualifier_recognition() {
+    fn recording_qualifier_recognition() {
         let cfg = VaultConfig {
             raw_dir: default_raw_dir(),
-            plaud_dir: default_plaud_dir(),
+            recordings_dir: default_recordings_dir(),
             artifacts_dir: default_artifacts_dir(),
             sources_dir: default_sources_dir(),
             synthetic_dir: default_synthetic_dir(),
@@ -496,15 +512,22 @@ mod tests {
             skill_variant: default_skill_variant(),
             snapshot_mode: default_snapshot_mode(),
             archive_threshold_weeks: default_archive_threshold_weeks(),
-            plaud_qualifiers: default_plaud_qualifiers(),
+            recording_qualifiers: default_recording_qualifiers(),
             agy_model: None,
+            require_recordings: true,
+            courses_without_recordings: vec![],
         };
-        assert!(cfg.is_plaud_qualifier("transcript"));
-        assert!(cfg.is_plaud_qualifier("summary"));
-        assert!(cfg.is_plaud_qualifier("a"));
-        assert!(cfg.is_plaud_qualifier("b"));
-        assert!(!cfg.is_plaud_qualifier("notes"));
-        assert!(!cfg.is_plaud_qualifier("v2"));
-        assert!(!cfg.is_plaud_qualifier("ab")); // two letters, not single
+        assert!(cfg.is_recording_qualifier("transcript"));
+        assert!(cfg.is_recording_qualifier("summary"));
+        assert!(cfg.is_recording_qualifier("a"));
+        assert!(cfg.is_recording_qualifier("b"));
+        assert!(!cfg.is_recording_qualifier("notes"));
+        assert!(!cfg.is_recording_qualifier("v2"));
+        assert!(!cfg.is_recording_qualifier("ab")); // two letters, not single
+        assert!(cfg.recordings_required_for("CPSC5001"));
+        assert!(!VaultConfig {
+            courses_without_recordings: vec!["CPSC5001".into()],
+            ..cfg.clone()
+        }.recordings_required_for("CPSC5001"));
     }
 }

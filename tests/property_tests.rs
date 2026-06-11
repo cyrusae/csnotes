@@ -4,7 +4,7 @@
 ///
 /// 1. **proptest idempotency** — `reconcile` is a stable fixed point: running it
 ///    twice on the same vault produces byte-identical manifests regardless of
-///    which sessions, Plaud exports, or sources are present.
+///    which sessions, recording exports, or sources are present.
 ///
 /// 2. **proptest completeness** — every file on disk after `reconcile` is
 ///    registered; no entries are double-counted or silently dropped.
@@ -24,7 +24,7 @@ const BINARY: &str = env!("CARGO_BIN_EXE_csnotes");
 // ── Shared vault helpers ──────────────────────────────────────────────────────
 
 fn write_minimal_config(root: &Path) {
-    fs::write(root.join(".csnotes"), "default_backend = \"mock\"\n").unwrap();
+    fs::write(root.join("csnotes.toml"), "default_backend = \"mock\"\n").unwrap();
 }
 
 fn read_manifest(root: &Path) -> serde_json::Value {
@@ -36,7 +36,7 @@ fn read_manifest(root: &Path) -> serde_json::Value {
 fn write_empty_manifest(root: &Path) {
     let vs = serde_json::to_string(&root.to_string_lossy()).unwrap();
     let content = format!(
-        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","plaud_dir":"plaud","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
+        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","recordings_dir":"recordings","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
     );
     fs::write(root.join("csnotes.json"), content).unwrap();
 }
@@ -45,7 +45,7 @@ fn write_empty_manifest(root: &Path) {
 fn write_single_session_manifest(root: &Path) {
     let vs = serde_json::to_string(&root.to_string_lossy()).unwrap();
     let manifest = format!(
-        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","plaud_dir":"plaud","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{"CPSC5001-09-03":{{"date":"2026-09-03","course":"CPSC5001","filename_format":"{{course}}-{{mm}}-{{dd}}","raw_note":"notes/CPSC5001-09-03.md","plaud_exports":[],"artifacts":[],"plaud_missing":true,"status":"unprocessed","processed_at":null,"topics_updated":[]}}}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
+        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","recordings_dir":"recordings","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{"CPSC5001-09-03":{{"date":"2026-09-03","course":"CPSC5001","filename_format":"{{course}}-{{mm}}-{{dd}}","raw_note":"notes/CPSC5001-09-03.md","recording_exports":[],"artifacts":[],"recording_missing":true,"status":"unprocessed","processed_at":null,"topics_updated":[]}}}},"sources":{{}},"topics":{{}},"session_in_progress":null,"flags_path":"_generated/flags.json"}}"#,
     );
     fs::write(root.join("csnotes.json"), manifest).unwrap();
 }
@@ -55,7 +55,7 @@ fn setup_reconcile_vault() -> TempDir {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
     fs::create_dir_all(root.join("notes")).unwrap();
-    fs::create_dir_all(root.join("plaud")).unwrap();
+    fs::create_dir_all(root.join("recordings")).unwrap();
     fs::create_dir_all(root.join("sources")).unwrap();
     fs::create_dir_all(root.join("_synthetic")).unwrap();
     write_minimal_config(root);
@@ -238,7 +238,7 @@ fn recover_discard_clears_stale_in_progress() {
     let ghost_ws = root.join("_workspace_deadbeef");
     let ws_json = serde_json::to_string(&ghost_ws.to_string_lossy()).unwrap();
     let manifest = format!(
-        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","plaud_dir":"plaud","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":{{"run_id":"deadbeef-0000-0000-0000-000000000000","started_at":"2026-09-03T18:00:00Z","workspace_path":{ws_json},"phase":"synthesizing","error":null,"backend":"mock","skill_variant":"claude"}},"flags_path":"_generated/flags.json"}}"#,
+        r#"{{"version":"2","vault_root":{vs},"config":{{"raw_dir":"notes","recordings_dir":"recordings","artifacts_dir":"artifacts","sources_dir":"sources","synthetic_dir":"_synthetic","generated_dir":"_generated","filename_format":"{{course}}-{{mm}}-{{dd}}","default_backend":"mock","skill_variant":"claude","snapshot_mode":"pre_merge"}},"sessions":{{}},"sources":{{}},"topics":{{}},"session_in_progress":{{"run_id":"deadbeef-0000-0000-0000-000000000000","started_at":"2026-09-03T18:00:00Z","workspace_path":{ws_json},"phase":"synthesizing","error":null,"backend":"mock","skill_variant":"claude"}},"flags_path":"_generated/flags.json"}}"#,
     );
     fs::write(root.join("csnotes.json"), &manifest).unwrap();
 
