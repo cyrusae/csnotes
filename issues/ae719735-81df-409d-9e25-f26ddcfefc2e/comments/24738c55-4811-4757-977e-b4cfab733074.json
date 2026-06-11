@@ -1,0 +1,10 @@
+{
+  "uuid": "24738c55-4811-4757-977e-b4cfab733074",
+  "issue_uuid": "ae719735-81df-409d-9e25-f26ddcfefc2e",
+  "author": "3owj",
+  "content": "L29 done: removed max_depth(1) from scan_artifacts_dir and max_depth(2) from scan_sources_dir in reconcile.rs; raw/recordings/structural limits unchanged (intentionally flat). Added scan_artifacts_finds_nested_in_subdirectory and scan_sources_finds_three_level_nesting tests. 130 tests pass.",
+  "created_at": "2026-06-11T18:57:38.263194Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAuwSW5Ol+9RS/eDzdWbReU0FeNbwbiJTIabpJfqcg8sFL9Lkn0BKUFMLeCwpoUaLuZG6EzfCLbD2oYpoMGT7dAw=="
+}
