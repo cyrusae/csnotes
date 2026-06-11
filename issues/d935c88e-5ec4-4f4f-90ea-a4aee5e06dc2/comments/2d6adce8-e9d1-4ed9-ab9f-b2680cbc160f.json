@@ -1,0 +1,10 @@
+{
+  "uuid": "2d6adce8-e9d1-4ed9-ab9f-b2680cbc160f",
+  "issue_uuid": "d935c88e-5ec4-4f4f-90ea-a4aee5e06dc2",
+  "author": "3owj",
+  "content": "L43 done: AiConversation SourceKind added; Textbook/AiConversation kind inferred from directory prefix; frontmatter gate for AI conversations (files without YAML frontmatter silently skipped); summary/tags fields on SourceEntry populated from frontmatter; scan_ai_conversations config key (default true); heading_scheme skipped for AiConversation; 5 new tests replacing old 3-level nesting test; 157 tests green",
+  "created_at": "2026-06-11T20:08:42.399054Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABANPXTigYR72in48J5CjYm5Ou7Eal+51f7rkJwTmuUHEjEcx3ejLCP1eP02Zm3EOYGyv8RnGcXrxSgKMk+NHapCA=="
+}
