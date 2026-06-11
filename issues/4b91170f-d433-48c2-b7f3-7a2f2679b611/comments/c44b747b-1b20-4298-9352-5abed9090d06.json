@@ -1,0 +1,10 @@
+{
+  "uuid": "c44b747b-1b20-4298-9352-5abed9090d06",
+  "issue_uuid": "4b91170f-d433-48c2-b7f3-7a2f2679b611",
+  "author": "3owj",
+  "content": "L39 done: added ManifestLock RAII guard to manifest.rs using libc::flock (no new dep). Lock acquired in top-level run() of reconcile, process, recover, init; in migrate branch of config_cmd; in reindex branch of audit_cmd. process::run calls reconcile::run_for_vault internally so lock is NOT in run_for_vault to avoid same-process deadlock. Added manifest_lock_is_exclusive test using LOCK_NB to verify exclusion without blocking. 138 tests pass.",
+  "created_at": "2026-06-11T19:14:38.686559Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAT53Bi011fxIn1NQwLzty09FMj7ljANd2KA29h9jOOfegiUawRS/QimiOdqS4c3ega6tmRuasu+OKDyswmc6mCw=="
+}
