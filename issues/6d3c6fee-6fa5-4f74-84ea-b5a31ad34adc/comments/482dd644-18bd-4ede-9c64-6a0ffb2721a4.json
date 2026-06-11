@@ -1,0 +1,10 @@
+{
+  "uuid": "482dd644-18bd-4ede-9c64-6a0ffb2721a4",
+  "issue_uuid": "6d3c6fee-6fa5-4f74-84ea-b5a31ad34adc",
+  "author": "3owj",
+  "content": "L20 done: added libc dep, run_interactive helper in backend.rs ignores SIGINT in parent while child TUI runs, restores SIG_DFL on exit. Both ClaudeBackend and AgyBackend now use it. 115 tests pass.",
+  "created_at": "2026-06-11T17:56:54.361403Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAwrkLLVlpUEowYIkUs3Edyd6zbJS1yGL5r0gS1J986JrXGILgFkQjG2Qnv0AW031wp4zzQA5DYBe/Z/ai+elfDA=="
+}
