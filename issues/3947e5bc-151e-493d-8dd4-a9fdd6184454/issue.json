@@ -1,0 +1,10 @@
+{
+  "uuid": "3947e5bc-151e-493d-8dd4-a9fdd6184454",
+  "display_id": null,
+  "title": "unit tests for precondition_pass error branches (CreateNote/UpdateNote/RenameTopic)",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-11T18:11:49.753751Z",
+  "updated_at": "2026-06-11T18:11:49.753751Z"
+}
