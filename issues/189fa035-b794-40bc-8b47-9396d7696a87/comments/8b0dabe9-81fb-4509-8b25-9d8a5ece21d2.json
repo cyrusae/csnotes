@@ -1,0 +1,10 @@
+{
+  "uuid": "8b0dabe9-81fb-4509-8b25-9d8a5ece21d2",
+  "issue_uuid": "189fa035-b794-40bc-8b47-9396d7696a87",
+  "author": "3owj",
+  "content": "L40 done: expanded run_interactive doc comment to explicitly explain why the #[cfg(unix)] libc::signal lines have no unit tests — process-wide signal disposition races with concurrent test threads. Added SAFETY comment to the SIG_DFL restore line to match the SIG_IGN line. 138 tests pass.",
+  "created_at": "2026-06-11T19:16:45.851079Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAgF7YwgvVCSJVTYHB7SYw85Gb3hR8tF9SzTCu6MFiA6u0cUNYYFKBSBCX1dPBdtEPeO/TN0OZwYASRb1ZXl7pBw=="
+}
