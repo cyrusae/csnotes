@@ -1,0 +1,10 @@
+{
+  "uuid": "53641fc2-4f8e-4ef4-aa09-9736309b257a",
+  "issue_uuid": "02f3f801-9794-444b-9031-6fc052aa979d",
+  "author": "3owj",
+  "content": "L37 done: notify() was already using argv-based osascript invocation (fix already applied). Message content is usize counts only — zero user-controlled input. Added notify_with_injection_attempt_does_not_panic test to lock in the safe calling convention. 137 tests pass.",
+  "created_at": "2026-06-11T19:06:10.228605Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA3eUctk3ftpHFxREoKfIvbep9SCIGhX39oztMz9oPxKBDZVRwxQyf0K4Y9n+h+HPHGIPM35EoEnt/btDahcXOCA=="
+}
