@@ -9,7 +9,7 @@ AI-assisted synthesis of graduate lecture notes into an Obsidian vault.
 ## How it works
 
 ```text
-raw notes + Plaud exports + slides
+raw notes + recording exports + slides
           │
           ▼
   csnotes process

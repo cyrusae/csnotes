@@ -9,7 +9,10 @@
 use std::fs;
 use std::path::PathBuf;
 
+use std::sync::LazyLock;
+
 use anyhow::{bail, Result};
+use regex::Regex;
 
 use crate::config::{VaultConfig, find_vault_root};
 use crate::manifest::{Manifest, SessionStatus};
@@ -71,7 +74,7 @@ pub fn run(args: ExtractArgs) -> Result<()> {
             continue;
         }
 
-        let content = fs::read_to_string(&raw_path)?;
+        let content = crate::frontmatter::read_note(&raw_path)?;
         let extracted = extract_from(&content, filter);
 
         if extracted.is_empty() {
@@ -184,31 +187,22 @@ fn clean_action(line: &str) -> String {
     }
 }
 
+/// Matches lines that look like deadlines.
+///
+/// Uses word boundaries (`\b`) so that:
+/// - `\bdue\b`     catches "due:", "due date", "Due Friday" but NOT "residue"
+/// - `\bdeadline`  catches "deadline", "deadlines"
+/// - `\bsubmit`    catches "submit", "submitted", "submission" (no trailing \b)
+/// - `\bby\s+<day/month>\b` catches "by Monday" but NOT "maybe thursday" or
+///   "standby friday" (the \b before "by" blocks embedded occurrences)
+static DEADLINE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\bdeadline|\bdue\b|\bsubmit|\bby\s+(mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b"
+    ).unwrap()
+});
+
 fn is_deadline(line: &str) -> bool {
-    let low = line.to_ascii_lowercase();
-    low.contains("deadline")
-        || low.contains("due date")
-        || low.contains("due:")
-        || low.contains("submit")
-        // bare "by <weekday/month>" pattern
-        || low.contains(" by ")
-            && (low.contains("monday")
-                || low.contains("tuesday")
-                || low.contains("wednesday")
-                || low.contains("thursday")
-                || low.contains("friday")
-                || low.contains("jan")
-                || low.contains("feb")
-                || low.contains("mar")
-                || low.contains("apr")
-                || low.contains("may")
-                || low.contains("jun")
-                || low.contains("jul")
-                || low.contains("aug")
-                || low.contains("sep")
-                || low.contains("oct")
-                || low.contains("nov")
-                || low.contains("dec"))
+    DEADLINE_RE.is_match(line)
 }
 
 fn is_question(line: &str) -> bool {
@@ -315,6 +309,48 @@ mod tests {
         let questions = extract_from(content, Some("questions"));
         assert_eq!(questions.len(), 1);
         assert_eq!(questions[0].kind, ExtractKind::Question);
+    }
+
+    #[test]
+    fn deadline_bare_due_without_colon() {
+        // "due" without a colon was previously missed
+        let items = extract_from("assignment due friday\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_uppercase_keywords() {
+        let items = extract_from("DEADLINE: submit project\nDUE: Oct 15\n", None);
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().all(|i| i.kind == ExtractKind::Deadline));
+    }
+
+    #[test]
+    fn deadline_submission_variant() {
+        let items = extract_from("homework submission by friday\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn no_false_positive_residue() {
+        // "residue" contains "due" but should not trigger — word boundary fix
+        let items = extract_from("the residue was measured\n", None);
+        assert!(items.is_empty(), "residue should not match due");
+    }
+
+    #[test]
+    fn no_false_positive_maybe() {
+        // "maybe thursday" — "maybe" contains "by" but no word boundary before it
+        let items = extract_from("maybe thursday works for everyone\n", None);
+        assert!(items.is_empty(), "maybe should not match by <day>");
+    }
+
+    #[test]
+    fn no_false_positive_standby() {
+        let items = extract_from("put it on standby friday\n", None);
+        assert!(items.is_empty(), "standby should not match by <day>");
     }
 
     #[test]

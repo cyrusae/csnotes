@@ -17,8 +17,8 @@ use chrono::{Datelike, NaiveDate, Utc};
 
 use crate::config::{FilenameFormat, VaultConfig, find_vault_root};
 use crate::manifest::{
-    ArtifactEntry, ArtifactKind, Manifest, RecordingExport, RecordingKind, SessionEntry, SessionStatus,
-    SourceEntry, SourceKind, SourceStatus,
+    ArtifactEntry, ArtifactKind, Manifest, ManifestLock, RecordingExport, RecordingKind,
+    SessionEntry, SessionStatus, SourceEntry, SourceKind, SourceStatus,
 };
 use crate::markdown::{derive_heading_scheme, parse_headings};
 
@@ -34,6 +34,7 @@ pub struct ReconcileArgs {
 pub fn run(args: ReconcileArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
+    let _lock = ManifestLock::acquire(&vault_root)?;
     run_for_vault(&vault_root, &config, args)
 }
 
@@ -443,7 +444,6 @@ fn scan_artifacts_dir(
     new_artifacts: &mut Vec<(String, String)>,
 ) -> Result<()> {
     for entry in walkdir::WalkDir::new(artifacts_dir)
-        .max_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
@@ -554,7 +554,6 @@ fn scan_sources_dir(
     new_sources: &mut Vec<String>,
 ) -> Result<()> {
     for entry in walkdir::WalkDir::new(sources_dir)
-        .max_depth(2)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
@@ -590,7 +589,7 @@ fn scan_sources_dir(
             .to_string();
 
         // Derive heading scheme via comrak.
-        let heading_scheme = match std::fs::read_to_string(path) {
+        let heading_scheme = match crate::frontmatter::read_note(path) {
             Ok(content) => derive_heading_scheme(&parse_headings(&content)),
             Err(_) => vec![],
         };
@@ -764,6 +763,71 @@ mod tests {
     }
 
     #[test]
+    fn scan_artifacts_finds_nested_in_subdirectory() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        // Artifact nested one level deeper than artifacts_dir (e.g. per-course folder).
+        let course_dir = artifacts_dir.join("CPSC5001");
+        write_file(&course_dir, "CPSC5001-09-03-slides.md", "# Slides");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+
+        assert_eq!(new_artifacts.len(), 1, "artifact in subdirectory should be found");
+    }
+
+    #[test]
+    fn scan_sources_finds_three_level_nesting() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        // Three levels deep: sources/AI-Conversations/Gemini/file.md
+        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
+        write_file(&deep_dir, "sorting-questions.md", "# Sorting Q&A\n");
+
+        let cfg = ManifestConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        };
+        let mut manifest = Manifest::empty(tmp.path().to_path_buf(), cfg);
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, &mut new_sources).unwrap();
+
+        assert_eq!(new_sources.len(), 1, "3-level source should be registered");
+        assert_eq!(new_sources[0], "AI-Conversations/Gemini/sorting-questions");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn notify_macos_message_is_separate_argv_element() {
+        // The security property: the message must land as a distinct argv
+        // element, never embedded in the script strings, so AppleScript-
+        // breaking chars cannot alter the script structure.
+        let injection = "\" & do shell script \"rm -rf /\" & \"";
+        let args = notify_macos_args(injection);
+        // Script strings are the first 6 elements; message is last.
+        assert_eq!(args.last(), Some(&injection));
+        // None of the script strings contain the injection payload.
+        for script_arg in &args[..args.len() - 1] {
+            assert!(!script_arg.contains(injection));
+        }
+
+        // Other tricky inputs also land verbatim as the final element.
+        for msg in ["'; display dialog \"pwned\"; '", "line1\nline2\ttab"] {
+            let args = notify_macos_args(msg);
+            assert_eq!(args.last(), Some(&msg));
+        }
+    }
+
+    #[test]
     fn scan_bare_session_id_md_is_slides() {
         let tmp = TempDir::new().unwrap();
         let artifacts_dir = tmp.path().join("artifacts");
@@ -779,6 +843,18 @@ mod tests {
     }
 }
 
+// Returns the osascript argv so the argument structure can be tested without
+// spawning a process (and without showing a real notification in tests).
+#[cfg(target_os = "macos")]
+fn notify_macos_args(message: &str) -> Vec<&str> {
+    vec![
+        "-e", "on run argv",
+        "-e", "display notification (item 1 of argv) with title \"csnotes\"",
+        "-e", "end run",
+        message,
+    ]
+}
+
 fn notify(message: &str) {
     #[cfg(target_os = "macos")]
     {
@@ -786,12 +862,7 @@ fn notify(message: &str) {
         // string, so that quotes or backslashes in the message can't break
         // the AppleScript syntax.
         let _ = std::process::Command::new("osascript")
-            .args([
-                "-e", "on run argv",
-                "-e", "display notification (item 1 of argv) with title \"csnotes\"",
-                "-e", "end run",
-                message,
-            ])
+            .args(notify_macos_args(message))
             .status();
     }
     #[cfg(target_os = "linux")]

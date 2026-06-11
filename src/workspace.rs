@@ -418,7 +418,7 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
             }
 
             // Open flags scoped to this topic.
-            let topic_flags: Vec<_> = flag_store.open_for_topic(topic_name).collect();
+            let topic_flags: Vec<_> = flag_store.open_for_topic(topic_name, &params.config.synthetic_dir).collect();
             if !topic_flags.is_empty() {
                 out.push_str("- Open flags:\n");
                 for flag in topic_flags {
@@ -604,8 +604,10 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
 
         for embed in embeds {
             if embed.is_block_anchor() {
+                // Normalize to lowercase so case-insensitive Obsidian links
+                // (e.g. ![[Sorting]] → sorting.md) are matched correctly.
                 embedded_by
-                    .entry(embed.file.clone())
+                    .entry(embed.file.to_lowercase())
                     .or_default()
                     .push(index_stem.clone());
             }
@@ -650,7 +652,7 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
         }
 
         let new_value: Option<Vec<String>> = {
-            let v = embedded_by.get(&stem).cloned().unwrap_or_default();
+            let v = embedded_by.get(&stem.to_lowercase()).cloned().unwrap_or_default();
             if v.is_empty() { None } else { Some(v) }
         };
 

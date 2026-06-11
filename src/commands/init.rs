@@ -9,7 +9,7 @@ use crate::config::{
     find_vault_root,
 };
 use crate::flags::FlagStore;
-use crate::manifest::{Manifest, ManifestConfig};
+use crate::manifest::{Manifest, ManifestConfig, ManifestLock};
 
 /// `csnotes init`
 ///
@@ -109,6 +109,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
     if manifest_path.exists() {
         println!("  Skipped: csnotes.json (already exists)");
     } else {
+        let _lock = ManifestLock::acquire(&vault_root)?;
         let manifest_config = ManifestConfig::from_vault_config(&cfg);
         let manifest = Manifest::empty(vault_root.clone(), manifest_config);
         manifest.save(&vault_root)?;

@@ -26,7 +26,7 @@ _session_report.json ← you write this before exiting
 
 Read `_session.md`.  It tells you the scope, what inputs are present, any open
 flags from previous sessions, and the full list of existing block IDs.  Then
-read the input files.
+read the raw notes and Plaud recording input files.
 
 ---
 
@@ -78,5 +78,3 @@ Read `report_schema.md` before writing `_session_report.json`.
 - Every file you created or edited has a corresponding operation in the report.
 
 If you need to do more work, don't exit — it's easier than recovering.
-If you do exit early without writing the report, `csnotes recover --resume`
-will re-launch this session against the same workspace.

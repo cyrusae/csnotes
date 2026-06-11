@@ -25,6 +25,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Filesystem
 walkdir  = "2"
 fs_extra = "1"
+libc     = "0.2"
 
 # IDs / paths
 uuid = { version = "1", features = ["v4"] }

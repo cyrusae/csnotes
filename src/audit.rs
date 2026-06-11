@@ -11,7 +11,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::error::CsnotesError;
-use crate::frontmatter::{parse_frontmatter, NoteKind};
+use crate::frontmatter::{parse_frontmatter, read_note, NoteKind};
 use crate::manifest::Manifest;
 use crate::obsidian::{collect_all_block_ids, extract_block_ids, extract_embeds, extract_wikilinks};
 use crate::pathutil::safe_join;
@@ -285,7 +285,7 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig) -> Re
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match std::fs::read_to_string(entry.path()) {
+        let content = match read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -477,12 +477,16 @@ fn check_links_resolve(
     search_root: &Path,
     result: &mut AuditResult,
 ) -> Result<()> {
+    // Pre-collect all note stems once so each link lookup is O(1) rather than
+    // triggering a full WalkDir per link (which would be O(N²) across N notes).
+    let known_stems = collect_note_stems(search_root);
+
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match std::fs::read_to_string(entry.path()) {
+        let content = match read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -494,7 +498,7 @@ fn check_links_resolve(
             .to_string();
 
         for link in extract_wikilinks(&content) {
-            if !note_exists_in_tree(search_root, &link.target) {
+            if !known_stems.contains(&link.target.to_lowercase()) {
                 result.hard_violations.push(format!(
                     "broken wikilink [[{}]] in '{}'",
                     link.target, source_rel
@@ -503,7 +507,7 @@ fn check_links_resolve(
         }
 
         for embed in extract_embeds(&content) {
-            if !note_exists_in_tree(search_root, &embed.file) {
+            if !known_stems.contains(&embed.file.to_lowercase()) {
                 result.hard_violations.push(format!(
                     "broken embed ![[{}]] in '{}'",
                     embed.file, source_rel
@@ -514,8 +518,24 @@ fn check_links_resolve(
     Ok(())
 }
 
+/// Collect the lowercased file stems of all `.md` files under `root`.
+/// Used to build a lookup set for link-resolution checks.
+fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
+    walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter_map(|e| {
+            e.path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_lowercase())
+        })
+        .collect()
+}
+
 fn note_exists_in_tree(root: &Path, note_name: &str) -> bool {
-    // Search for a .md file whose stem matches `note_name`.
+    // Obsidian resolves wikilinks case-insensitively, so we do the same.
     for entry in walkdir::WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -524,7 +544,8 @@ fn note_exists_in_tree(root: &Path, note_name: &str) -> bool {
         if entry
             .path()
             .file_stem()
-            .map_or(false, |s| s == note_name)
+            .and_then(|s| s.to_str())
+            .map_or(false, |s| s.eq_ignore_ascii_case(note_name))
         {
             return true;
         }
@@ -568,7 +589,7 @@ pub fn collect_fixes(
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match std::fs::read_to_string(entry.path()) {
+        let content = match read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -638,12 +659,12 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match std::fs::read_to_string(entry.path()) {
+        let content = match read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
         for embed in extract_embeds(&content) {
-            embedded.insert(embed.file);
+            embedded.insert(embed.file.to_lowercase());
         }
     }
 
@@ -653,7 +674,7 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
     {
-        let content = match std::fs::read_to_string(entry.path()) {
+        let content = match read_note(entry.path()) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -665,7 +686,7 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
-                if !embedded.contains(&stem) {
+                if !embedded.contains(&stem.to_lowercase()) {
                     result.soft_warnings.push(format!(
                         "orphan atomic '{}' — not embedded by any index note",
                         entry.path().display()
@@ -675,4 +696,337 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
         }
     }
     Ok(())
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use chrono::Utc;
+    use crate::config::{AiBackend, SkillVariant, SnapshotMode, VaultConfig};
+    use crate::frontmatter::ProvenanceDelta;
+    use crate::manifest::ManifestConfig;
+    use crate::report::{
+        CreateNoteOp, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp,
+    };
+
+    fn write(dir: &std::path::Path, name: &str, body: &str) {
+        if let Some(parent) = dir.join(name).parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(dir.join(name), body).unwrap();
+    }
+
+    fn make_vault_config() -> VaultConfig {
+        serde_json::from_str("{}").unwrap()
+    }
+
+    fn make_empty_manifest(vault_root: &Path) -> Manifest {
+        Manifest::empty(
+            vault_root.to_path_buf(),
+            ManifestConfig {
+                raw_dir: "notes".into(),
+                recordings_dir: "recordings".into(),
+                artifacts_dir: "artifacts".into(),
+                sources_dir: "sources".into(),
+                synthetic_dir: "_synthetic".into(),
+                generated_dir: "_generated".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                default_backend: AiBackend::Mock,
+                skill_variant: SkillVariant::Claude,
+                snapshot_mode: SnapshotMode::PreMerge,
+            },
+        )
+    }
+
+    fn make_report(ops: Vec<Op>) -> SessionReport {
+        SessionReport {
+            csnotes_report_schema: 1,
+            run_id: "test-run".into(),
+            backend: "mock".into(),
+            started_at: Utc::now(),
+            completed_at: Utc::now(),
+            scope: ReportScope {
+                kind: ScopeKind::Session,
+                sessions: vec![],
+                sources: vec![],
+                topic: None,
+            },
+            operations: ops,
+            review_flags: vec![],
+        }
+    }
+
+    fn csnotes_note() -> &'static str {
+        "---\ncsnotes_schema: 1\nkind: atomic\ntopic: test\ntitle: Test\n\
+         block_id: test-01\ncontributing_sessions: []\ncontributing_sources: []\n\
+         created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+         ---\nContent.\n"
+    }
+
+    fn create_op(path: &str) -> Op {
+        Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: path.into(),
+            title: "Test".into(),
+            topic: "test".into(),
+            block_id: None,
+            embed_in: vec![],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })
+    }
+
+    fn update_op(path: &str) -> Op {
+        Op::UpdateNote(UpdateNoteOp {
+            path: path.into(),
+            add_provenance: ProvenanceDelta::default(),
+            sections: vec![],
+            change_summary: "test".into(),
+        })
+    }
+
+    fn rename_op(from: &str, to: &str) -> Op {
+        Op::RenameTopic(RenameTopicOp {
+            from: from.into(),
+            to: to.into(),
+            reason: "test".into(),
+        })
+    }
+
+    // ── precondition_pass tests ───────────────────────────────────────────────
+
+    #[test]
+    fn precondition_pass_empty_report_ok() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    #[test]
+    fn precondition_create_note_file_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        // AI is supposed to have written the file, but it's absent.
+        let report = make_report(vec![create_op("note.md")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("note.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_create_note_existing_frontmatter_errors() {
+        let tmp = TempDir::new().unwrap();
+        // File already has csnotes frontmatter → would clobber an existing note.
+        write(tmp.path(), "note.md", csnotes_note());
+        let report = make_report(vec![create_op("note.md")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    #[test]
+    fn precondition_create_note_fresh_file_passes() {
+        let tmp = TempDir::new().unwrap();
+        // File exists but has no frontmatter — AI wrote a fresh file, that's correct.
+        write(tmp.path(), "note.md", "# Raw content, no frontmatter\n");
+        let report = make_report(vec![create_op("note.md")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    #[test]
+    fn precondition_create_note_embed_in_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", "# Content\n");
+        let report = make_report(vec![Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: "note.md".into(),
+            title: "Test".into(),
+            topic: "test".into(),
+            block_id: None,
+            embed_in: vec!["index.md".into()],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("index.md"), "{err}");
+    }
+
+    #[test]
+    fn precondition_update_note_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![update_op("note.md")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("note.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_update_note_exists_passes() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", csnotes_note());
+        let report = make_report(vec![update_op("note.md")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    #[test]
+    fn precondition_rename_topic_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![rename_op("sorting", "algorithms")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("sorting"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_rename_topic_dest_exists_errors() {
+        let tmp = TempDir::new().unwrap();
+        // Source exists under _synthetic/; dest also exists → collision.
+        std::fs::create_dir_all(tmp.path().join("_synthetic/sorting")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/algorithms")).unwrap();
+        let report = make_report(vec![rename_op("sorting", "algorithms")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("algorithms"), "{err}");
+        assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    #[test]
+    fn crlf_frontmatter_parsed_correctly_in_audit() {
+        // check_orphan_atomics reads file content; before the read_note fix,
+        // CRLF line endings caused parse_frontmatter to fail, silently skipping
+        // notes and producing no orphan warnings for unembedded atomics.
+        let tmp = TempDir::new().unwrap();
+        let crlf_atomic = "---\r\ncsnotes_schema: 1\r\nkind: atomic\r\ntopic: cs\r\n\
+            title: Sorting\r\nblock_id: sort-01\r\ncontributing_sessions: []\r\n\
+            contributing_sources: []\r\ncreated: \"2026-01-01T00:00:00Z\"\r\n\
+            last_updated: \"2026-01-01T00:00:00Z\"\r\n---\r\nSorting content.\r\n";
+        write(tmp.path(), "sorting.md", crlf_atomic);
+
+        let mut result = AuditResult::default();
+        check_orphan_atomics(tmp.path(), &mut result).unwrap();
+        // The atomic is not embedded by anything, so it must appear as an orphan.
+        // If CRLF broke parse_frontmatter, kind would be unknown and no warning
+        // would be emitted — the assertion would fail.
+        assert_eq!(result.soft_warnings.len(), 1);
+        assert!(result.soft_warnings[0].contains("orphan atomic"));
+    }
+
+    #[test]
+    fn collect_note_stems_lowercases_all() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "Sorting.md", "");
+        write(tmp.path(), "BFS.md", "");
+        write(tmp.path(), "not-a-note.txt", "");
+        let stems = collect_note_stems(tmp.path());
+        assert!(stems.contains("sorting"));
+        assert!(stems.contains("bfs"));
+        assert!(!stems.contains("not-a-note"));
+    }
+
+    #[test]
+    fn check_links_resolve_accepts_case_insensitive_links() {
+        let tmp = TempDir::new().unwrap();
+        // Index note links to "Sorting" (capital S); the file on disk is "sorting.md".
+        write(tmp.path(), "sorting.md", "# Sorting\n");
+        write(tmp.path(), "index.md", "See [[Sorting]].\n");
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
+        assert!(result.hard_violations.is_empty(), "{:?}", result.hard_violations);
+    }
+
+    #[test]
+    fn check_links_resolve_flags_broken_link() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "index.md", "See [[nonexistent]].\n");
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
+        assert_eq!(result.hard_violations.len(), 1);
+        assert!(result.hard_violations[0].contains("nonexistent"));
+    }
+
+    // ── audit_vault caller tests ──────────────────────────────────────────────
+
+    #[test]
+    fn audit_vault_warns_when_synthetic_dir_absent() {
+        let tmp = TempDir::new().unwrap();
+        // No _synthetic/ directory created.
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(result.hard_violations.is_empty());
+        assert_eq!(result.soft_warnings.len(), 1);
+        assert!(result.soft_warnings[0].contains("does not exist"), "{:?}", result.soft_warnings);
+    }
+
+    #[test]
+    fn audit_vault_broken_wikilink_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        // _synthetic/ exists but the link target does not.
+        write(tmp.path(), "_synthetic/index.md", "See [[missing-note]].\n");
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("missing-note")),
+            "expected hard violation for missing-note, got: {:?}", result.hard_violations
+        );
+    }
+
+    #[test]
+    fn audit_vault_orphan_atomic_is_soft_warning() {
+        let tmp = TempDir::new().unwrap();
+        // Atomic note not embedded by any index → orphan warning.
+        write(tmp.path(), "_synthetic/cs/sorting.md", csnotes_note());
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(
+            result.soft_warnings.iter().any(|w| w.contains("orphan")),
+            "expected orphan warning, got: {:?}", result.soft_warnings
+        );
+    }
+
+    // ── invariant_suite caller tests ──────────────────────────────────────────
+
+    #[test]
+    fn invariant_suite_clean_when_no_synthetic_dir() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        // Both check_links_resolve and check_orphan_atomics guard on dir existence.
+        assert!(result.is_clean(), "expected clean result, got: {:?}", result);
+    }
+
+    #[test]
+    fn invariant_suite_broken_wikilink_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/index.md", "See [[ghost-note]].\n");
+        let report = make_report(vec![]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("ghost-note")),
+            "expected hard violation for ghost-note, got: {:?}", result.hard_violations
+        );
+    }
+
+    #[test]
+    fn invariant_suite_orphan_atomic_is_soft_warning() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/sorting.md", csnotes_note());
+        let report = make_report(vec![]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(
+            result.soft_warnings.iter().any(|w| w.contains("orphan")),
+            "expected orphan warning, got: {:?}", result.soft_warnings
+        );
+    }
+
+    #[test]
+    fn note_exists_case_insensitive() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "Sorting.md", "# Sorting\n");
+        // Link written as lowercase should resolve against a mixed-case file.
+        assert!(note_exists_in_tree(tmp.path(), "sorting"));
+        // Link written as exact case also resolves.
+        assert!(note_exists_in_tree(tmp.path(), "Sorting"));
+        // Non-existent note returns false.
+        assert!(!note_exists_in_tree(tmp.path(), "mergesort"));
+    }
 }

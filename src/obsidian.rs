@@ -26,14 +26,17 @@ static BLOCK_ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Matches `[[wikilink]]`, `[[wikilink#section]]`, and `[[wikilink|alias]]`
-/// (but NOT `![[...]]`).  Captures `target` (and optional `#anchor`) in
-/// group 1; the caller splits on `#` in Rust code.
+/// (but NOT `![[...]]`).
 ///
-/// The Rust `regex` crate does not support lookbehind, so we match the
-/// optional preceding non-`!` character (or start-of-input) as a
-/// non-capturing group.
+/// Group 1 captures an optional leading `!` (the embed sigil).
+/// Group 2 captures the link target.  Callers filter out matches where
+/// group 1 == `"!"` and split group 2 on `#` to extract the anchor.
+///
+/// Using a capturing group instead of a consuming `(?:^|[^!])` prefix
+/// fixes adjacent-wikilink parsing: `[[a]][[b]]` — the old prefix consumed
+/// the `]` after `[[a]]`, making `[[b]]` invisible to the next match.
 static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:^|[^!])\[\[([^\]|]+)(?:\|[^\]]*)?\]\]").unwrap()
+    Regex::new(r"(!?)\[\[([^\]|]+)(?:\|[^\]]*)?\]\]").unwrap()
 });
 
 /// Matches `![[embed]]` and `![[embed#^block-id]]`.
@@ -68,9 +71,9 @@ pub struct WikiLink {
 pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
     WIKILINK_RE
         .captures_iter(content)
+        .filter(|cap| &cap[1] != "!")
         .map(|cap| {
-            let inner = &cap[1];
-            // inner may contain #anchor
+            let inner = &cap[2];
             if let Some((target, anchor)) = inner.split_once('#') {
                 WikiLink {
                     target: target.trim().to_string(),
@@ -238,6 +241,15 @@ mod tests {
         assert_eq!(embeds[0].block_id(), Some("poly-core"));
         assert_eq!(embeds[1].file, "method-declarations");
         assert_eq!(embeds[1].anchor, None);
+    }
+
+    #[test]
+    fn adjacent_wikilinks_both_matched() {
+        let content = "[[link1]][[link2]]";
+        let links = extract_wikilinks(content);
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].target, "link1");
+        assert_eq!(links[1].target, "link2");
     }
 
     #[test]

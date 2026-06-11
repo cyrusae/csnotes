@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::config::{VaultConfig, find_vault_root};
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, ManifestLock};
 
 pub struct AuditArgs {
     pub reindex: bool,
@@ -17,6 +17,7 @@ pub fn run(args: AuditArgs) -> Result<()> {
     let _manifest = Manifest::load(&vault_root)?;
 
     if args.reindex {
+        let _lock = ManifestLock::acquire(&vault_root)?;
         println!("Rebuilding manifest from frontmatter...");
         let new_manifest = crate::audit::reindex(&vault_root, &config)?;
         new_manifest.save(&vault_root)?;

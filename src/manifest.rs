@@ -291,11 +291,83 @@ pub struct InProgressRecord {
     pub skill_variant: Option<SkillVariant>,
 }
 
+// ── ManifestLock ─────────────────────────────────────────────────────────────
+
+pub const LOCK_FILENAME: &str = ".csnotes.lock";
+
+/// Advisory exclusive lock over the manifest file.
+///
+/// Acquire with `ManifestLock::acquire(vault_root)` before any load→modify→save
+/// sequence. The lock is released automatically when this value is dropped.
+/// On non-Unix platforms the lock is a no-op (the struct still exists so call
+/// sites compile unchanged).
+pub struct ManifestLock {
+    #[cfg(unix)]
+    _file: std::fs::File,
+}
+
+impl ManifestLock {
+    pub fn acquire(vault_root: &Path) -> Result<Self> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let lock_path = vault_root.join(LOCK_FILENAME);
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&lock_path)
+                .with_context(|| format!("opening lock file {}", lock_path.display()))?;
+            let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+            if ret != 0 {
+                anyhow::bail!(
+                    "could not acquire manifest lock (another csnotes process may be running): {}",
+                    std::io::Error::last_os_error()
+                );
+            }
+            return Ok(ManifestLock { _file: file });
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = vault_root;
+            Ok(ManifestLock {})
+        }
+    }
+}
+
+impl Drop for ManifestLock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            unsafe { libc::flock(self._file.as_raw_fd(), libc::LOCK_UN) };
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn manifest_lock_is_exclusive() {
+        use std::os::unix::io::AsRawFd;
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        let _lock = ManifestLock::acquire(tmp.path()).expect("first acquire should succeed");
+
+        // A second open+flock(LOCK_EX|LOCK_NB) on the same path must fail.
+        let lock_path = tmp.path().join(LOCK_FILENAME);
+        let file2 = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        let ret = unsafe { libc::flock(file2.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        assert_ne!(ret, 0, "second lock attempt should fail while first is held");
+    }
 
     #[test]
     fn manifest_roundtrip() {

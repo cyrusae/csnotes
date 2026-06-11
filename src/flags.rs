@@ -99,8 +99,8 @@ impl FlagStore {
 
     /// Open flags relevant to a topic (flags whose path starts with the topic
     /// directory — used to populate the briefing).
-    pub fn open_for_topic<'a>(&'a self, topic: &'a str) -> impl Iterator<Item = &'a StoredFlag> + 'a {
-        let prefix = format!("_synthetic/{}/", topic);
+    pub fn open_for_topic<'a>(&'a self, topic: &'a str, synthetic_dir: &str) -> impl Iterator<Item = &'a StoredFlag> + 'a {
+        let prefix = format!("{}/{}/", synthetic_dir, topic);
         self.flags.iter().filter(move |f| {
             f.open && f.path.as_deref().map_or(false, |p| p.starts_with(&prefix))
         })

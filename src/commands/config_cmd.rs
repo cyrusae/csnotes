@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 
 use crate::config::{ensure_no_spaces, find_vault_root, FilenameFormat, VaultConfig};
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, ManifestLock};
 
 pub struct ConfigArgs {
     pub set: Option<String>,
@@ -62,6 +62,7 @@ pub fn run(args: ConfigArgs) -> Result<()> {
     }
 
     if args.migrate {
+        let _lock = ManifestLock::acquire(&vault_root)?;
         let manifest = Manifest::load(&vault_root)?;
         run_migrate(&config, &vault_root, &manifest, args.apply)?;
         return Ok(());

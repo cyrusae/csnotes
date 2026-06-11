@@ -21,6 +21,8 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Result};
+#[cfg(unix)]
+use libc;
 
 use crate::config::{AiBackend, SkillVariant};
 use crate::error::CsnotesError;
@@ -33,6 +35,43 @@ pub trait BackendLauncher {
     fn launch(&self, workspace: &Path) -> Result<()>;
 
     fn backend_name(&self) -> &'static str;
+}
+
+// ── Signal-safe interactive runner ────────────────────────────────────────────
+
+/// Run a command that owns the terminal (TUI/interactive session), blocking until
+/// it exits.
+///
+/// On Unix, SIGINT from Ctrl+C is delivered to the entire foreground process
+/// group, which includes this parent process.  We ignore SIGINT in the parent
+/// for the duration of the child's run so the child TUI can handle it
+/// internally (clearing a prompt, cancelling a generation, etc.) without also
+/// killing `csnotes` and leaving the workspace dangling.  The default handler
+/// is restored immediately when the child exits.
+///
+/// ## Why the `#[cfg(unix)]` signal lines have no unit tests
+///
+/// `libc::signal()` mutates **process-wide** signal disposition.  The Rust test
+/// harness runs tests on multiple threads inside the same process, so any test
+/// that flips `SIGINT` to `SIG_IGN` and back would race with every other
+/// concurrently executing test and could silence `Ctrl+C` for the entire suite.
+/// The only meaningful verification is an end-to-end integration test that
+/// spawns a real child process, sends `SIGINT` to the process group, and
+/// confirms the parent survives — which is not practical as an automated unit
+/// test.  Coverage on these two lines is therefore intentionally absent.
+fn run_interactive(cmd: &mut Command) -> std::io::Result<std::process::ExitStatus> {
+    #[cfg(unix)]
+    // SAFETY: signal() is async-signal-safe; we restore SIG_DFL on exit.
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_IGN);
+    }
+    let result = cmd.status();
+    #[cfg(unix)]
+    // SAFETY: restoring SIG_DFL is always safe; no allocations or locks held.
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_DFL);
+    }
+    result
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
@@ -73,10 +112,9 @@ impl BackendLauncher for ClaudeBackend {
         if self.resume {
             args.push("-c");
         }
-        let status = Command::new("claude")
-            .args(&args)
-            .current_dir(workspace)
-            .status()
+        let mut cmd = Command::new("claude");
+        cmd.args(&args).current_dir(workspace);
+        let status = run_interactive(&mut cmd)
             .map_err(|e| CsnotesError::BackendFailed(format!("claude: {e}")))?;
 
         if !status.success() {
@@ -131,8 +169,7 @@ impl BackendLauncher for AgyBackend {
         ])
         .current_dir(workspace);
 
-        let status = cmd
-            .status()
+        let status = run_interactive(&mut cmd)
             .map_err(|e| CsnotesError::BackendFailed(format!("agy: {e}")))?;
 
         if !status.success() {

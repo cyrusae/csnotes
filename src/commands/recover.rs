@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::backend::make_backend;
 use crate::config::{VaultConfig, find_vault_root};
 use crate::error::CsnotesError;
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, ManifestLock};
 use crate::report::REPORT_FILENAME;
 use crate::workspace::{cleanup, restore_snapshot};
 
@@ -19,6 +19,7 @@ pub struct RecoverArgs {
 pub fn run(args: RecoverArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
+    let _lock = ManifestLock::acquire(&vault_root)?;
     let mut manifest = Manifest::load(&vault_root)?;
 
     let rec = match manifest.session_in_progress.clone() {

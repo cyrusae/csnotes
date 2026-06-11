@@ -350,7 +350,7 @@ impl FilenameFormat {
         let mut pattern = "^".to_string();
         for token in &self.tokens {
             match token {
-                Token::Course => pattern.push_str(r"(?P<course>[A-Za-z][A-Za-z0-9]*)"),
+                Token::Course => pattern.push_str(r"(?P<course>[A-Za-z][A-Za-z0-9_-]*)"),
                 Token::Year => pattern.push_str(r"(?P<yyyy>\d{4})"),
                 Token::Month => pattern.push_str(r"(?P<mm>\d{2})"),
                 Token::Day => pattern.push_str(r"(?P<dd>\d{2})"),
@@ -467,6 +467,24 @@ mod tests {
         assert_eq!(parsed.year, Some(2027));
         assert_eq!(parsed.month, Some(3));
         assert_eq!(parsed.day, Some(12));
+    }
+
+    #[test]
+    fn parse_stem_course_with_hyphen() {
+        let fmt = FilenameFormat::parse("{course}-{mm}-{dd}").unwrap();
+        let parsed = fmt.try_parse_stem("CS-101-07-28").unwrap();
+        assert_eq!(parsed.course, "CS-101");
+        assert_eq!(parsed.month, Some(7));
+        assert_eq!(parsed.day, Some(28));
+    }
+
+    #[test]
+    fn parse_stem_course_with_underscore() {
+        let fmt = FilenameFormat::parse("{course}-{mm}-{dd}").unwrap();
+        let parsed = fmt.try_parse_stem("CPSC_5001-09-03").unwrap();
+        assert_eq!(parsed.course, "CPSC_5001");
+        assert_eq!(parsed.month, Some(9));
+        assert_eq!(parsed.day, Some(3));
     }
 
     #[test]

@@ -10,7 +10,7 @@ use crate::commands::reconcile;
 use crate::config::{AiBackend, VaultConfig, find_vault_root};
 use crate::error::CsnotesError;
 use crate::flags::FlagStore;
-use crate::manifest::{InProgressRecord, Manifest, SessionStatus};
+use crate::manifest::{InProgressRecord, Manifest, ManifestLock, SessionStatus};
 use crate::ops::content::{execute_create_note, execute_update_note};
 use crate::report::{Op, SessionReport, REPORT_FILENAME};
 use crate::workspace::{
@@ -35,6 +35,7 @@ pub struct ProcessArgs {
 pub fn run(args: ProcessArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
+    let _lock = ManifestLock::acquire(&vault_root)?;
 
     // Auto-reconcile: pick up any raw notes, recording exports, artifacts, or
     // sources added since the last run.  Quiet when nothing is new so the
@@ -278,8 +279,8 @@ pub fn run_teardown(
     new_manifest.topics = updated_manifest.topics;
 
     // Mark session(s) as processed and sources as processed
-    update_session_status(&report, &mut new_manifest, now);
-    update_source_status(&report, &mut new_manifest, now);
+    update_session_status(&report, &mut new_manifest, now, &config.synthetic_dir);
+    update_source_status(&report, &mut new_manifest, now, &config.synthetic_dir);
 
     // Step 8: Invariant suite
     let audit = invariant_suite(
@@ -386,11 +387,16 @@ fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String>
             }
             bail!("Session '{}' not found in manifest", id);
         }
-        // Date only: must be unique across courses
+        // Date only: must be unique across courses.
+        // Accepts full YYYY-MM-DD or a suffix like MM-DD / DD that uniquely
+        // identifies one session; ambiguity is handled by the match below.
         let matches: Vec<String> = manifest
             .sessions
             .iter()
-            .filter(|(_, e)| e.date.to_string() == *session)
+            .filter(|(_, e)| {
+                let full = e.date.to_string();
+                full == *session || full.ends_with(&format!("-{}", session))
+            })
             .map(|(id, _)| id.clone())
             .collect();
         match matches.len() {
@@ -422,8 +428,9 @@ fn update_session_status(
     report: &SessionReport,
     manifest: &mut Manifest,
     now: chrono::DateTime<Utc>,
+    synthetic_dir: &str,
 ) {
-    let topics = topics_touched_by_report(report);
+    let topics = topics_touched_by_report(report, synthetic_dir);
     for session_id in &report.scope.sessions {
         if let Some(entry) = manifest.sessions.get_mut(session_id) {
             entry.status = SessionStatus::Processed;
@@ -434,7 +441,7 @@ fn update_session_status(
 }
 
 /// Collect the distinct topic names touched by the content ops in a report.
-fn topics_touched_by_report(report: &SessionReport) -> Vec<String> {
+fn topics_touched_by_report(report: &SessionReport, synthetic_dir: &str) -> Vec<String> {
     use crate::report::Op;
     use std::collections::BTreeSet;
 
@@ -442,7 +449,7 @@ fn topics_touched_by_report(report: &SessionReport) -> Vec<String> {
     for op in &report.operations {
         let topic = match op {
             Op::CreateNote(o) => Some(o.topic.clone()),
-            Op::UpdateNote(o) => topic_from_path(&o.path),
+            Op::UpdateNote(o) => topic_from_path(&o.path, synthetic_dir),
             Op::RenameTopic(o) => {
                 seen.insert(o.from.clone());
                 Some(o.to.clone())
@@ -460,8 +467,9 @@ fn update_source_status(
     report: &SessionReport,
     manifest: &mut Manifest,
     now: chrono::DateTime<Utc>,
+    synthetic_dir: &str,
 ) {
-    let topics = topics_touched_by_report(report);
+    let topics = topics_touched_by_report(report, synthetic_dir);
     for source_id in &report.scope.sources {
         if let Some(entry) = manifest.sources.get_mut(source_id) {
             entry.status = crate::manifest::SourceStatus::Processed;
@@ -472,27 +480,21 @@ fn update_source_status(
 }
 
 /// Extract a topic name from a workspace-relative path like
-/// `_synthetic/{topic}/something.md`.
-fn topic_from_path(path: &str) -> Option<String> {
-    // Strip a leading synthetic dir prefix (e.g. "_synthetic/") if present,
-    // then take the first path component as the topic name.
-    let without_prefix = path
-        .trim_start_matches('/')
-        .split_once('/')
-        .map(|(first, rest)| {
-            // If first component looks like a synthetic dir (starts with "_"),
-            // return the next component; otherwise use first.
-            if first.starts_with('_') {
-                rest.split('/').next().unwrap_or("").to_string()
-            } else {
-                first.to_string()
-            }
-        })?;
-    if without_prefix.is_empty() {
-        None
-    } else {
-        Some(without_prefix)
+/// `{synthetic_dir}/{topic}/something.md`.
+fn topic_from_path(path: &str, synthetic_dir: &str) -> Option<String> {
+    let path = path.trim_start_matches('/');
+    // Strip the configured synthetic dir prefix if present.
+    let inner = path
+        .strip_prefix(&format!("{}/", synthetic_dir))
+        .unwrap_or(path);
+    // Require at least two components (topic/filename) so bare dir names
+    // like "_synthetic" don't produce a spurious topic.
+    let mut parts = inner.splitn(3, '/');
+    let topic = parts.next()?;
+    if topic.is_empty() || parts.next().is_none() {
+        return None;
     }
+    Some(topic.to_string())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -526,7 +528,7 @@ mod tests {
     #[test]
     fn topic_from_path_strips_synthetic_prefix() {
         assert_eq!(
-            topic_from_path("_synthetic/inheritance/poly.md"),
+            topic_from_path("_synthetic/inheritance/poly.md", "_synthetic"),
             Some("inheritance".to_string())
         );
     }
@@ -534,15 +536,29 @@ mod tests {
     #[test]
     fn topic_from_path_handles_no_prefix() {
         assert_eq!(
-            topic_from_path("inheritance/poly.md"),
+            topic_from_path("inheritance/poly.md", "_synthetic"),
             Some("inheritance".to_string())
         );
     }
 
     #[test]
     fn topic_from_path_returns_none_for_shallow_path() {
-        assert_eq!(topic_from_path("_synthetic"), None);
-        assert_eq!(topic_from_path(""), None);
+        assert_eq!(topic_from_path("_synthetic", "_synthetic"), None);
+        assert_eq!(topic_from_path("", "_synthetic"), None);
+    }
+
+    #[test]
+    fn topic_from_path_respects_configured_synthetic_dir() {
+        // Non-default synthetic dir should be stripped correctly.
+        assert_eq!(
+            topic_from_path("notes_synth/sorting/quicksort.md", "notes_synth"),
+            Some("sorting".to_string())
+        );
+        // Default dir should NOT match when a different dir is configured.
+        assert_eq!(
+            topic_from_path("_synthetic/sorting/quicksort.md", "notes_synth"),
+            Some("_synthetic".to_string())
+        );
     }
 
     #[test]
@@ -576,7 +592,7 @@ mod tests {
                 change_summary: "new".to_string(),
             }),
         ];
-        let topics = topics_touched_by_report(&make_report(ops));
+        let topics = topics_touched_by_report(&make_report(ops), "_synthetic");
         assert_eq!(topics, vec!["inheritance", "types"]);
     }
 
@@ -587,9 +603,91 @@ mod tests {
             to: "new-name".to_string(),
             reason: "clearer".to_string(),
         })];
-        let topics = topics_touched_by_report(&make_report(ops));
+        let topics = topics_touched_by_report(&make_report(ops), "_synthetic");
         assert!(topics.contains(&"old-name".to_string()));
         assert!(topics.contains(&"new-name".to_string()));
+    }
+
+    fn make_manifest_with_sessions(sessions: &[(&str, &str, &str)]) -> Manifest {
+        use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+        use crate::manifest::{ManifestConfig, SessionEntry};
+        use chrono::NaiveDate;
+
+        let cfg = ManifestConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        };
+        let mut manifest = Manifest::empty(std::path::PathBuf::from("/tmp"), cfg);
+        for (id, course, date_str) in sessions {
+            let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").unwrap();
+            manifest.sessions.insert(
+                id.to_string(),
+                SessionEntry {
+                    date,
+                    course: course.to_string(),
+                    filename_format: "{course}-{mm}-{dd}".into(),
+                    raw_note: format!("notes/{}.md", id),
+                    recording_exports: vec![],
+                    artifacts: vec![],
+                    recording_missing: false,
+                    status: SessionStatus::Unprocessed,
+                    processed_at: None,
+                    topics_updated: vec![],
+                },
+            );
+        }
+        manifest
+    }
+
+    fn resolve(session: Option<&str>, course: Option<&str>, manifest: &Manifest) -> Result<String> {
+        resolve_session_id(
+            &ProcessArgs {
+                session: session.map(|s| s.to_string()),
+                course: course.map(|s| s.to_string()),
+                source: None,
+                topic: None,
+                dry_run: false,
+                backend: None,
+                fixture: None,
+                agy_model: None,
+            },
+            manifest,
+        )
+    }
+
+    #[test]
+    fn resolve_session_full_date_matches() {
+        let m = make_manifest_with_sessions(&[("CS101-2026-07-28", "CS101", "2026-07-28")]);
+        assert_eq!(resolve(Some("2026-07-28"), None, &m).unwrap(), "CS101-2026-07-28");
+    }
+
+    #[test]
+    fn resolve_session_partial_mm_dd_matches() {
+        let m = make_manifest_with_sessions(&[("CS101-2026-07-28", "CS101", "2026-07-28")]);
+        assert_eq!(resolve(Some("07-28"), None, &m).unwrap(), "CS101-2026-07-28");
+    }
+
+    #[test]
+    fn resolve_session_partial_ambiguous_errors() {
+        let m = make_manifest_with_sessions(&[
+            ("CS101-2026-07-28", "CS101", "2026-07-28"),
+            ("CS202-2026-07-28", "CS202", "2026-07-28"),
+        ]);
+        assert!(resolve(Some("07-28"), None, &m).is_err());
+    }
+
+    #[test]
+    fn resolve_session_no_match_errors() {
+        let m = make_manifest_with_sessions(&[("CS101-2026-07-28", "CS101", "2026-07-28")]);
+        assert!(resolve(Some("06-15"), None, &m).is_err());
     }
 
     #[test]
@@ -632,7 +730,7 @@ mod tests {
         ]);
         report.scope.sources = vec!["SICP/ch01".to_string()];
 
-        update_source_status(&report, &mut manifest, Utc::now());
+        update_source_status(&report, &mut manifest, Utc::now(), "_synthetic");
 
         let entry = manifest.sources.get("SICP/ch01").unwrap();
         assert_eq!(entry.status, SourceStatus::Processed);
