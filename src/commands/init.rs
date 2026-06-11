@@ -38,10 +38,21 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
     FilenameFormat::parse(&filename_format)
         .context("invalid filename format")?;
 
-    let default_course = prompt("Default course (e.g. CS501): ", "")?;
-    if !default_course.is_empty() {
-        ensure_no_spaces(&default_course, "course name")?;
-    }
+    // Detect existing course-like folders.  If found, per-course layout is
+    // implied and we skip the explicit question.  For a fresh vault with
+    // nothing to detect, ask first so the user isn't surprised by the
+    // directory structure that gets created.
+    let candidates = scan_course_candidates(&vault_root);
+    let active_courses = if !candidates.is_empty() {
+        prompt_courses(&candidates)?
+    } else {
+        let per_course = prompt_bool("Use per-course folder layout? [Y/n]: ", true)?;
+        if per_course {
+            prompt_courses(&[])?
+        } else {
+            vec![]
+        }
+    };
 
     let raw_dir = prompt("Raw notes directory [notes]: ", "notes")?;
     ensure_no_spaces(&raw_dir, "raw_dir")?;
@@ -66,11 +77,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         generated_dir: "_generated".into(),
         csnotes_dir: "_csnotes".into(),
         filename_format,
-        active_courses: if default_course.is_empty() {
-            vec![]
-        } else {
-            vec![default_course]
-        },
+        active_courses,
         default_backend,
         skill_variant,
         snapshot_mode: SnapshotMode::PreMerge,
@@ -82,22 +89,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
     };
 
     // ── Create directory tree ──────────────────────────────────────────────────
-    let dirs = [
-        cfg.raw_dir.as_str(),
-        cfg.recordings_dir.as_str(),
-        cfg.artifacts_dir.as_str(),
-        cfg.sources_dir.as_str(),
-        cfg.synthetic_dir.as_str(),
-        cfg.generated_dir.as_str(),
-    ];
-    for d in &dirs {
-        let path = vault_root.join(d);
-        if !path.exists() {
-            fs::create_dir_all(&path)
-                .with_context(|| format!("creating {}", path.display()))?;
-            println!("  Created: {}/", d);
-        }
-    }
+    create_vault_dirs(&vault_root, &cfg)?;
 
     // Instructions directory
     let instructions_dir = vault_root.join(&cfg.csnotes_dir).join("instructions");
@@ -137,16 +129,17 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
     // ── Done ──────────────────────────────────────────────────────────────────
     println!("\nVault initialised.");
     println!("  Edit _csnotes/instructions/ before your first session.");
-    if let Some(course) = cfg.active_courses.first() {
-        println!("\nNext steps:");
-        println!("  1. Add raw notes to {}/{}/", course, cfg.raw_dir);
-        println!("  2. csnotes reconcile");
-        println!("  3. csnotes process");
-    } else {
-        println!("\nNext steps:");
+    println!("\nNext steps:");
+    if cfg.active_courses.is_empty() {
         println!("  1. Add your course(s) to active_courses in csnotes.toml");
         println!("  2. csnotes reconcile");
         println!("  3. csnotes process");
+    } else {
+        for course in &cfg.active_courses {
+            println!("  • Add raw notes to {}/{}/", course, cfg.raw_dir);
+        }
+        println!("  1. csnotes reconcile");
+        println!("  2. csnotes process");
     }
 
     Ok(())
@@ -730,7 +723,140 @@ Add or remove a transclusion link from an index note.
 `present: false` removes the embed.  Both operations are idempotent.
 "##;
 
-// ── Prompt helper ─────────────────────────────────────────────────────────────
+// ── Directory helpers ─────────────────────────────────────────────────────────
+
+fn create_dir_if_absent(vault_root: &Path, rel: &str) -> Result<()> {
+    let path = vault_root.join(rel);
+    if !path.exists() {
+        fs::create_dir_all(&path)
+            .with_context(|| format!("creating {}", path.display()))?;
+        println!("  Created: {}/", rel);
+    }
+    Ok(())
+}
+
+/// Create the vault directory tree under `vault_root` according to `cfg`.
+///
+/// `_synthetic` and `_generated` are always created at vault root.
+/// Content dirs (`raw_dir`, `recordings_dir`, `artifacts_dir`, `sources_dir`)
+/// are created flat at vault root when `active_courses` is empty, or nested
+/// under each course folder when courses are configured.
+pub fn create_vault_dirs(vault_root: &Path, cfg: &VaultConfig) -> Result<()> {
+    for d in &[cfg.synthetic_dir.as_str(), cfg.generated_dir.as_str()] {
+        create_dir_if_absent(vault_root, d)?;
+    }
+
+    let content_dirs = [
+        cfg.raw_dir.as_str(),
+        cfg.recordings_dir.as_str(),
+        cfg.artifacts_dir.as_str(),
+        cfg.sources_dir.as_str(),
+    ];
+
+    if cfg.active_courses.is_empty() {
+        for d in &content_dirs {
+            create_dir_if_absent(vault_root, d)?;
+        }
+    } else {
+        for course in &cfg.active_courses {
+            for d in &content_dirs {
+                let rel = format!("{}/{}", course, d);
+                create_dir_if_absent(vault_root, &rel)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ── Course detection ──────────────────────────────────────────────────────────
+
+/// Scan `vault_root` for subdirectories that look like course folders.
+///
+/// Excludes hidden dirs (`.`-prefixed), system dirs (`_`-prefixed), and a
+/// fixed list of names that init itself might create.  What remains is
+/// presented to the user as candidates for `active_courses`.
+pub fn scan_course_candidates(vault_root: &Path) -> Vec<String> {
+    const EXCLUDE: &[&str] = &[
+        "notes", "recordings", "artifacts", "sources",
+        "target", "node_modules",
+    ];
+
+    let Ok(entries) = std::fs::read_dir(vault_root) else {
+        return vec![];
+    };
+
+    let mut candidates: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            if name.starts_with('.') || name.starts_with('_') {
+                return None;
+            }
+            if EXCLUDE.contains(&name.as_str()) {
+                return None;
+            }
+            if name.contains(' ') {
+                return None;
+            }
+            if !e.path().is_dir() {
+                return None;
+            }
+            Some(name)
+        })
+        .collect();
+
+    candidates.sort();
+    candidates
+}
+
+/// Prompt the user for active courses, pre-filling with detected candidates.
+///
+/// - If candidates were found: shows them and accepts Enter to use all of them,
+///   or lets the user type a space-separated override list.
+/// - If no candidates: plain prompt for a space-separated list (may be empty).
+///
+/// Each course name is validated with `ensure_no_spaces`.
+fn prompt_courses(candidates: &[String]) -> Result<Vec<String>> {
+    let raw = if candidates.is_empty() {
+        prompt(
+            "Active courses (space-separated, e.g. CPSC5001 CPSC5002), or leave blank: ",
+            "",
+        )?
+    } else {
+        let detected = candidates.join(" ");
+        println!("Detected course folders: {}", detected);
+        prompt(
+            "Active courses [Enter to accept all, or type space-separated list]: ",
+            &detected,
+        )?
+    };
+
+    let courses: Vec<String> = raw
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
+    for c in &courses {
+        ensure_no_spaces(c, "course name")?;
+    }
+
+    Ok(courses)
+}
+
+// ── Prompt helpers ────────────────────────────────────────────────────────────
+
+fn prompt_bool(message: &str, default: bool) -> Result<bool> {
+    print!("{}", message);
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(match input.trim().to_lowercase().as_str() {
+        "y" | "yes" => true,
+        "n" | "no" => false,
+        _ => default,
+    })
+}
 
 fn prompt(message: &str, default: &str) -> Result<String> {
     print!("{}", message);
@@ -742,5 +868,138 @@ fn prompt(message: &str, default: &str) -> Result<String> {
         Ok(default.to_string())
     } else {
         Ok(trimmed.to_string())
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn setup(dirs: &[&str], files: &[&str]) -> TempDir {
+        let tmp = TempDir::new().unwrap();
+        for d in dirs {
+            fs::create_dir_all(tmp.path().join(d)).unwrap();
+        }
+        for f in files {
+            fs::write(tmp.path().join(f), "").unwrap();
+        }
+        tmp
+    }
+
+    #[test]
+    fn scan_returns_course_like_dirs() {
+        let tmp = setup(&["CPSC5001", "CPSC5002"], &[]);
+        let mut got = scan_course_candidates(tmp.path());
+        got.sort();
+        assert_eq!(got, vec!["CPSC5001", "CPSC5002"]);
+    }
+
+    #[test]
+    fn scan_excludes_system_dirs() {
+        let tmp = setup(
+            &["CPSC5001", "_synthetic", "_generated", "notes", "recordings", "artifacts", "sources"],
+            &[],
+        );
+        let got = scan_course_candidates(tmp.path());
+        assert_eq!(got, vec!["CPSC5001"]);
+    }
+
+    #[test]
+    fn scan_excludes_hidden_dirs() {
+        let tmp = setup(&["CPSC5001", ".git", ".obsidian"], &[]);
+        let got = scan_course_candidates(tmp.path());
+        assert_eq!(got, vec!["CPSC5001"]);
+    }
+
+    #[test]
+    fn scan_excludes_files() {
+        let tmp = setup(&["CPSC5001"], &["csnotes.toml", "csnotes.json"]);
+        let got = scan_course_candidates(tmp.path());
+        assert_eq!(got, vec!["CPSC5001"]);
+    }
+
+    #[test]
+    fn scan_returns_empty_when_no_candidates() {
+        let tmp = setup(&["notes", "_synthetic"], &[]);
+        let got = scan_course_candidates(tmp.path());
+        assert!(got.is_empty());
+    }
+
+    #[test]
+    fn scan_results_are_sorted() {
+        let tmp = setup(&["CPSC5005", "CPSC5001", "CPSC5002"], &[]);
+        let got = scan_course_candidates(tmp.path());
+        assert_eq!(got, vec!["CPSC5001", "CPSC5002", "CPSC5005"]);
+    }
+
+    fn minimal_config(active_courses: Vec<String>) -> VaultConfig {
+        VaultConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            csnotes_dir: "_csnotes".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            active_courses,
+            default_backend: crate::config::AiBackend::Mock,
+            skill_variant: crate::config::SkillVariant::Claude,
+            snapshot_mode: crate::config::SnapshotMode::PreMerge,
+            archive_threshold_weeks: 8,
+            recording_qualifiers: vec![],
+            agy_model: None,
+            require_recordings: false,
+            courses_without_recordings: vec![],
+        }
+    }
+
+    #[test]
+    fn create_vault_dirs_flat_when_no_courses() {
+        let tmp = TempDir::new().unwrap();
+        let cfg = minimal_config(vec![]);
+        create_vault_dirs(tmp.path(), &cfg).unwrap();
+
+        for d in &["notes", "recordings", "artifacts", "sources", "_synthetic", "_generated"] {
+            assert!(tmp.path().join(d).is_dir(), "expected flat dir: {}", d);
+        }
+    }
+
+    #[test]
+    fn create_vault_dirs_per_course_when_courses_set() {
+        let tmp = TempDir::new().unwrap();
+        let cfg = minimal_config(vec!["CPSC5001".into(), "CPSC5002".into()]);
+        create_vault_dirs(tmp.path(), &cfg).unwrap();
+
+        // Shared dirs always at root.
+        assert!(tmp.path().join("_synthetic").is_dir());
+        assert!(tmp.path().join("_generated").is_dir());
+
+        // Content dirs nested under each course.
+        for course in &["CPSC5001", "CPSC5002"] {
+            for d in &["notes", "recordings", "artifacts", "sources"] {
+                let p = tmp.path().join(course).join(d);
+                assert!(p.is_dir(), "expected {}/{}", course, d);
+            }
+        }
+
+        // Flat content dirs must NOT exist at root.
+        for d in &["notes", "recordings", "artifacts", "sources"] {
+            assert!(!tmp.path().join(d).exists(), "flat {} should not exist when courses set", d);
+        }
+    }
+
+    #[test]
+    fn create_vault_dirs_skips_existing() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("CPSC5001/notes")).unwrap();
+        let cfg = minimal_config(vec!["CPSC5001".into()]);
+        // Should not error on pre-existing dirs.
+        create_vault_dirs(tmp.path(), &cfg).unwrap();
+        assert!(tmp.path().join("CPSC5001/notes").is_dir());
     }
 }

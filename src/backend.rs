@@ -40,15 +40,18 @@ pub trait BackendLauncher {
 /// Construct the appropriate backend from the configured/overridden backend.
 ///
 /// `agy_model` is forwarded to `AgyBackend` only; ignored for other backends.
+/// `resume` causes the backend to re-enter the most recent conversation (`-c`)
+/// rather than starting a fresh one.
 pub fn make_backend(
     backend: AiBackend,
     skill_variant: SkillVariant,
     fixture: Option<String>,
     agy_model: Option<String>,
+    resume: bool,
 ) -> Box<dyn BackendLauncher> {
     match backend {
-        AiBackend::Claude => Box::new(ClaudeBackend { skill_variant }),
-        AiBackend::Agy => Box::new(AgyBackend { skill_variant, model: agy_model }),
+        AiBackend::Claude => Box::new(ClaudeBackend { skill_variant, resume }),
+        AiBackend::Agy => Box::new(AgyBackend { skill_variant, model: agy_model, resume }),
         AiBackend::Mock => Box::new(MockBackend { fixture }),
     }
 }
@@ -57,15 +60,21 @@ pub fn make_backend(
 
 pub struct ClaudeBackend {
     pub skill_variant: SkillVariant,
+    pub resume: bool,
 }
 
 impl BackendLauncher for ClaudeBackend {
     fn launch(&self, workspace: &Path) -> Result<()> {
         // `--system-prompt "."` scopes the system prompt to the workspace's
         // own CLAUDE.md only, preventing global ~/.claude/CLAUDE.md
-        // interference.
+        // interference.  `-c` re-enters the most recent conversation when
+        // resuming an interrupted session.
+        let mut args = vec!["--system-prompt", "."];
+        if self.resume {
+            args.push("-c");
+        }
         let status = Command::new("claude")
-            .args(["--system-prompt", "."])
+            .args(&args)
             .current_dir(workspace)
             .status()
             .map_err(|e| CsnotesError::BackendFailed(format!("claude: {e}")))?;
@@ -91,6 +100,7 @@ pub struct AgyBackend {
     /// Optional Gemini model override passed to `agy --model`.
     /// When `None`, `agy` uses its own default (currently gemini-2.5-pro).
     pub model: Option<String>,
+    pub resume: bool,
 }
 
 impl BackendLauncher for AgyBackend {
@@ -106,6 +116,11 @@ impl BackendLauncher for AgyBackend {
         // Model selection — omit entirely if not set so `agy` uses its default.
         if let Some(ref m) = self.model {
             cmd.args(["--model", m]);
+        }
+
+        // `-c` re-enters the most recent agy conversation (scoped to cwd by agy).
+        if self.resume {
+            cmd.arg("-c");
         }
 
         cmd.args([

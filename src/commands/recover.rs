@@ -86,7 +86,7 @@ pub fn run(args: RecoverArgs) -> Result<()> {
 
                 let backend_kind = rec.backend.unwrap_or(config.default_backend);
                 let skill_variant = rec.skill_variant.unwrap_or(config.skill_variant);
-                let backend = make_backend(backend_kind, skill_variant, None, config.agy_model.clone());
+                let backend = make_backend(backend_kind, skill_variant, None, config.agy_model.clone(), true);
 
                 if let Err(e) = backend.launch(&rec.workspace_path) {
                     eprintln!("Backend exited with error: {}", e);

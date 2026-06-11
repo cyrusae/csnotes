@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- init: create per-course content dirs when active_courses is non-empty (L17)
+- init: detect existing course folders and offer to populate active_courses (L16)
 - config option to disable recordings expectation (global + per-course) (L12)
 - cross_embedded_in rebuild in merge_back + dry_run scope output (L6)
 - Phase 4: move_atomic, promote_atomic, demote_topic, merge_topics, split_topic, set_embed (L5)

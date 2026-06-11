@@ -161,7 +161,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     // ── Launch AI ─────────────────────────────────────────────────────────
     // Per-run override wins; fall back to config value, then agy's built-in default.
     let agy_model = args.agy_model.or(config.agy_model.clone());
-    let backend = make_backend(backend_kind, skill_variant, args.fixture, agy_model);
+    let backend = make_backend(backend_kind, skill_variant, args.fixture, agy_model, false);
     let launch_result = backend.launch(&workspace_root);
 
     if let Err(e) = launch_result {
