@@ -1,0 +1,10 @@
+{
+  "uuid": "f962aaae-c4cb-4a12-a5ba-02fbb9a12d3f",
+  "issue_uuid": "59be6e2f-55e4-4699-a725-b2fdb6f01273",
+  "author": "3owj",
+  "content": "L30 done: replaced is_deadline string-contains logic with DEADLINE_RE regex using \\b word boundaries — catches bare 'due' (not 'residue'), 'DEADLINE'/'DUE' case variants, 'submission'; blocks 'maybe thursday' and 'standby friday' false positives. Added 6 new tests. 136 tests pass.",
+  "created_at": "2026-06-11T19:00:40.676802Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAPwsZIATYFcsIbR83LN/mJoJZbxS5L4wW9775lsgn4ZRCKfxs3+yaLnqaaaYkQVJrvXtzjM0CFuR7clkTV/8ZAQ=="
+}
