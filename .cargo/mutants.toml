@@ -10,5 +10,8 @@ CSNOTES_NO_NOTIFY = "1"
 # the else branch fires more than once. The else branch IS tested; these
 # mutations simply cannot fail fast by design.
 exclude_re = [
+    # replace_note_links: idx+1→idx*1 prevents loop advancement — inherent infinite loop.
     "src/ops/structural\\.rs:612:40: replace \\+ with",
+    # AuditResult::print writes to stdout/stderr; output not verifiable in unit tests.
+    "src/audit\\.rs:34:",
 ]

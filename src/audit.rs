@@ -13,7 +13,7 @@ use anyhow::Result;
 use crate::error::CsnotesError;
 use crate::frontmatter::{parse_frontmatter, read_note, NoteKind};
 use crate::manifest::Manifest;
-use crate::obsidian::{collect_all_block_ids, extract_block_ids, extract_embeds, extract_wikilinks};
+use crate::obsidian::{extract_block_ids, extract_embeds, extract_wikilinks, find_collisions};
 use crate::pathutil::safe_join;
 use crate::report::{Op, SessionReport};
 
@@ -148,14 +148,9 @@ pub fn invariant_suite(
     let mut result = AuditResult::default();
     let synthetic_root = workspace_root.join(synthetic_dir);
 
-    // 1. Collect all block IDs and check uniqueness
-    let block_id_index = collect_all_block_ids(&synthetic_root)?;
-    let mut id_counts: HashMap<String, Vec<String>> = HashMap::new();
-    for (id, path) in &block_id_index {
-        id_counts.entry(id.clone()).or_default().push(path.clone());
-    }
-    for (id, paths) in &id_counts {
-        if paths.len() > 1 {
+    // 1. Check block ID uniqueness across all notes
+    if synthetic_root.exists() {
+        for (id, paths) in block_id_collisions(&synthetic_root)? {
             result.hard_violations.push(format!(
                 "block ID '^{}' appears in multiple files: {}",
                 id,
@@ -264,19 +259,12 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig) -> Re
     }
 
     // Block ID uniqueness
-    let block_id_index = collect_all_block_ids(&synthetic_root)?;
-    let mut id_counts: HashMap<String, Vec<String>> = HashMap::new();
-    for (id, path) in &block_id_index {
-        id_counts.entry(id.clone()).or_default().push(path.clone());
-    }
-    for (id, paths) in &id_counts {
-        if paths.len() > 1 {
-            result.hard_violations.push(format!(
-                "block ID '^{}' appears in multiple files: {}",
-                id,
-                paths.join(", ")
-            ));
-        }
+    for (id, paths) in block_id_collisions(&synthetic_root)? {
+        result.hard_violations.push(format!(
+            "block ID '^{}' appears in multiple files: {}",
+            id,
+            paths.join(", ")
+        ));
     }
 
     // Frontmatter validity + atomic anchor check
@@ -426,6 +414,26 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn block_id_collisions(synthetic_root: &Path) -> Result<HashMap<String, Vec<String>>> {
+    let mut files: Vec<(String, String)> = Vec::new();
+    for entry in walkdir::WalkDir::new(synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+    {
+        if let Ok(content) = crate::frontmatter::read_note(entry.path()) {
+            let rel = entry
+                .path()
+                .strip_prefix(synthetic_root)
+                .unwrap_or(entry.path())
+                .to_string_lossy()
+                .to_string();
+            files.push((content, rel));
+        }
+    }
+    Ok(find_collisions(files.iter().map(|(c, p)| (c.as_str(), p.as_str()))))
+}
 
 fn parse_frontmatter_from_path(path: &Path) -> Result<crate::frontmatter::NoteFrontmatter> {
     let content = crate::frontmatter::read_note(path)?;
@@ -1028,5 +1036,257 @@ mod tests {
         assert!(note_exists_in_tree(tmp.path(), "Sorting"));
         // Non-existent note returns false.
         assert!(!note_exists_in_tree(tmp.path(), "mergesort"));
+    }
+
+    // Helpers for the tests below -------------------------------------------------
+
+    fn clean_note(block_id: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+             block_id: {block_id}\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\nContent.\n\n^{block_id}\n"
+        )
+    }
+
+    fn note_missing_anchor(block_id: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+             block_id: {block_id}\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\nContent.\n"
+        )
+    }
+
+    fn create_op_with_block_id(path: &str, block_id: &str) -> Op {
+        Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: path.into(),
+            title: "Test".into(),
+            topic: "test".into(),
+            block_id: Some(block_id.into()),
+            embed_in: vec![],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })
+    }
+
+    // ── duplicate block IDs ───────────────────────────────────────────────────
+
+    #[test]
+    fn invariant_suite_duplicate_block_ids_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/note-a.md", &clean_note("dup-01"));
+        write(tmp.path(), "_synthetic/cs/note-b.md", &clean_note("dup-01"));
+        let report = make_report(vec![]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("dup-01")),
+            "expected duplicate block_id violation, got: {:?}", result.hard_violations
+        );
+    }
+
+    #[test]
+    fn audit_vault_duplicate_block_ids_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/note-a.md", &clean_note("dup-01"));
+        write(tmp.path(), "_synthetic/cs/note-b.md", &clean_note("dup-01"));
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("dup-01")),
+            "expected duplicate block_id violation, got: {:?}", result.hard_violations
+        );
+    }
+
+    // ── audit_vault atomic anchor check ──────────────────────────────────────
+
+    #[test]
+    fn audit_vault_atomic_missing_anchor_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/sorting.md", &note_missing_anchor("sort-01"));
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("sort-01")),
+            "expected hard violation for missing anchor, got: {:?}", result.hard_violations
+        );
+    }
+
+    #[test]
+    fn audit_vault_atomic_with_anchor_is_clean() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/sorting.md", &clean_note("sort-01"));
+        write(tmp.path(), "_synthetic/cs/index.md",
+            "---\ncsnotes_schema: 1\nkind: index\ntopic: cs\ntitle: CS\n\
+             contributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\n![[sorting#^sort-01]]\n");
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(result.hard_violations.is_empty(), "{:?}", result.hard_violations);
+    }
+
+    // ── check_block_id_anchor (via precondition_pass) ─────────────────────────
+
+    #[test]
+    fn precondition_create_note_block_id_anchor_present_passes() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
+        let report = make_report(vec![create_op_with_block_id("note.md", "my-id")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    #[test]
+    fn precondition_create_note_block_id_anchor_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", "# Content without anchor\n");
+        let report = make_report(vec![create_op_with_block_id("note.md", "my-id")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("my-id"), "{err}");
+    }
+
+    // ── check_embed_line_present (via precondition_pass) ─────────────────────
+
+    #[test]
+    fn precondition_embed_line_present_passes_when_embed_in_index() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
+        write(tmp.path(), "index.md", "![[note#^my-id]]\n");
+        let report = make_report(vec![Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: "note.md".into(),
+            title: "Test".into(),
+            topic: "test".into(),
+            block_id: Some("my-id".into()),
+            embed_in: vec!["index.md".into()],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    #[test]
+    fn precondition_embed_line_missing_from_index_errors() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
+        // Index exists but doesn't contain the ![[note#^my-id]] line.
+        write(tmp.path(), "index.md", "Some unrelated content.\n");
+        let report = make_report(vec![Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: "note.md".into(),
+            title: "Test".into(),
+            topic: "test".into(),
+            block_id: Some("my-id".into()),
+            embed_in: vec!["index.md".into()],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("my-id") || err.to_string().contains("note"),
+            "{err}"
+        );
+    }
+
+    // ── collect_fixes / apply_fixes ───────────────────────────────────────────
+
+    #[test]
+    fn collect_fixes_returns_empty_when_no_synthetic_dir() {
+        let tmp = TempDir::new().unwrap();
+        let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
+        assert!(fixes.is_empty());
+    }
+
+    #[test]
+    fn collect_fixes_returns_fix_for_atomic_missing_anchor() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/sorting.md", &note_missing_anchor("sort-01"));
+        let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
+        assert_eq!(fixes.len(), 1, "expected one fix, got: {:?}", fixes.iter().map(|f| &f.description).collect::<Vec<_>>());
+        assert!(fixes[0].description.contains("sort-01"), "{}", fixes[0].description);
+    }
+
+    #[test]
+    fn collect_fixes_returns_no_fix_when_anchor_present() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/sorting.md", &clean_note("sort-01"));
+        let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
+        assert!(fixes.is_empty(), "no fix needed for note with anchor present");
+    }
+
+    #[test]
+    fn apply_fixes_appends_anchor_and_reports_count() {
+        let tmp = TempDir::new().unwrap();
+        let note_path = tmp.path().join("note.md");
+        std::fs::write(&note_path, "Content.\n").unwrap();
+        let fixes = vec![FixItem {
+            description: "test fix".into(),
+            action: FixAction::AppendAnchor {
+                path: note_path.clone(),
+                block_id: "sort-01".into(),
+            },
+        }];
+        let count = apply_fixes(&fixes).unwrap();
+        assert_eq!(count, 1);
+        let content = std::fs::read_to_string(&note_path).unwrap();
+        assert!(content.contains("^sort-01"), "anchor not appended:\n{content}");
+    }
+
+    #[test]
+    fn apply_fixes_counts_all_applied() {
+        let tmp = TempDir::new().unwrap();
+        let path_a = tmp.path().join("a.md");
+        let path_b = tmp.path().join("b.md");
+        std::fs::write(&path_a, "Content A.\n").unwrap();
+        std::fs::write(&path_b, "Content B.\n").unwrap();
+        let fixes = vec![
+            FixItem {
+                description: "fix a".into(),
+                action: FixAction::AppendAnchor { path: path_a.clone(), block_id: "id-a".into() },
+            },
+            FixItem {
+                description: "fix b".into(),
+                action: FixAction::AppendAnchor { path: path_b.clone(), block_id: "id-b".into() },
+            },
+        ];
+        let count = apply_fixes(&fixes).unwrap();
+        assert_eq!(count, 2);
+        assert!(std::fs::read_to_string(&path_a).unwrap().contains("^id-a"));
+        assert!(std::fs::read_to_string(&path_b).unwrap().contains("^id-b"));
+    }
+
+    // ── reindex ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn reindex_collects_atomic_notes_for_topic() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/sorting.md", &clean_note("sort-01"));
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist after reindex");
+        assert_eq!(topic.atomic_notes.len(), 1);
+        assert!(topic.atomic_notes[0].contains("sorting.md"), "{:?}", topic.atomic_notes);
+    }
+
+    #[test]
+    fn reindex_tracks_last_updated_as_max() {
+        let tmp = TempDir::new().unwrap();
+        // Two notes in the same topic with different last_updated timestamps.
+        let early = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Early\n\
+                     block_id: early-01\ncontributing_sessions: []\ncontributing_sources: []\n\
+                     created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+                     ---\nContent.\n\n^early-01\n";
+        let late  = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Late\n\
+                     block_id: late-01\ncontributing_sessions: []\ncontributing_sources: []\n\
+                     created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-06-01T00:00:00Z\"\n\
+                     ---\nContent.\n\n^late-01\n";
+        write(tmp.path(), "_synthetic/cs/early.md", early);
+        write(tmp.path(), "_synthetic/cs/late.md", late);
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        // last_updated must be the later of the two timestamps.
+        assert_eq!(
+            topic.last_updated.format("%Y-%m-%d").to_string(),
+            "2026-06-01",
+            "expected max last_updated, got: {}", topic.last_updated
+        );
     }
 }
