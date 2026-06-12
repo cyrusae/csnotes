@@ -373,6 +373,107 @@ impl Drop for ManifestLock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+
+    fn vault_root() -> PathBuf {
+        PathBuf::from("/tmp/test-vault")
+    }
+
+    fn test_config() -> ManifestConfig {
+        ManifestConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Claude,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        }
+    }
+
+    fn test_manifest() -> Manifest {
+        Manifest::empty(vault_root(), test_config())
+    }
+
+    #[test]
+    fn empty_sets_manifest_version() {
+        assert_eq!(test_manifest().version, MANIFEST_VERSION);
+    }
+
+    #[test]
+    fn empty_sets_default_flags_path() {
+        assert_eq!(test_manifest().flags_path, "_generated/flags.json");
+    }
+
+    #[test]
+    fn flags_path_absolute_joins_vault_root() {
+        let m = test_manifest();
+        assert_eq!(m.flags_path_absolute(), PathBuf::from("/tmp/test-vault/_generated/flags.json"));
+    }
+
+    #[test]
+    fn last_report_path_is_under_generated_dir() {
+        let m = test_manifest();
+        assert_eq!(
+            m.last_report_path(),
+            PathBuf::from("/tmp/test-vault/_generated/last_report.json"),
+        );
+    }
+
+    #[test]
+    fn session_report_path_includes_session_id() {
+        let m = test_manifest();
+        let p = m.session_report_path("run-abc");
+        assert_eq!(
+            p,
+            PathBuf::from("/tmp/test-vault/_generated/reports/run-abc.json"),
+        );
+    }
+
+    #[test]
+    fn save_and_load_roundtrip() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let m = Manifest::empty(tmp.path().to_path_buf(), test_config());
+        m.save(tmp.path()).unwrap();
+        let loaded = Manifest::load(tmp.path()).unwrap();
+        assert_eq!(loaded.version, MANIFEST_VERSION);
+        assert!(loaded.sessions.is_empty());
+    }
+
+    fn minimal_vault_config() -> crate::config::VaultConfig {
+        serde_json::from_str(r#"{"active_courses":[]}"#).unwrap()
+    }
+
+    #[test]
+    fn load_or_create_creates_when_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let m = Manifest::load_or_create(tmp.path(), &minimal_vault_config()).unwrap();
+        assert_eq!(m.version, MANIFEST_VERSION);
+        assert!(tmp.path().join(MANIFEST_FILENAME).exists());
+    }
+
+    #[test]
+    fn load_or_create_loads_when_present() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let m = Manifest::empty(tmp.path().to_path_buf(), test_config());
+        m.save(tmp.path()).unwrap();
+        let loaded = Manifest::load_or_create(tmp.path(), &minimal_vault_config()).unwrap();
+        assert_eq!(loaded.version, MANIFEST_VERSION);
+    }
+
+    // ── SourceKind::as_str ────────────────────────────────────────────────────
+
+    #[test]
+    fn source_kind_as_str_all_variants() {
+        assert_eq!(SourceKind::Textbook.as_str(), "textbook");
+        assert_eq!(SourceKind::AiConversation.as_str(), "ai_conversation");
+        assert_eq!(SourceKind::Paper.as_str(), "paper");
+        assert_eq!(SourceKind::AssignmentFeedback.as_str(), "assignment_feedback");
+        assert_eq!(SourceKind::Other.as_str(), "other");
+    }
 
     #[test]
     #[cfg(unix)]

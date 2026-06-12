@@ -556,4 +556,54 @@ mod tests {
             ..cfg.clone()
         }.recordings_required_for("CPSC5001"));
     }
+
+    // ── VaultConfig defaults ──────────────────────────────────────────────────
+
+    #[test]
+    fn vault_config_default_dirs_have_expected_names() {
+        let cfg: VaultConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(cfg.artifacts_dir, "artifacts");
+        assert_eq!(cfg.sources_dir, "sources");
+        assert_eq!(cfg.generated_dir, "_generated");
+        assert_eq!(cfg.csnotes_dir, "_csnotes");
+    }
+
+    #[test]
+    fn vault_config_default_archive_threshold_is_eight_weeks() {
+        let cfg: VaultConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(cfg.archive_threshold_weeks, 8);
+    }
+
+    #[test]
+    fn vault_config_default_scan_ai_conversations_is_true() {
+        let cfg: VaultConfig = serde_json::from_str("{}").unwrap();
+        assert!(cfg.scan_ai_conversations);
+    }
+
+    // ── ensure_no_spaces ─────────────────────────────────────────────────────
+
+    #[test]
+    fn ensure_no_spaces_accepts_value_without_spaces() {
+        assert!(ensure_no_spaces("CPSC5001", "course").is_ok());
+    }
+
+    #[test]
+    fn ensure_no_spaces_rejects_value_with_space() {
+        let err = ensure_no_spaces("CPSC 5001", "course").unwrap_err();
+        assert!(err.to_string().contains("CPSC 5001"), "{err}");
+    }
+
+    // ── tokenise (via FilenameFormat::parse) ──────────────────────────────────
+
+    #[test]
+    fn tokenise_rejects_unclosed_brace() {
+        let err = FilenameFormat::parse("{course}-{mm").unwrap_err();
+        assert!(err.to_string().contains("unclosed"), "{err}");
+    }
+
+    #[test]
+    fn tokenise_rejects_unknown_token() {
+        let err = FilenameFormat::parse("{course}-{semester}").unwrap_err();
+        assert!(err.to_string().contains("semester"), "{err}");
+    }
 }

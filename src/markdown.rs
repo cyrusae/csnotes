@@ -156,4 +156,17 @@ mod tests {
         let h = parse_headings(md);
         assert_eq!(h[0].text, "The Option Type");
     }
+
+    // ── line_to_byte_offset ───────────────────────────────────────────────────
+
+    #[test]
+    fn line_to_byte_offset_returns_correct_position() {
+        // "abc\ndef\nghi\n": '\n' at byte 3, 7, 11.
+        // map(i → i+1): [4, 8, 12].
+        // line_idx uses saturating_sub(1), so idx 0 and 1 both resolve to nth(0)=4.
+        let source = "abc\ndef\nghi\n";
+        assert_eq!(line_to_byte_offset(source, 1), 4,  "idx 1 → start of second line");
+        assert_eq!(line_to_byte_offset(source, 2), 8,  "idx 2 → start of third line");
+        assert_eq!(line_to_byte_offset(source, 99), 0, "out-of-range → unwrap_or(0)");
+    }
 }

@@ -239,4 +239,86 @@ mod tests {
         let back: FlagStore = serde_json::from_str(&json).unwrap();
         assert_eq!(back.flags.len(), 2);
     }
+
+    // ── FlagStore filter methods ──────────────────────────────────────────────
+
+    fn stored(kind: FlagKind, path: Option<&str>, open: bool, follow_up: Option<&str>) -> StoredFlag {
+        StoredFlag {
+            id: uuid::Uuid::new_v4().to_string(),
+            kind,
+            path: path.map(|s| s.to_string()),
+            anchor: None,
+            message: "test".into(),
+            open,
+            created_at: now(),
+            resolved_at: None,
+            run_id: "run-1".into(),
+            follow_up: follow_up.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn open_threads_returns_only_unresolved_question_flags() {
+        let store = FlagStore {
+            flags: vec![
+                stored(FlagKind::UnresolvedQuestion, None, true, None),
+                stored(FlagKind::NeedsConfirmation, None, true, None),
+                stored(FlagKind::UnresolvedQuestion, None, false, None), // closed
+            ],
+        };
+        let threads: Vec<_> = store.open_threads().collect();
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].kind, FlagKind::UnresolvedQuestion);
+    }
+
+    #[test]
+    fn open_for_path_filters_by_exact_path() {
+        let target = "_synthetic/cs/sorting.md";
+        let store = FlagStore {
+            flags: vec![
+                stored(FlagKind::NeedsConfirmation, Some(target), true, None),
+                stored(FlagKind::NeedsConfirmation, Some("_synthetic/cs/other.md"), true, None),
+                stored(FlagKind::NeedsConfirmation, Some(target), false, None), // closed
+            ],
+        };
+        let hits: Vec<_> = store.open_for_path(target).collect();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path.as_deref(), Some(target));
+    }
+
+    #[test]
+    fn open_for_topic_filters_by_path_prefix() {
+        let store = FlagStore {
+            flags: vec![
+                stored(FlagKind::NeedsConfirmation, Some("_synthetic/cs/sorting.md"), true, None),
+                stored(FlagKind::NeedsConfirmation, Some("_synthetic/math/sets.md"), true, None),
+                stored(FlagKind::NeedsConfirmation, Some("_synthetic/cs/graphs.md"), false, None),
+            ],
+        };
+        let hits: Vec<_> = store.open_for_topic("cs", "_synthetic").collect();
+        assert_eq!(hits.len(), 1, "only open cs flags should match");
+        assert!(hits[0].path.as_deref().unwrap().contains("/cs/"));
+    }
+
+    #[test]
+    fn resolved_with_follow_up_returns_closed_flags_with_note() {
+        let store = FlagStore {
+            flags: vec![
+                stored(FlagKind::NeedsConfirmation, None, false, Some("The answer is yes.")),
+                stored(FlagKind::NeedsConfirmation, None, false, None), // no follow-up
+                stored(FlagKind::NeedsConfirmation, None, true, Some("Still open")), // open
+            ],
+        };
+        let hits: Vec<_> = store.resolved_with_follow_up().collect();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].follow_up.as_deref(), Some("The answer is yes."));
+    }
+
+    #[test]
+    fn stored_flag_display_kind_matches_variant() {
+        assert_eq!(stored(FlagKind::PossibleMisread, None, true, None).display_kind(), "possible misread");
+        assert_eq!(stored(FlagKind::NeedsConfirmation, None, true, None).display_kind(), "needs confirmation");
+        assert_eq!(stored(FlagKind::UnresolvedQuestion, None, true, None).display_kind(), "unresolved question");
+        assert_eq!(stored(FlagKind::Ambiguity, None, true, None).display_kind(), "ambiguity (auto-resolved)");
+    }
 }

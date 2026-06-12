@@ -395,4 +395,77 @@ Body content here. ^polymorphism-core
         let result = read_note(tmp.path()).unwrap();
         assert_eq!(result, lf_content, "LF-only content must be returned unchanged");
     }
+
+    // ── touch ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn touch_updates_last_updated() {
+        use chrono::TimeZone;
+        let t0 = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let t1 = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
+        let mut fm = NoteFrontmatter::new_atomic("cs", "Sorting", "sort-01", t0);
+        assert_eq!(fm.last_updated, t0);
+        fm.touch(t1);
+        assert_eq!(fm.last_updated, t1);
+    }
+
+    // ── merge_provenance updates last_updated ─────────────────────────────────
+
+    #[test]
+    fn merge_provenance_updates_last_updated_when_new_session_added() {
+        use chrono::TimeZone;
+        use crate::manifest::Relationship;
+        let t0 = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let t1 = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
+        let mut fm = NoteFrontmatter::new_atomic("cs", "Sorting", "sort-01", t0);
+        let delta = ProvenanceDelta {
+            sessions: vec![SessionContrib {
+                course: "CPSC5001".into(),
+                date: chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
+                relationship: Relationship::Introduced,
+            }],
+            sources: vec![],
+        };
+        fm.merge_provenance(&delta, t1);
+        assert_eq!(fm.last_updated, t1, "last_updated should advance when provenance changes");
+        assert_eq!(fm.contributing_sessions.len(), 1);
+    }
+
+    #[test]
+    fn merge_provenance_does_not_update_last_updated_when_nothing_new() {
+        use chrono::TimeZone;
+        use crate::manifest::Relationship;
+        let t0 = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let t1 = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
+        let mut fm = NoteFrontmatter::new_atomic("cs", "Sorting", "sort-01", t0);
+        let contrib = SessionContrib {
+            course: "CPSC5001".into(),
+            date: chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
+            relationship: Relationship::Introduced,
+        };
+        let delta = ProvenanceDelta { sessions: vec![contrib], sources: vec![] };
+        fm.merge_provenance(&delta, t1);     // adds it
+        fm.merge_provenance(&delta, t1);     // duplicate — no change
+        // last_updated must still be t1, not something newer
+        assert_eq!(fm.contributing_sessions.len(), 1, "duplicate session must not be added");
+    }
+
+    // ── split_frontmatter boundary ────────────────────────────────────────────
+
+    #[test]
+    fn split_frontmatter_body_starts_immediately_after_fence() {
+        let content = "---\nkind: atomic\n---\nFirst line of body.\n";
+        let (yaml, body) = split_frontmatter(content).unwrap();
+        assert_eq!(yaml.trim(), "kind: atomic");
+        assert!(body.starts_with("First line"), "body must start right after closing fence; got: {:?}", body);
+    }
+
+    #[test]
+    fn split_frontmatter_no_trailing_newline_after_fence() {
+        // Exercises the strip_suffix("\n---") branch (line 173: content.len() - 4).
+        let content = "---\nkind: atomic\n---";
+        let (yaml, body) = split_frontmatter(content).unwrap();
+        assert!(yaml.contains("kind: atomic"));
+        assert_eq!(body, "");
+    }
 }

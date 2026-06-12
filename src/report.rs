@@ -313,4 +313,83 @@ mod tests {
         let back: Op = serde_json::from_str(&json).unwrap();
         assert!(matches!(back, Op::CreateNote(_)));
     }
+
+    // ── Op::kind_str / is_indexing / is_structural ────────────────────────────
+
+    fn rename_op() -> Op {
+        Op::RenameTopic(RenameTopicOp {
+            from: "a".into(),
+            to: "b".into(),
+            reason: "test".into(),
+        })
+    }
+
+    fn update_op() -> Op {
+        Op::UpdateNote(UpdateNoteOp {
+            path: "p.md".into(),
+            add_provenance: ProvenanceDelta::default(),
+            sections: vec![],
+            change_summary: "test".into(),
+        })
+    }
+
+    fn create_op() -> Op {
+        Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: "p.md".into(),
+            title: "T".into(),
+            topic: "t".into(),
+            block_id: None,
+            embed_in: vec![],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })
+    }
+
+    #[test]
+    fn op_kind_str_returns_correct_names() {
+        assert_eq!(create_op().kind_str(), "create_note");
+        assert_eq!(update_op().kind_str(), "update_note");
+        assert_eq!(rename_op().kind_str(), "rename_topic");
+    }
+
+    #[test]
+    fn op_is_indexing_true_for_create_and_update() {
+        assert!(create_op().is_indexing());
+        assert!(update_op().is_indexing());
+        assert!(!rename_op().is_indexing());
+    }
+
+    #[test]
+    fn op_is_structural_inverse_of_is_indexing() {
+        assert!(!create_op().is_structural());
+        assert!(!update_op().is_structural());
+        assert!(rename_op().is_structural());
+    }
+
+    // ── FlagKind methods ──────────────────────────────────────────────────────
+
+    #[test]
+    fn flag_kind_is_actionable_correct_variants() {
+        assert!(FlagKind::PossibleMisread.is_actionable());
+        assert!(FlagKind::NeedsConfirmation.is_actionable());
+        assert!(!FlagKind::UnresolvedQuestion.is_actionable());
+        assert!(!FlagKind::Ambiguity.is_actionable());
+    }
+
+    #[test]
+    fn flag_kind_is_thread_only_unresolved_question() {
+        assert!(FlagKind::UnresolvedQuestion.is_thread());
+        assert!(!FlagKind::PossibleMisread.is_thread());
+        assert!(!FlagKind::NeedsConfirmation.is_thread());
+        assert!(!FlagKind::Ambiguity.is_thread());
+    }
+
+    #[test]
+    fn flag_kind_tier_label_matches_variant() {
+        assert_eq!(FlagKind::PossibleMisread.tier_label(), "actionable");
+        assert_eq!(FlagKind::NeedsConfirmation.tier_label(), "actionable");
+        assert_eq!(FlagKind::UnresolvedQuestion.tier_label(), "thread");
+        assert_eq!(FlagKind::Ambiguity.tier_label(), "changelog");
+    }
 }

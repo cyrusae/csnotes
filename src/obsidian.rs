@@ -321,4 +321,39 @@ mod tests {
             let _ = extract_embeds(&s);
         }
     }
+
+    // ── EmbedTarget::is_block_anchor ─────────────────────────────────────────
+
+    #[test]
+    fn is_block_anchor_true_for_caret_anchor() {
+        let e = EmbedTarget { file: "note".into(), anchor: Some("^poly-core".into()) };
+        assert!(e.is_block_anchor());
+    }
+
+    #[test]
+    fn is_block_anchor_false_for_section_anchor() {
+        let e = EmbedTarget { file: "note".into(), anchor: Some("Introduction".into()) };
+        assert!(!e.is_block_anchor());
+    }
+
+    #[test]
+    fn is_block_anchor_false_when_no_anchor() {
+        let e = EmbedTarget { file: "note".into(), anchor: None };
+        assert!(!e.is_block_anchor());
+    }
+
+    // ── collect_all_block_ids ─────────────────────────────────────────────────
+
+    #[test]
+    fn collect_all_block_ids_returns_ids_from_md_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("a.md"), "Content.\n\n^id-one\n").unwrap();
+        std::fs::write(tmp.path().join("b.md"), "Content.\n\n^id-two\n").unwrap();
+        std::fs::write(tmp.path().join("ignore.txt"), "^id-txt\n").unwrap();
+
+        let ids = collect_all_block_ids(tmp.path()).unwrap();
+        assert!(ids.contains_key("id-one"), "id-one should be found");
+        assert!(ids.contains_key("id-two"), "id-two should be found");
+        assert!(!ids.contains_key("id-txt"), "non-md file should be ignored");
+    }
 }

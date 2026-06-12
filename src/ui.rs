@@ -39,7 +39,7 @@ pub fn rainbow(s: &str) -> String {
     out
 }
 
-fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
+pub(crate) fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
     let m = l - c / 2.0;
@@ -61,4 +61,127 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
         ((g1 + m) * 255.0).round() as u8,
         ((b1 + m) * 255.0).round() as u8,
     )
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // hsl_to_rgb: one test per branch (h<60, 60-120, 120-180, 180-240, 240-300, ≥300)
+    // using s=1.0, l=0.5 so m=0 and c=1, giving clean integer-ish values.
+
+    #[test]
+    fn hsl_red_region_h30() {
+        // h=30 → branch h<60: (c, x, 0), x≈0.5
+        let (r, g, b) = hsl_to_rgb(30.0, 1.0, 0.5);
+        assert_eq!(r, 255);
+        assert_eq!(g, 128);
+        assert_eq!(b, 0);
+    }
+
+    #[test]
+    fn hsl_yellow_region_h90() {
+        // h=90 → branch 60<=h<120: (x, c, 0), x≈0.5
+        let (r, g, b) = hsl_to_rgb(90.0, 1.0, 0.5);
+        assert_eq!(r, 128);
+        assert_eq!(g, 255);
+        assert_eq!(b, 0);
+    }
+
+    #[test]
+    fn hsl_green_region_h150() {
+        // h=150 → branch 120<=h<180: (0, c, x), x≈0.5
+        let (r, g, b) = hsl_to_rgb(150.0, 1.0, 0.5);
+        assert_eq!(r, 0);
+        assert_eq!(g, 255);
+        assert_eq!(b, 128);
+    }
+
+    #[test]
+    fn hsl_cyan_region_h210() {
+        // h=210 → branch 180<=h<240: (0, x, c), x≈0.5
+        let (r, g, b) = hsl_to_rgb(210.0, 1.0, 0.5);
+        assert_eq!(r, 0);
+        assert_eq!(g, 128);
+        assert_eq!(b, 255);
+    }
+
+    #[test]
+    fn hsl_blue_region_h270() {
+        // h=270 → branch 240<=h<300: (x, 0, c), x≈0.5
+        let (r, g, b) = hsl_to_rgb(270.0, 1.0, 0.5);
+        assert_eq!(r, 128);
+        assert_eq!(g, 0);
+        assert_eq!(b, 255);
+    }
+
+    #[test]
+    fn hsl_magenta_region_h330() {
+        // h=330 → else branch (h>=300): (c, 0, x)
+        // x = 1*(1-|(330/60)%2-1|) = 1*(1-|5.5%2-1|) = 1*(1-|1.5-1|) = 0.5
+        let (r, g, b) = hsl_to_rgb(330.0, 1.0, 0.5);
+        assert_eq!(r, 255);
+        assert_eq!(g, 0);
+        assert_eq!(b, 128);
+    }
+
+    #[test]
+    fn hsl_pure_red_h0() {
+        // Boundary: h=0 (same branch as h=30)
+        let (r, g, b) = hsl_to_rgb(0.0, 1.0, 0.5);
+        assert_eq!(r, 255);
+        assert_eq!(b, 0);
+        // g depends on x=c*(1-|0-1|)=0
+        assert_eq!(g, 0);
+    }
+
+    // rainbow: in test context stdout is not a tty, so color_supported() → false
+    // and rainbow() must return the plain string unchanged.
+
+    #[test]
+    fn rainbow_returns_plain_string_when_color_not_supported() {
+        // This holds whenever stdout is not a terminal (true in test harness).
+        if !color_supported() {
+            assert_eq!(rainbow("hello"), "hello");
+            assert_eq!(rainbow(""), "");
+        }
+    }
+
+    #[test]
+    fn rainbow_single_char_no_panic() {
+        let _ = rainbow("x");
+    }
+
+    #[test]
+    fn rainbow_empty_no_panic() {
+        let _ = rainbow("");
+    }
+
+    // color_supported: verify env-var gates without mutating stdout.
+
+    #[test]
+    fn color_supported_false_when_no_color_set() {
+        // Set NO_COLOR; color_supported must return false regardless of tty.
+        // Safety: env mutation in tests is process-global; run sequentially.
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let result = color_supported();
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert!(!result);
+    }
+
+    #[test]
+    fn color_supported_false_when_term_dumb() {
+        let old = std::env::var("TERM").ok();
+        unsafe { std::env::set_var("TERM", "dumb") };
+        // Also clear NO_COLOR so only TERM drives the result.
+        unsafe { std::env::remove_var("NO_COLOR") };
+        let result = color_supported();
+        match old {
+            Some(v) => unsafe { std::env::set_var("TERM", v) },
+            None => unsafe { std::env::remove_var("TERM") },
+        }
+        assert!(!result);
+    }
 }

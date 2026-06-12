@@ -1111,6 +1111,77 @@ mod tests {
         assert_eq!(ids, vec!["Textbooks/SICP/Ch01", "Textbooks/SICP/Ch02"]);
     }
 
+    // ── copy_sources_to_workspace / write_source_file ────────────────────────
+
+    #[test]
+    fn copy_sources_writes_source_file_to_workspace() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "sources/sicp.md", "# SICP\nContent.\n");
+
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert("sicp-ch01".into(), SourceEntry {
+            path: "sources/sicp.md".into(),
+            kind: SourceKind::Textbook,
+            status: SourceStatus::Unprocessed,
+            last_processed_at: None,
+            heading_scheme: vec![],
+            topics_updated: vec![],
+            summary: None,
+            tags: vec![],
+            courses: vec![],
+        });
+
+        let scope = WorkspaceScope::Source { source_ids: vec!["sicp-ch01".into()] };
+        copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+
+        let dest = ws.path().join("sources/sicp-ch01.md");
+        assert!(dest.exists(), "source file should be written to workspace sources/");
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert!(content.contains("SICP"), "source content should appear in dest");
+        assert!(content.contains("sicp-ch01"), "source ID should appear in XML wrapper");
+    }
+
+    #[test]
+    fn copy_sources_skips_source_file_missing_on_disk() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert("ghost".into(), SourceEntry {
+            path: "sources/ghost.md".into(), // does not exist on disk
+            kind: SourceKind::Textbook,
+            status: SourceStatus::Unprocessed,
+            last_processed_at: None,
+            heading_scheme: vec![],
+            topics_updated: vec![],
+            summary: None,
+            tags: vec![],
+            courses: vec![],
+        });
+
+        let scope = WorkspaceScope::Source { source_ids: vec!["ghost".into()] };
+        copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+
+        assert!(
+            !ws.path().join("sources/ghost.md").exists(),
+            "missing vault file should be silently skipped"
+        );
+    }
+
+    #[test]
+    fn copy_sources_noop_when_scope_has_no_sources() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        let manifest = make_manifest_for_sources();
+        let scope = WorkspaceScope::Source { source_ids: vec![] };
+        copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        assert!(
+            !ws.path().join("sources").exists(),
+            "sources/ dir should not be created when there is nothing to write"
+        );
+    }
+
     #[test]
     fn sources_index_lists_present_sources_with_metadata() {
         let tmp = TempDir::new().unwrap();

@@ -1066,4 +1066,134 @@ mod tests {
         let content_b = std::fs::read_to_string(&b).unwrap();
         assert_eq!(content_b, "No matching links here.\n");
     }
+
+    // ── execute_merge_topics (self-skip and conflict detection) ───────────────
+
+    #[test]
+    fn merge_topics_skips_into_topic_when_listed_in_from() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        write_note(&synthetic, "sorting/sorting.md", &minimal_note("sorting"));
+        write_note(&synthetic, "algorithms/algo.md", &minimal_note("algorithms"));
+
+        // "algorithms" appears in both `from` and `into`; it should be skipped.
+        let op = MergeTopicsOp {
+            from: vec!["sorting".into(), "algorithms".into()],
+            into: "algorithms".into(),
+            reason: "merge sorting into algorithms".into(),
+        };
+        execute_merge_topics(&op, tmp.path(), "_synthetic").unwrap();
+
+        // sorting should be merged in; algorithms' own file stays untouched.
+        assert!(!synthetic.join("sorting").exists(), "source topic should be removed");
+        assert!(synthetic.join("algorithms/sorting.md").exists(), "sorting.md moved to algorithms");
+        assert!(synthetic.join("algorithms/algo.md").exists(), "algo.md should be unchanged");
+    }
+
+    #[test]
+    fn merge_topics_detects_filename_conflict_between_sources() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        // Both source topics have a file named "shared.md" → conflict.
+        write_note(&synthetic, "topic-a/shared.md", &minimal_note("topic-a"));
+        write_note(&synthetic, "topic-b/shared.md", &minimal_note("topic-b"));
+
+        let op = MergeTopicsOp {
+            from: vec!["topic-a".into(), "topic-b".into()],
+            into: "merged".into(),
+            reason: "conflict test".into(),
+        };
+        let err = execute_merge_topics(&op, tmp.path(), "_synthetic").unwrap_err();
+        assert!(
+            err.to_string().contains("shared.md") || err.to_string().contains("conflict"),
+            "should report filename conflict: {err}"
+        );
+    }
+
+    // ── move_topic_notes (.md filter) ─────────────────────────────────────────
+
+    #[test]
+    fn move_topic_notes_only_moves_md_files() {
+        let tmp = TempDir::new().unwrap();
+        let from = tmp.path().join("from");
+        let to = tmp.path().join("to");
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::create_dir_all(&to).unwrap();
+
+        std::fs::write(from.join("note.md"), &minimal_note("from")).unwrap();
+        std::fs::write(from.join("readme.txt"), "not a note").unwrap();
+
+        move_topic_notes(&from, &to, "from", "to").unwrap();
+
+        assert!(to.join("note.md").exists(), "md file should be moved to target");
+        assert!(!to.join("readme.txt").exists(), "non-md file must not be moved");
+        assert!(from.join("readme.txt").exists(), "non-md file must stay in source");
+    }
+
+    // ── execute_set_embed (present: false removes existing embed) ─────────────
+
+    #[test]
+    fn set_embed_remove_clears_embed_from_index() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+
+        // Index note that already contains the embed line and slug in frontmatter.
+        write_note(
+            &synthetic,
+            "cs/cs.md",
+            "---\ncsnotes_schema: 1\nkind: index\ntopic: cs\ntitle: CS\n\
+             embeds:\n  - sorting\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n---\n\
+             \nIndex body.\n\n![[sorting#^test-id]]\n",
+        );
+        write_note(&synthetic, "cs/sorting.md", &minimal_note("cs"));
+
+        let op = SetEmbedOp {
+            atomic_path: "_synthetic/cs/sorting.md".to_string(),
+            index_path: "_synthetic/cs/cs.md".to_string(),
+            present: false,
+        };
+        execute_set_embed(&op, tmp.path()).unwrap();
+
+        let content = std::fs::read_to_string(synthetic.join("cs/cs.md")).unwrap();
+        assert!(
+            !content.contains("![[sorting#^test-id]]"),
+            "embed line should be removed"
+        );
+        assert!(
+            !content.contains("- sorting"),
+            "sorting should be removed from embeds list in frontmatter"
+        );
+        assert!(content.contains("Index body."), "non-embed body content must be preserved");
+    }
+
+    // ── rewrite_links (|| vs &&) ──────────────────────────────────────────────
+
+    #[test]
+    fn rewrite_links_processes_file_with_wikilink_only() {
+        let tmp = TempDir::new().unwrap();
+        let f = tmp.path().join("f.md");
+        // File has only a plain wikilink — no embed.
+        std::fs::write(&f, "See [[old/note]].\n").unwrap();
+
+        let changed = rewrite_links(tmp.path(), "old/", "new/").unwrap();
+        assert_eq!(changed, 1, "file with only a wikilink (no embed) must be updated");
+        let content = std::fs::read_to_string(&f).unwrap();
+        assert!(content.contains("[[new/note]]"), "wikilink should be rewritten");
+    }
+
+    // ── rewrite_note_links (count) ────────────────────────────────────────────
+
+    #[test]
+    fn rewrite_note_links_returns_count_of_changed_files() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("a.md"), "See [[topic/sorting]].\n").unwrap();
+        std::fs::write(tmp.path().join("b.md"), "No relevant links.\n").unwrap();
+
+        let count = rewrite_note_links(tmp.path(), "topic/sorting", "topic/new-sorting").unwrap();
+        assert_eq!(count, 1, "exactly one file should be reported as changed");
+
+        let content = std::fs::read_to_string(tmp.path().join("a.md")).unwrap();
+        assert!(content.contains("[[topic/new-sorting]]"), "link should be rewritten");
+    }
 }

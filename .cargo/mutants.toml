@@ -1,8 +1,11 @@
 # cargo mutants configuration
 # https://mutants.rs/configuration.html
-
-[test_env]
-CSNOTES_NO_NOTIFY = "1"
+#
+# Note: cargo-mutants 27.0.0 does not support setting test environment variables
+# via config.  CSNOTES_NO_NOTIFY=1 suppresses desktop notifications spawned by
+# the `notify()` helper in reconcile.rs.  Set it in the shell before running
+# cargo mutants if needed:
+#   CSNOTES_NO_NOTIFY=1 cargo mutants
 
 # replace_note_links advances `remaining` by idx+1 to skip past the non-matching `[`.
 # Mutating `+` to `*` produces idx*1 = idx — same position, infinite loop.
@@ -14,4 +17,7 @@ exclude_re = [
     "src/ops/structural\\.rs:612:40: replace \\+ with",
     # AuditResult::print writes to stdout/stderr; output not verifiable in unit tests.
     "src/audit\\.rs:34:",
+    # collect_text SoftBreak/LineBreak arm: unreachable for ATX headings (single-line by
+    # CommonMark spec); comrak never emits these nodes inside a Heading's inline children.
+    "src/markdown\\.rs:88:13: delete match arm",
 ]
