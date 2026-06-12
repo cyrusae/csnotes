@@ -1,0 +1,10 @@
+{
+  "uuid": "078f5b92-1f50-455c-afa1-836ce5dc1701",
+  "issue_uuid": "19c73873-6e5d-4ea9-8268-ca4844b86abb",
+  "author": "3owj",
+  "content": "L52 complete: added 12 tests to ui.rs (hsl_to_rgb all 6 hue branches, rainbow no-color path, color_supported env-var gates) and 10 tests to manifest.rs (path helpers, load/save roundtrip, load_or_create, SourceKind::as_str). Fixed .cargo/mutants.toml: removed invalid [test_env] section (not supported in cargo-mutants 27.0.0), added SoftBreak exclusion. 228 unit tests passing.",
+  "created_at": "2026-06-12T10:21:52.741021Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAMt87H+YrH3B6AjFb4tJutR/t7TYm8SBA3urZ5QIKdCU/w8Oh0XgwahCEjWJk1YxgWh45e+0IIKrxXsnZN59JDg=="
+}
