@@ -207,6 +207,11 @@ pub struct SourceEntry {
     /// Topic tags from the source file's YAML frontmatter `tags:` field.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Courses this source is associated with, from frontmatter `courses:` field.
+    /// Empty = available in all session workspaces (untagged).
+    /// Non-empty (Textbook only) = included only when the session's course matches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub courses: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +222,18 @@ pub enum SourceKind {
     Paper,
     AssignmentFeedback,
     Other,
+}
+
+impl SourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Textbook => "textbook",
+            Self::AiConversation => "ai_conversation",
+            Self::Paper => "paper",
+            Self::AssignmentFeedback => "assignment_feedback",
+            Self::Other => "other",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

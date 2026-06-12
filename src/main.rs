@@ -49,7 +49,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
         } => process::run(process::ProcessArgs {
             session,
             course,
-            source,
+            sources: source,
             topic,
             dry_run,
             backend,
@@ -154,9 +154,12 @@ enum Command {
         #[arg(long)]
         course: Option<String>,
 
-        /// Process a source file by ID (e.g. SICP/SICP-ch01).
-        #[arg(long)]
-        source: Option<String>,
+        /// Process source files by ID or path prefix.
+        /// Exact ID: `Textbooks/SICP/Chapter-01`.
+        /// Prefix: `Textbooks/SICP` expands to all chapters under that path.
+        /// Multiple values accepted: `--source A --source B` or `--source A B`.
+        #[arg(long, num_args = 1..)]
+        source: Vec<String>,
 
         /// Study/review session focused on an existing topic (no new input).
         #[arg(long)]

@@ -6,8 +6,11 @@
 ///     CLAUDE.md  (or GEMINI.md)            ← copied from _csnotes/instructions/
 ///     synthesis.md                          ← copied from _csnotes/instructions/
 ///     _session.md                           ← rendered briefing
+///     _sources_index.md                     ← source metadata; consult before reading source files
 ///     _session_report.json                  ← written by AI on exit
-///     <inputs>.md                           ← XML-wrapped, read-only copies
+///     input_raw_*.md                        ← raw notes (XML-wrapped, read-only)
+///     input_plaud_*.md / input_*.md         ← recordings / artifacts (XML-wrapped, read-only)
+///     sources/                              ← source files (XML-wrapped, read-only)
 ///     _synthetic/                           ← writable working copy
 ///
 /// The vault is never touched until the brief, snapshot-guarded merge-back.
@@ -61,7 +64,9 @@ pub struct WorkspaceParams<'a> {
 
 pub enum WorkspaceScope {
     Session { session_id: String },
-    Source { source_id: String },
+    /// One or more source files to ingest (dedicated source-processing session).
+    /// Accepts exact source IDs or path prefixes expanded at call time.
+    Source { source_ids: Vec<String> },
     Topic { topic: String },
 }
 
@@ -85,30 +90,21 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     // 1. Copy instruction files
     copy_instruction_files(params.vault_root, params.config, &workspace_root)?;
 
-    // 2. Copy and wrap inputs
-    match &params.scope {
-        WorkspaceScope::Session { session_id } => {
-            let entry = params
-                .manifest
-                .sessions
-                .get(session_id)
-                .ok_or_else(|| CsnotesError::SessionNotFound(session_id.clone()))?;
-            wrap_session_inputs(params.vault_root, entry, &workspace_root)?;
-        }
-        WorkspaceScope::Source { source_id } => {
-            let entry = params
-                .manifest
-                .sources
-                .get(source_id)
-                .ok_or_else(|| CsnotesError::SourceNotFound(source_id.clone()))?;
-            wrap_source_input(params.vault_root, source_id, entry, &workspace_root)?;
-        }
-        WorkspaceScope::Topic { topic: _ } => {
-            // No external inputs — topic study session.
-        }
+    // 2. Copy and wrap session inputs (raw notes, recordings, artifacts)
+    if let WorkspaceScope::Session { session_id } = &params.scope {
+        let entry = params
+            .manifest
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| CsnotesError::SessionNotFound(session_id.clone()))?;
+        wrap_session_inputs(params.vault_root, entry, &workspace_root)?;
     }
 
-    // 3. Writable copy of _synthetic/
+    // 3. Copy sources into sources/ and write _sources_index.md
+    copy_sources_to_workspace(params.vault_root, params.manifest, &params.scope, &workspace_root)?;
+    write_sources_index(params.manifest, &params.scope, &workspace_root)?;
+
+    // 4. Writable copy of _synthetic/
     let vault_synthetic = params.vault_root.join(&params.config.synthetic_dir);
     let ws_synthetic = workspace_root.join(&params.config.synthetic_dir);
     if vault_synthetic.exists() {
@@ -117,7 +113,7 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
         fs::create_dir_all(&ws_synthetic)?;
     }
 
-    // 4. Render _session.md
+    // 5. Render _session.md
     render_session_md(params, &workspace_root)?;
 
     Ok(workspace_root)
@@ -261,38 +257,125 @@ fn wrap_session_inputs(
     Ok(())
 }
 
-fn wrap_source_input(
+/// Copy relevant source files into `{workspace}/sources/{source_id}.md`.
+///
+/// For Session scope: all non-Textbook sources, plus Textbooks that are either
+/// untagged (`courses` empty) or tagged with the session's course.
+/// For Topic scope: all sources (no course filter available).
+/// For Source scope: only the explicitly listed source IDs.
+fn copy_sources_to_workspace(
+    vault_root: &Path,
+    manifest: &Manifest,
+    scope: &WorkspaceScope,
+    workspace_root: &Path,
+) -> Result<()> {
+    let ids: Vec<&str> = sources_for_scope(manifest, scope);
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let sources_dir = workspace_root.join("sources");
+    fs::create_dir_all(&sources_dir)?;
+    for source_id in ids {
+        if let Some(entry) = manifest.sources.get(source_id) {
+            write_source_file(vault_root, source_id, entry, &sources_dir)?;
+        }
+    }
+    Ok(())
+}
+
+/// Write one source file into `sources_dir/{source_id}.md`, XML-wrapped.
+fn write_source_file(
     vault_root: &Path,
     source_id: &str,
     entry: &SourceEntry,
-    workspace_root: &Path,
+    sources_dir: &Path,
 ) -> Result<()> {
     let src = vault_root.join(&entry.path);
     if !src.exists() {
         return Ok(());
     }
     let content = crate::frontmatter::read_note(&src)?;
-    // book and unit are derived from the source_id path structure
-    let (book, unit) = parse_source_id(source_id);
-    let wrapped = xml_wrap(
-        &content,
-        "textbook_source",
-        &[("id", source_id), ("book", &book), ("unit", &unit)],
-    );
-    let dest = workspace_root.join(format!("input_source_{}.md", sanitise(source_id)));
+    let kind_str = entry.kind.as_str();
+    let wrapped = xml_wrap(&content, "source", &[("id", source_id), ("kind", kind_str)]);
+    let dest = sources_dir.join(format!("{}.md", source_id));
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&dest, wrapped)?;
     make_readonly(&dest)?;
     Ok(())
 }
 
-fn parse_source_id(id: &str) -> (String, String) {
-    // "SICP/SICP-ch01" → book = "SICP", unit = "SICP-ch01"
-    // "TAPL-notes"     → book = "TAPL-notes", unit = ""
-    if let Some((book, unit)) = id.split_once('/') {
-        (book.to_string(), unit.to_string())
+/// Write `_sources_index.md` listing every source present in this workspace.
+fn write_sources_index(
+    manifest: &Manifest,
+    scope: &WorkspaceScope,
+    workspace_root: &Path,
+) -> Result<()> {
+    let ids: Vec<&str> = sources_for_scope(manifest, scope);
+    let mut out = String::from("# Sources Index\n\n");
+    if ids.is_empty() {
+        out.push_str("_No sources registered for this session._\n");
     } else {
-        (id.to_string(), String::new())
+        out.push_str(
+            "Source files are in `sources/`. \
+             Consult this index to identify relevant sources; \
+             read source files only when you need them.\n\n",
+        );
+        for source_id in &ids {
+            if let Some(entry) = manifest.sources.get(*source_id) {
+                out.push_str(&format!("- **{}** ({})", source_id, entry.kind.as_str()));
+                if !entry.courses.is_empty() {
+                    out.push_str(&format!(" | courses: {}", entry.courses.join(", ")));
+                }
+                if let Some(ref summary) = entry.summary {
+                    out.push_str(&format!(" — {}", summary));
+                }
+                if !entry.tags.is_empty() {
+                    out.push_str(&format!(" [{}]", entry.tags.join(", ")));
+                }
+                out.push('\n');
+            }
+        }
     }
+    fs::write(workspace_root.join("_sources_index.md"), out)?;
+    Ok(())
+}
+
+/// Returns the source IDs that belong in a workspace for the given scope.
+fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> Vec<&'a str> {
+    match scope {
+        WorkspaceScope::Source { source_ids } => {
+            source_ids.iter().map(|s| s.as_str()).collect()
+        }
+        WorkspaceScope::Session { session_id } => {
+            let session_course = manifest
+                .sessions
+                .get(session_id)
+                .map(|e| e.course.as_str())
+                .unwrap_or("");
+            manifest
+                .sources
+                .iter()
+                .filter(|(_, e)| source_visible_for_course(e, session_course))
+                .map(|(id, _)| id.as_str())
+                .collect()
+        }
+        WorkspaceScope::Topic { .. } => {
+            manifest.sources.keys().map(|s| s.as_str()).collect()
+        }
+    }
+}
+
+/// A source is visible for a given course when it is not a Textbook, or when
+/// its `courses` list is empty (untagged = always available), or when it
+/// explicitly lists the course.
+fn source_visible_for_course(entry: &SourceEntry, course: &str) -> bool {
+    use crate::manifest::SourceKind;
+    if entry.kind != SourceKind::Textbook {
+        return true;
+    }
+    entry.courses.is_empty() || entry.courses.iter().any(|c| c == course)
 }
 
 // ── _session.md rendering ─────────────────────────────────────────────────────
@@ -344,10 +427,21 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
             }
             out.push('\n');
         }
-        WorkspaceScope::Source { source_id } => {
-            out.push_str(&format!("# Source Briefing — {}\n\n", source_id));
+        WorkspaceScope::Source { source_ids } => {
+            let title = if source_ids.len() == 1 {
+                format!("# Source Briefing — {}\n\n", source_ids[0])
+            } else {
+                "# Source Briefing\n\n".to_string()
+            };
+            out.push_str(&title);
             out.push_str("## Scope\n");
-            out.push_str(&format!("- Source: {}\n", source_id));
+            for id in source_ids {
+                if let Some(e) = params.manifest.sources.get(id) {
+                    out.push_str(&format!("- Source: {} ({})\n", id, e.kind.as_str()));
+                } else {
+                    out.push_str(&format!("- Source: {}\n", id));
+                }
+            }
             out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
         }
         WorkspaceScope::Topic { topic } => {
@@ -891,5 +985,158 @@ mod tests {
         let sorting = std::fs::read_to_string(syn.join("algorithms/sorting.md")).unwrap();
         assert!(sorting.contains("cross_embedded_in:"));
         assert!(sorting.contains("overview"));
+    }
+
+    // ── Source workspace helpers ───────────────────────────────────────────────
+
+    use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
+    use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+
+    fn make_source_entry(kind: SourceKind, courses: Vec<String>) -> SourceEntry {
+        SourceEntry {
+            path: String::new(),
+            kind,
+            status: SourceStatus::Unprocessed,
+            last_processed_at: None,
+            heading_scheme: vec![],
+            topics_updated: vec![],
+            summary: None,
+            tags: vec![],
+            courses,
+        }
+    }
+
+    fn make_manifest_for_sources() -> Manifest {
+        Manifest::empty(std::path::PathBuf::from("/tmp"), ManifestConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        })
+    }
+
+    #[test]
+    fn source_visible_untagged_textbook_included_for_any_course() {
+        let entry = make_source_entry(SourceKind::Textbook, vec![]);
+        assert!(source_visible_for_course(&entry, "CPSC5001"));
+        assert!(source_visible_for_course(&entry, "CPSC5002"));
+        assert!(source_visible_for_course(&entry, ""));
+    }
+
+    #[test]
+    fn source_visible_tagged_textbook_filtered_by_course() {
+        let entry = make_source_entry(SourceKind::Textbook, vec!["CPSC5001".into()]);
+        assert!(source_visible_for_course(&entry, "CPSC5001"));
+        assert!(!source_visible_for_course(&entry, "CPSC5002"));
+    }
+
+    #[test]
+    fn source_visible_textbook_tagged_multiple_courses() {
+        let entry = make_source_entry(
+            SourceKind::Textbook,
+            vec!["CPSC5001".into(), "CPSC5002".into()],
+        );
+        assert!(source_visible_for_course(&entry, "CPSC5001"));
+        assert!(source_visible_for_course(&entry, "CPSC5002"));
+        assert!(!source_visible_for_course(&entry, "CPSC5003"));
+    }
+
+    #[test]
+    fn source_visible_non_textbook_always_included() {
+        for kind in [SourceKind::AiConversation, SourceKind::Paper, SourceKind::Other] {
+            let tagged = make_source_entry(kind, vec!["CPSC5001".into()]);
+            assert!(
+                source_visible_for_course(&tagged, "CPSC5002"),
+                "{} should be visible regardless of course tag",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn sources_for_scope_session_excludes_other_course_textbook() {
+        let mut manifest = make_manifest_for_sources();
+        // Session for CPSC5001
+        use crate::manifest::{SessionEntry, SessionStatus};
+        manifest.sessions.insert("CPSC5001-01-01".into(), SessionEntry {
+            course: "CPSC5001".into(),
+            date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            raw_note: "notes/CPSC5001-01-01.md".into(),
+            recording_exports: vec![],
+            artifacts: vec![],
+            status: SessionStatus::Unprocessed,
+            recording_missing: false,
+            filename_format: "{course}-{mm}-{dd}".into(),
+            processed_at: None,
+            topics_updated: vec![],
+        });
+        manifest.sources.insert(
+            "Textbooks/SICP/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec!["CPSC5001".into()]),
+        );
+        manifest.sources.insert(
+            "Textbooks/TAPL/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec!["CPSC5002".into()]),
+        );
+        manifest.sources.insert(
+            "AI-Conversations/Gemini/sorting".into(),
+            make_source_entry(SourceKind::AiConversation, vec![]),
+        );
+
+        let scope = WorkspaceScope::Session { session_id: "CPSC5001-01-01".into() };
+        let ids = sources_for_scope(&manifest, &scope);
+
+        assert!(ids.contains(&"Textbooks/SICP/Ch01"), "SICP (CPSC5001) should be included");
+        assert!(!ids.contains(&"Textbooks/TAPL/Ch01"), "TAPL (CPSC5002) should be excluded");
+        assert!(ids.contains(&"AI-Conversations/Gemini/sorting"), "AI conversation always included");
+    }
+
+    #[test]
+    fn sources_for_scope_source_returns_only_listed_ids() {
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert("Textbooks/SICP/Ch01".into(), make_source_entry(SourceKind::Textbook, vec![]));
+        manifest.sources.insert("Textbooks/SICP/Ch02".into(), make_source_entry(SourceKind::Textbook, vec![]));
+        manifest.sources.insert("Textbooks/TAPL/Ch01".into(), make_source_entry(SourceKind::Textbook, vec![]));
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["Textbooks/SICP/Ch01".into(), "Textbooks/SICP/Ch02".into()],
+        };
+        let ids = sources_for_scope(&manifest, &scope);
+        assert_eq!(ids, vec!["Textbooks/SICP/Ch01", "Textbooks/SICP/Ch02"]);
+    }
+
+    #[test]
+    fn sources_index_lists_present_sources_with_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert("Textbooks/SICP/Ch01".into(), SourceEntry {
+            path: String::new(),
+            kind: SourceKind::Textbook,
+            status: SourceStatus::Unprocessed,
+            last_processed_at: None,
+            heading_scheme: vec![],
+            topics_updated: vec![],
+            summary: Some("Building abstractions".into()),
+            tags: vec!["lisp".into()],
+            courses: vec!["CPSC5001".into()],
+        });
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["Textbooks/SICP/Ch01".into()],
+        };
+        write_sources_index(&manifest, &scope, tmp.path()).unwrap();
+
+        let content = std::fs::read_to_string(tmp.path().join("_sources_index.md")).unwrap();
+        assert!(content.contains("Textbooks/SICP/Ch01"));
+        assert!(content.contains("textbook"));
+        assert!(content.contains("CPSC5001"));
+        assert!(content.contains("Building abstractions"));
+        assert!(content.contains("lisp"));
     }
 }

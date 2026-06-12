@@ -624,8 +624,8 @@ fn scan_sources_dir(
             continue;
         }
 
-        // Extract summary and tags from frontmatter when present.
-        let (summary, tags) = extract_source_meta(&content);
+        // Extract summary, tags, and courses from frontmatter when present.
+        let (summary, tags, courses) = extract_source_meta(&content);
 
         // Heading scheme: meaningful only for structured documents (not conversations).
         let heading_scheme = if kind == SourceKind::AiConversation {
@@ -645,6 +645,7 @@ fn scan_sources_dir(
                 topics_updated: vec![],
                 summary,
                 tags,
+                courses,
             },
         );
         new_sources.push(source_id);
@@ -652,20 +653,22 @@ fn scan_sources_dir(
     Ok(())
 }
 
-/// Extract `summary` and `tags` from a source file's YAML frontmatter.
-/// Returns `(None, vec![])` when there is no frontmatter or the fields are absent.
-fn extract_source_meta(content: &str) -> (Option<String>, Vec<String>) {
+/// Extract `summary`, `tags`, and `courses` from a source file's YAML frontmatter.
+/// Returns `(None, vec![], vec![])` when there is no frontmatter or the fields are absent.
+fn extract_source_meta(content: &str) -> (Option<String>, Vec<String>, Vec<String>) {
     let Some((yaml, _)) = crate::frontmatter::split_frontmatter(content) else {
-        return (None, vec![]);
+        return (None, vec![], vec![]);
     };
     #[derive(serde::Deserialize, Default)]
     struct SourceFrontmatter {
         summary: Option<String>,
         #[serde(default)]
         tags: Vec<String>,
+        #[serde(default)]
+        courses: Vec<String>,
     }
     let meta: SourceFrontmatter = serde_yml::from_str(yaml).unwrap_or_default();
-    (meta.summary, meta.tags)
+    (meta.summary, meta.tags, meta.courses)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -995,6 +998,13 @@ fn notify_macos_args(message: &str) -> Vec<&str> {
 }
 
 fn notify(message: &str) {
+    // Escape hatch for test runs and cargo mutants: set CSNOTES_NO_NOTIFY=1 to
+    // suppress all desktop notifications without touching the notify flag path.
+    // This prevents mutations of the `if args.notify` guard from spawning
+    // osascript as a side effect of the test suite.
+    if std::env::var("CSNOTES_NO_NOTIFY").is_ok() {
+        return;
+    }
     #[cfg(target_os = "macos")]
     {
         // Pass the message as argv rather than interpolating into the script

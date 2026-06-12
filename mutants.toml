@@ -1,0 +1,5 @@
+# cargo mutants configuration
+# https://mutants.rs/configuration.html
+
+[test_env]
+CSNOTES_NO_NOTIFY = "1"

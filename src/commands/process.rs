@@ -22,7 +22,9 @@ use crate::workspace::{
 pub struct ProcessArgs {
     pub session: Option<String>,
     pub course: Option<String>,
-    pub source: Option<String>,
+    /// Source IDs or path prefixes passed via `--source`.  Each entry is either
+    /// an exact source ID or a prefix that expands to all matching IDs.
+    pub sources: Vec<String>,
     pub topic: Option<String>,
     pub dry_run: bool,
     pub backend: Option<AiBackend>,
@@ -128,11 +130,14 @@ pub fn run(args: ProcessArgs) -> Result<()> {
                     }
                 }
             }
-            WorkspaceScope::Source { source_id } => {
-                dim_colon("scope   :", &format!("source {}", source_id));
-                if let Some(entry) = manifest.sources.get(source_id) {
-                    continuation("path    :", &entry.path);
-                    continuation("kind    :", &format!("{:?}", entry.kind));
+            WorkspaceScope::Source { source_ids } => {
+                dim_colon("scope   :", &format!("source(s) [{}]", source_ids.len()));
+                for source_id in source_ids {
+                    if let Some(entry) = manifest.sources.get(source_id) {
+                        continuation("source  :", &format!("{} ({})", source_id, entry.kind.as_str()));
+                    } else {
+                        continuation("source  :", source_id);
+                    }
                 }
             }
             WorkspaceScope::Topic { topic } => {
@@ -360,8 +365,9 @@ pub fn run_teardown(
 // ── Scope resolution ──────────────────────────────────────────────────────────
 
 fn resolve_scope(args: &ProcessArgs, manifest: &Manifest) -> Result<WorkspaceScope> {
-    if let Some(source_id) = &args.source {
-        return Ok(WorkspaceScope::Source { source_id: source_id.clone() });
+    if !args.sources.is_empty() {
+        let source_ids = expand_source_ids(&args.sources, manifest)?;
+        return Ok(WorkspaceScope::Source { source_ids });
     }
     if let Some(topic) = &args.topic {
         return Ok(WorkspaceScope::Topic { topic: topic.clone() });
@@ -369,6 +375,36 @@ fn resolve_scope(args: &ProcessArgs, manifest: &Manifest) -> Result<WorkspaceSco
 
     let session_id = resolve_session_id(args, manifest)?;
     Ok(WorkspaceScope::Session { session_id })
+}
+
+/// Expand a list of source IDs or path prefixes to concrete manifest IDs.
+///
+/// Each entry is either an exact source ID or a prefix: `Textbooks/SICP` expands
+/// to all source IDs that start with `Textbooks/SICP/`.
+fn expand_source_ids(raw: &[String], manifest: &Manifest) -> Result<Vec<String>> {
+    let mut result = Vec::new();
+    for id in raw {
+        if manifest.sources.contains_key(id.as_str()) {
+            result.push(id.clone());
+        } else {
+            let prefix = format!("{}/", id);
+            let mut matches: Vec<String> = manifest
+                .sources
+                .keys()
+                .filter(|k| k.starts_with(&prefix))
+                .cloned()
+                .collect();
+            matches.sort();
+            if matches.is_empty() {
+                anyhow::bail!(
+                    "source '{}' not found (no exact match or prefix match in manifest)",
+                    id
+                );
+            }
+            result.extend(matches);
+        }
+    }
+    Ok(result)
 }
 
 fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String> {
@@ -652,7 +688,7 @@ mod tests {
             &ProcessArgs {
                 session: session.map(|s| s.to_string()),
                 course: course.map(|s| s.to_string()),
-                source: None,
+                sources: vec![],
                 topic: None,
                 dry_run: false,
                 backend: None,
@@ -719,6 +755,7 @@ mod tests {
                 topics_updated: vec![],
                 summary: None,
                 tags: vec![],
+                courses: vec![],
             },
         );
 

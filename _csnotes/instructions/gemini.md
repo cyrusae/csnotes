@@ -11,11 +11,12 @@ frontmatter, and merges `_synthetic/` into the vault.
 
 ```
 _session.md          ← start here: scope, inputs, open flags, known block IDs
+_sources_index.md    ← available sources with metadata; consult before reading source files
 synthesis.md         ← read before writing notes
 report_schema.md     ← read before writing the session report
 input_raw_*.md       ← student's raw notes (XML-wrapped, read-only)
 input_plaud_*.md     ← Plaud transcript/summary (XML-wrapped, read-only)
-input_source_*.md    ← textbook material (XML-wrapped, read-only)
+sources/             ← source files (XML-wrapped, read-only); read only relevant ones
 _synthetic/          ← your writable working copy of the vault's synthetic notes
 _session_report.json ← you write this before exiting
 ```
@@ -27,6 +28,10 @@ _session_report.json ← you write this before exiting
 Read `_session.md`.  It tells you the scope, what inputs are present, any open
 flags from previous sessions, and the full list of existing block IDs.  Then
 read the raw notes and Plaud recording input files.
+
+Check `_sources_index.md` to see what source material is available.  Read
+files from `sources/` only when they are relevant to the current session —
+don't load all sources upfront.
 
 ---
 
