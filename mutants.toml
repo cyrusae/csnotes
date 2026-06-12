@@ -1,5 +1,2 @@
-# cargo mutants configuration
-# https://mutants.rs/configuration.html
-
-[test_env]
-CSNOTES_NO_NOTIFY = "1"
+# cargo mutants reads config from .cargo/mutants.toml, not this file.
+# Configuration lives in .cargo/mutants.toml.

@@ -1,0 +1,14 @@
+# cargo mutants configuration
+# https://mutants.rs/configuration.html
+
+[test_env]
+CSNOTES_NO_NOTIFY = "1"
+
+# replace_note_links advances `remaining` by idx+1 to skip past the non-matching `[`.
+# Mutating `+` to `*` produces idx*1 = idx — same position, infinite loop.
+# Mutating `+` to `-` produces idx-1, which also loops on any string where
+# the else branch fires more than once. The else branch IS tested; these
+# mutations simply cannot fail fast by design.
+exclude_re = [
+    "src/ops/structural\\.rs:612:40: replace \\+ with",
+]
