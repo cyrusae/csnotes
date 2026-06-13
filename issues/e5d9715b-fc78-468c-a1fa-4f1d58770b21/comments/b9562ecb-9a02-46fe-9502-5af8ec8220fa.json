@@ -1,0 +1,10 @@
+{
+  "uuid": "b9562ecb-9a02-46fe-9502-5af8ec8220fa",
+  "issue_uuid": "e5d9715b-fc78-468c-a1fa-4f1d58770b21",
+  "author": "3owj",
+  "content": "Added 24 tests for command handler mutant coverage: diff.rs (4 — resolve_session_id exact/suffix/no-match/multiple), process.rs (3 — expand_source_ids exact/prefix/no-match), config_cmd.rs (17 — apply_set for all keys + error cases, try_rename_in_path flat/parent/suffix/no-match, rename_in_path error). 281 unit tests total.",
+  "created_at": "2026-06-13T07:00:24.943237Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAeLsDH/WgAyBgNH83tEaz948uqRM6zk8jTGnN/pA7nwad65RP4E2wCWWP/66menDdpiO4A4OJRcEirwkZP2AMCQ=="
+}
