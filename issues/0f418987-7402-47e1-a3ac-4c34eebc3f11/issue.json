@@ -2,11 +2,12 @@
   "uuid": "0f418987-7402-47e1-a3ac-4c34eebc3f11",
   "display_id": null,
   "title": "add rename_atomic op to structural ops",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-11T13:14:22.378571Z",
-  "updated_at": "2026-06-11T13:14:22.514666Z",
+  "updated_at": "2026-06-13T02:33:39.337603Z",
+  "closed_at": "2026-06-13T02:33:39.337603Z",
   "labels": [
     "enhancement"
   ]
