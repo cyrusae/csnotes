@@ -451,3 +451,164 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
     }
     Ok(())
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AiBackend;
+
+    fn default_config() -> VaultConfig {
+        toml::from_str("").unwrap()
+    }
+
+    // ── apply_set ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn apply_set_filename_format_valid() {
+        let mut cfg = default_config();
+        apply_set(&mut cfg, "filename_format", "{course}-{yyyy}-{mm}-{dd}").unwrap();
+        assert_eq!(cfg.filename_format, "{course}-{yyyy}-{mm}-{dd}");
+    }
+
+    #[test]
+    fn apply_set_filename_format_invalid_errors() {
+        let mut cfg = default_config();
+        assert!(apply_set(&mut cfg, "filename_format", "no-course-token").is_err());
+    }
+
+    #[test]
+    fn apply_set_require_recordings_parses_all_truthy_falsy() {
+        let mut cfg = default_config();
+        for val in ["true", "1", "yes"] {
+            apply_set(&mut cfg, "require_recordings", val).unwrap();
+            assert!(cfg.require_recordings, "{} should be truthy", val);
+        }
+        for val in ["false", "0", "no"] {
+            apply_set(&mut cfg, "require_recordings", val).unwrap();
+            assert!(!cfg.require_recordings, "{} should be falsy", val);
+        }
+    }
+
+    #[test]
+    fn apply_set_require_recordings_invalid_errors() {
+        let mut cfg = default_config();
+        assert!(apply_set(&mut cfg, "require_recordings", "maybe").is_err());
+    }
+
+    #[test]
+    fn apply_set_default_backend_all_variants() {
+        let mut cfg = default_config();
+        apply_set(&mut cfg, "default_backend", "claude").unwrap();
+        assert_eq!(cfg.default_backend, AiBackend::Claude);
+        apply_set(&mut cfg, "default_backend", "agy").unwrap();
+        assert_eq!(cfg.default_backend, AiBackend::Agy);
+        apply_set(&mut cfg, "default_backend", "mock").unwrap();
+        assert_eq!(cfg.default_backend, AiBackend::Mock);
+    }
+
+    #[test]
+    fn apply_set_default_backend_invalid_errors() {
+        let mut cfg = default_config();
+        assert!(apply_set(&mut cfg, "default_backend", "openai").is_err());
+    }
+
+    #[test]
+    fn apply_set_archive_threshold_weeks_valid() {
+        let mut cfg = default_config();
+        apply_set(&mut cfg, "archive_threshold_weeks", "12").unwrap();
+        assert_eq!(cfg.archive_threshold_weeks, 12);
+    }
+
+    #[test]
+    fn apply_set_archive_threshold_weeks_invalid_errors() {
+        let mut cfg = default_config();
+        assert!(apply_set(&mut cfg, "archive_threshold_weeks", "two").is_err());
+    }
+
+    #[test]
+    fn apply_set_agy_model_set_and_clear() {
+        let mut cfg = default_config();
+        apply_set(&mut cfg, "agy_model", "gemini-2.5-pro").unwrap();
+        assert_eq!(cfg.agy_model.as_deref(), Some("gemini-2.5-pro"));
+        apply_set(&mut cfg, "agy_model", "").unwrap();
+        assert!(cfg.agy_model.is_none());
+    }
+
+    #[test]
+    fn apply_set_scan_ai_conversations_valid() {
+        let mut cfg = default_config();
+        apply_set(&mut cfg, "scan_ai_conversations", "false").unwrap();
+        assert!(!cfg.scan_ai_conversations);
+        apply_set(&mut cfg, "scan_ai_conversations", "true").unwrap();
+        assert!(cfg.scan_ai_conversations);
+    }
+
+    #[test]
+    fn apply_set_scan_ai_conversations_invalid_errors() {
+        let mut cfg = default_config();
+        assert!(apply_set(&mut cfg, "scan_ai_conversations", "enabled").is_err());
+    }
+
+    #[test]
+    fn apply_set_unknown_key_errors() {
+        let mut cfg = default_config();
+        assert!(apply_set(&mut cfg, "nonexistent_key", "value").is_err());
+    }
+
+    // ── try_rename_in_path ────────────────────────────────────────────────────
+
+    #[test]
+    fn try_rename_in_path_with_parent_dir() {
+        let result = try_rename_in_path(
+            "notes/CPSC5001-09-03.md",
+            "CPSC5001-09-03",
+            "CPSC5001-2026-09-03",
+        );
+        assert_eq!(result, Some("notes/CPSC5001-2026-09-03.md".to_string()));
+    }
+
+    #[test]
+    fn try_rename_in_path_flat_file() {
+        let result = try_rename_in_path(
+            "CPSC5001-09-03.md",
+            "CPSC5001-09-03",
+            "CPSC5001-2026-09-03",
+        );
+        assert_eq!(result, Some("CPSC5001-2026-09-03.md".to_string()));
+    }
+
+    #[test]
+    fn try_rename_in_path_suffix_preserved() {
+        let result = try_rename_in_path(
+            "recordings/CPSC5001-09-03-summary.md",
+            "CPSC5001-09-03",
+            "CPSC5001-2026-09-03",
+        );
+        assert_eq!(
+            result,
+            Some("recordings/CPSC5001-2026-09-03-summary.md".to_string())
+        );
+    }
+
+    #[test]
+    fn try_rename_in_path_no_match_returns_none() {
+        let result = try_rename_in_path(
+            "notes/OTHER-09-03.md",
+            "CPSC5001-09-03",
+            "CPSC5001-2026-09-03",
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn rename_in_path_no_match_errors() {
+        let result = rename_in_path(
+            "notes/OTHER-09-03.md",
+            "CPSC5001-09-03",
+            "CPSC5001-2026-09-03",
+        );
+        assert!(result.is_err());
+    }
+}

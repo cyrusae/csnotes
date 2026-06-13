@@ -542,24 +542,6 @@ fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
         .collect()
 }
 
-fn note_exists_in_tree(root: &Path, note_name: &str) -> bool {
-    // Obsidian resolves wikilinks case-insensitively, so we do the same.
-    for entry in walkdir::WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
-    {
-        if entry
-            .path()
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map_or(false, |s| s.eq_ignore_ascii_case(note_name))
-        {
-            return true;
-        }
-    }
-    false
-}
 
 // ── Fix plan ──────────────────────────────────────────────────────────────────
 
@@ -878,12 +860,33 @@ mod tests {
     }
 
     #[test]
+    fn precondition_update_note_invalid_frontmatter_errors() {
+        let tmp = TempDir::new().unwrap();
+        // File exists but has no csnotes frontmatter — parse_frontmatter must fail.
+        write(tmp.path(), "note.md", "# Just prose, no frontmatter\n");
+        let report = make_report(vec![update_op("note.md")]);
+        assert!(
+            precondition_pass(&report, tmp.path()).is_err(),
+            "expected error for update_note targeting file without valid csnotes frontmatter"
+        );
+    }
+
+    #[test]
     fn precondition_rename_topic_source_missing_errors() {
         let tmp = TempDir::new().unwrap();
         let report = make_report(vec![rename_op("sorting", "algorithms")]);
         let err = precondition_pass(&report, tmp.path()).unwrap_err();
         assert!(err.to_string().contains("sorting"), "{err}");
         assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_rename_topic_source_exists_passes() {
+        let tmp = TempDir::new().unwrap();
+        // Source exists under _synthetic/, destination does not → should pass.
+        std::fs::create_dir_all(tmp.path().join("_synthetic/sorting")).unwrap();
+        let report = make_report(vec![rename_op("sorting", "algorithms")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
     #[test]
@@ -950,6 +953,54 @@ mod tests {
         check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
         assert_eq!(result.hard_violations.len(), 1);
         assert!(result.hard_violations[0].contains("nonexistent"));
+    }
+
+    #[test]
+    fn check_links_resolve_flags_broken_embed() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "index.md", "![[ghost-atomic#^id]]\n");
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
+        assert_eq!(result.hard_violations.len(), 1);
+        assert!(result.hard_violations[0].contains("ghost-atomic"));
+    }
+
+    #[test]
+    fn audit_vault_broken_embed_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/index.md", "![[ghost-atomic#^id]]\n");
+        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("ghost-atomic")),
+            "expected hard violation for broken embed, got: {:?}", result.hard_violations
+        );
+    }
+
+    #[test]
+    fn invariant_suite_broken_embed_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/index.md", "![[ghost-atomic#^id]]\n");
+        let report = make_report(vec![]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(
+            result.hard_violations.iter().any(|v| v.contains("ghost-atomic")),
+            "expected hard violation for broken embed, got: {:?}", result.hard_violations
+        );
+    }
+
+    #[test]
+    fn check_orphan_atomics_embedded_atomic_not_warned() {
+        let tmp = TempDir::new().unwrap();
+        // An atomic embedded by an index note must NOT be flagged as an orphan.
+        write(tmp.path(), "sorting.md", csnotes_note());
+        write(tmp.path(), "index.md", "![[sorting#^test-01]]\n");
+        let mut result = AuditResult::default();
+        check_orphan_atomics(tmp.path(), &mut result).unwrap();
+        assert!(
+            result.soft_warnings.is_empty(),
+            "embedded atomic should not be flagged as orphan: {:?}", result.soft_warnings
+        );
     }
 
     // ── audit_vault caller tests ──────────────────────────────────────────────
@@ -1027,15 +1078,13 @@ mod tests {
     }
 
     #[test]
-    fn note_exists_case_insensitive() {
+    fn collect_note_stems_lowercases_mixed_case_files() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "Sorting.md", "# Sorting\n");
-        // Link written as lowercase should resolve against a mixed-case file.
-        assert!(note_exists_in_tree(tmp.path(), "sorting"));
-        // Link written as exact case also resolves.
-        assert!(note_exists_in_tree(tmp.path(), "Sorting"));
-        // Non-existent note returns false.
-        assert!(!note_exists_in_tree(tmp.path(), "mergesort"));
+        let stems = collect_note_stems(tmp.path());
+        // collect_note_stems lowercases everything so case-insensitive lookups work.
+        assert!(stems.contains("sorting"));
+        assert!(!stems.contains("mergesort"));
     }
 
     // Helpers for the tests below -------------------------------------------------

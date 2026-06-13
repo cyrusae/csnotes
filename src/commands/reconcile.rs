@@ -910,6 +910,72 @@ mod tests {
     }
 
     #[test]
+    fn scan_sources_ai_conversation_courses_extracted() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
+        write_file(
+            &deep_dir,
+            "exam-prep.md",
+            "---\nsummary: Exam prep chat\ncourses: [CPSC5001]\n---\n\nContent.\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        let entry = &manifest.sources["AI-Conversations/Gemini/exam-prep"];
+        assert_eq!(entry.courses, vec!["CPSC5001"]);
+    }
+
+    #[test]
+    fn scan_sources_ai_conversation_path_is_vault_relative() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
+        write_file(
+            &deep_dir,
+            "sorting-questions.md",
+            "---\nsummary: Discussion\n---\n\nContent.\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        let entry = &manifest.sources["AI-Conversations/Gemini/sorting-questions"];
+        assert_eq!(
+            entry.path,
+            "sources/AI-Conversations/Gemini/sorting-questions.md",
+            "stored path must be relative to vault root, not sources_dir"
+        );
+    }
+
+    #[test]
+    fn scan_sources_multiple_providers_get_distinct_ids() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        write_file(
+            &sources_dir.join("AI-Conversations").join("Gemini"),
+            "chat-a.md",
+            "---\nsummary: Gemini chat\n---\n\nContent.\n",
+        );
+        write_file(
+            &sources_dir.join("AI-Conversations").join("Claude"),
+            "chat-b.md",
+            "---\nsummary: Claude chat\n---\n\nContent.\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+
+        assert_eq!(new_sources.len(), 2);
+        assert!(manifest.sources.contains_key("AI-Conversations/Gemini/chat-a"));
+        assert!(manifest.sources.contains_key("AI-Conversations/Claude/chat-b"));
+    }
+
+    #[test]
     fn scan_sources_textbook_registered_without_frontmatter() {
         let tmp = TempDir::new().unwrap();
         let sources_dir = tmp.path().join("sources");

@@ -240,6 +240,9 @@ pub fn run_teardown(
             Op::RenameTopic(o) => crate::ops::structural::execute_rename_topic(
                 o, workspace_root, &config.synthetic_dir,
             ),
+            Op::RenameAtomic(o) => crate::ops::structural::execute_rename_atomic(
+                o, workspace_root, &config.synthetic_dir,
+            ),
             Op::MoveAtomic(o) => crate::ops::structural::execute_move_atomic(
                 o, workspace_root, &config.synthetic_dir,
             ),
@@ -314,6 +317,13 @@ pub fn run_teardown(
     // Step 10: Merge-back
     merge_back(workspace_root, vault_root, &config.synthetic_dir)?;
 
+    // Step 10.5: Relink raw notes — propagate the same path changes that were
+    // applied to _synthetic/ into user-authored raw notes.
+    let raw_roots = collect_raw_note_roots(vault_root, config);
+    let raw_root_refs: Vec<&std::path::Path> = raw_roots.iter().map(|p| p.as_path()).collect();
+    let relinked = crate::ops::structural::relink_raw_notes(&report.operations, &raw_root_refs)
+        .unwrap_or(0);
+
     // Copy last_report.json and per-session report copies
     let report_src = workspace_root.join(REPORT_FILENAME);
     if report_src.exists() {
@@ -347,6 +357,9 @@ pub fn run_teardown(
     let n_ops = report.operations.len();
     let n_flags = report.review_flags.iter().filter(|f| f.kind.is_actionable()).count();
     println!("  {} operation{}", n_ops, if n_ops == 1 { "" } else { "s" });
+    if relinked > 0 {
+        println!("  {} raw note{} relinked", relinked, if relinked == 1 { "" } else { "s" });
+    }
     if n_flags > 0 {
         println!(
             "  {}",
@@ -360,6 +373,23 @@ pub fn run_teardown(
     }
 
     Ok(())
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Collect the raw-note directories for all active courses (or the flat
+/// vault-root layout when `active_courses` is empty).  Only returns paths
+/// that actually exist on disk.
+fn collect_raw_note_roots(vault_root: &std::path::Path, config: &VaultConfig) -> Vec<std::path::PathBuf> {
+    if config.active_courses.is_empty() {
+        let p = vault_root.join(&config.raw_dir);
+        if p.exists() { vec![p] } else { vec![] }
+    } else {
+        config.active_courses.iter()
+            .map(|course| vault_root.join(course).join(&config.raw_dir))
+            .filter(|p| p.exists())
+            .collect()
+    }
 }
 
 // ── Scope resolution ──────────────────────────────────────────────────────────
@@ -775,6 +805,62 @@ mod tests {
         assert_eq!(entry.status, SourceStatus::Processed);
         assert!(entry.last_processed_at.is_some());
         assert_eq!(entry.topics_updated, vec!["algorithms"]);
+    }
+
+    fn make_manifest_with_sources(sources: &[&str]) -> Manifest {
+        use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
+        use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+        let cfg = ManifestConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        };
+        let mut m = Manifest::empty(std::path::PathBuf::from("/tmp"), cfg);
+        for &id in sources {
+            m.sources.insert(id.to_string(), SourceEntry {
+                path: format!("sources/{}.md", id),
+                kind: SourceKind::Textbook,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: None,
+                tags: vec![],
+                courses: vec![],
+            });
+        }
+        m
+    }
+
+    #[test]
+    fn expand_source_ids_exact_match() {
+        let m = make_manifest_with_sources(&["Textbooks/SICP/Ch01"]);
+        let result = expand_source_ids(&["Textbooks/SICP/Ch01".to_string()], &m).unwrap();
+        assert_eq!(result, vec!["Textbooks/SICP/Ch01"]);
+    }
+
+    #[test]
+    fn expand_source_ids_prefix_expands_all_sorted() {
+        let m = make_manifest_with_sources(&[
+            "Textbooks/SICP/Ch02",
+            "Textbooks/SICP/Ch01",
+            "Textbooks/TAPL/Ch01",
+        ]);
+        let result = expand_source_ids(&["Textbooks/SICP".to_string()], &m).unwrap();
+        assert_eq!(result, vec!["Textbooks/SICP/Ch01", "Textbooks/SICP/Ch02"]);
+    }
+
+    #[test]
+    fn expand_source_ids_no_match_errors() {
+        let m = make_manifest_with_sources(&["Textbooks/SICP/Ch01"]);
+        assert!(expand_source_ids(&["Textbooks/TAPL".to_string()], &m).is_err());
     }
 }
 

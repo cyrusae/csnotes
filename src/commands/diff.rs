@@ -153,3 +153,84 @@ fn resolve_session_id(input: &str, manifest: &Manifest) -> Result<String> {
         ),
     }
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+    use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
+    use chrono::NaiveDate;
+
+    fn make_manifest(sessions: &[&str]) -> Manifest {
+        let cfg = ManifestConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+        };
+        let mut m = Manifest::empty(std::path::PathBuf::from("/tmp"), cfg);
+        for &id in sessions {
+            let parts: Vec<&str> = id.splitn(2, '-').collect();
+            let course = parts[0].to_string();
+            let date = NaiveDate::parse_from_str(
+                &id[course.len() + 1..],
+                "%Y-%m-%d",
+            )
+            .unwrap_or_else(|_| NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+            m.sessions.insert(
+                id.to_string(),
+                SessionEntry {
+                    date,
+                    course,
+                    filename_format: "{course}-{mm}-{dd}".into(),
+                    raw_note: format!("notes/{}.md", id),
+                    recording_exports: vec![],
+                    artifacts: vec![],
+                    recording_missing: false,
+                    status: SessionStatus::Unprocessed,
+                    processed_at: None,
+                    topics_updated: vec![],
+                },
+            );
+        }
+        m
+    }
+
+    #[test]
+    fn resolve_session_id_exact_match() {
+        let m = make_manifest(&["CPSC5001-2026-09-03"]);
+        assert_eq!(
+            resolve_session_id("CPSC5001-2026-09-03", &m).unwrap(),
+            "CPSC5001-2026-09-03"
+        );
+    }
+
+    #[test]
+    fn resolve_session_id_suffix_match() {
+        let m = make_manifest(&["CPSC5001-2026-09-03"]);
+        assert_eq!(
+            resolve_session_id("09-03", &m).unwrap(),
+            "CPSC5001-2026-09-03"
+        );
+    }
+
+    #[test]
+    fn resolve_session_id_no_match_errors() {
+        let m = make_manifest(&["CPSC5001-2026-09-03"]);
+        assert!(resolve_session_id("06-15", &m).is_err());
+    }
+
+    #[test]
+    fn resolve_session_id_multiple_matches_errors() {
+        let m = make_manifest(&["CPSC5001-2026-09-03", "CPSC5002-2026-09-03"]);
+        assert!(resolve_session_id("09-03", &m).is_err());
+    }
+}

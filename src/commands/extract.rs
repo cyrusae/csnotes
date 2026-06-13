@@ -3,8 +3,9 @@
 ///
 /// Recognises:
 ///   actions   — `- [ ] ...`, `TODO:`, `ACTION:`
-///   deadlines — lines containing `due`, `deadline`, `by <date>`, or a bare
-///               date pattern near an obligation
+///   deadlines — lines containing `due`, `deadline`, `overdue`, `submit`,
+///               `turn in`, `hand in`, `by <date/day/ordinal>`, or
+///               `by tomorrow`/`by tonight`
 ///   questions — lines ending with `?`, starting with `Q:` / `??`
 use std::fs;
 use std::path::PathBuf;
@@ -190,14 +191,35 @@ fn clean_action(line: &str) -> String {
 /// Matches lines that look like deadlines.
 ///
 /// Uses word boundaries (`\b`) so that:
-/// - `\bdue\b`     catches "due:", "due date", "Due Friday" but NOT "residue"
-/// - `\bdeadline`  catches "deadline", "deadlines"
-/// - `\bsubmit`    catches "submit", "submitted", "submission" (no trailing \b)
-/// - `\bby\s+<day/month>\b` catches "by Monday" but NOT "maybe thursday" or
-///   "standby friday" (the \b before "by" blocks embedded occurrences)
+/// - `\bdue\b`        catches "due:", "due date", "Due Friday" but NOT "residue"
+/// - `\bdeadline`     catches "deadline", "deadlines"
+/// - `\boverdue\b`    catches "overdue assignment"
+/// - `\bsubmit`       catches "submit", "submitted", "submission"
+/// - `\bturn\s+in\b`  catches "turn in the assignment"
+/// - `\bhand\s+in\b`  catches "hand in the project"
+/// - `\bby\s+...`     catches "by Monday", "by January", "by the 15th",
+///                    "by tomorrow", "by tonight" but NOT "maybe thursday"
+///                    or "standby friday" (word boundary before "by")
 static DEADLINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\bdeadline|\bdue\b|\bsubmit|\bby\s+(mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b"
+        r"(?ix)
+        \bdeadline
+        | \bdue\b
+        | \boverdue\b
+        | \bsubmit
+        | \bturn\s+in\b
+        | \bhand\s+in\b
+        | \bby\s+(?:the\s+)?
+          (?:
+              mon(?:day)?   | tue(?:sday)?  | wed(?:nesday)? | thu(?:rsday)?
+            | fri(?:day)?   | sat(?:urday)? | sun(?:day)?
+            | jan(?:uary)?  | feb(?:ruary)? | mar(?:ch)?     | apr(?:il)?
+            | may           | jun(?:e)?     | jul(?:y)?      | aug(?:ust)?
+            | sep(?:tember)?| oct(?:ober)?  | nov(?:ember)?  | dec(?:ember)?
+            | tomorrow | tonight
+            | \d{1,2}(?:st|nd|rd|th)
+          )\b
+        "
     ).unwrap()
 });
 
@@ -358,5 +380,92 @@ mod tests {
         let content = "Today we covered sorting algorithms.\nMerge sort is O(n log n).\n";
         let items = extract_from(content, None);
         assert!(items.is_empty());
+    }
+
+    // ── New keyword coverage ──────────────────────────────────────────────────
+
+    #[test]
+    fn deadline_turn_in() {
+        let items = extract_from("turn in the assignment by friday\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_hand_in() {
+        let items = extract_from("hand in the problem set\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_overdue() {
+        let items = extract_from("this assignment is overdue\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_by_full_month_name() {
+        let items = extract_from("project due by January 15\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_by_ordinal() {
+        let items = extract_from("submit by the 15th\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_by_ordinal_no_the() {
+        let items = extract_from("due by 3rd\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_by_tomorrow() {
+        let items = extract_from("submit by tomorrow\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_by_tonight() {
+        let items = extract_from("finish by tonight\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn deadline_by_full_day_name() {
+        // Full day names like "by Monday" must match (mon(?:day)? covers both)
+        let items = extract_from("finish by Monday\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn no_false_positive_tomorrow_without_by() {
+        // "tomorrow" alone (no "by") should not trigger
+        let items = extract_from("we will cover this tomorrow\n", None);
+        assert!(items.is_empty(), "bare 'tomorrow' without 'by' should not match");
+    }
+
+    #[test]
+    fn deadline_all_full_month_names_by() {
+        let months = [
+            "january", "february", "march", "april", "june",
+            "july", "august", "september", "october", "november", "december",
+        ];
+        for month in months {
+            let line = format!("submit by {}\n", month);
+            let items = extract_from(&line, None);
+            assert_eq!(items.len(), 1, "expected match for 'by {}'", month);
+            assert_eq!(items[0].kind, ExtractKind::Deadline);
+        }
     }
 }

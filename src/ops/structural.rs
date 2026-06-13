@@ -80,6 +80,66 @@ pub fn execute_rename_topic(
     Ok(())
 }
 
+/// Execute a `rename_atomic` op against the workspace.
+///
+/// Renames an atomic note's file (slug) within its current topic folder.
+/// Updates the `title` frontmatter field and rewrites all wikilinks that
+/// reference the old path stem across `_synthetic/`.  Aliases in links of the
+/// form `[[topic/old-slug|Label]]` are preserved automatically.
+pub fn execute_rename_atomic(
+    op: &RenameAtomicOp,
+    workspace_root: &Path,
+    synthetic_dir: &str,
+) -> Result<()> {
+    let synthetic_root = workspace_root.join(synthetic_dir);
+    let from_abs = safe_join(workspace_root, &op.path)?;
+
+    let from_p = std::path::Path::new(&op.path);
+    let old_slug = from_p
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("rename_atomic: cannot parse slug from '{}'", op.path))?;
+    let topic = from_p
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("rename_atomic: cannot parse topic from '{}'", op.path))?;
+
+    if op.new_slug.is_empty() {
+        bail!("rename_atomic: new_slug must not be empty");
+    }
+
+    let to_abs = safe_join(&synthetic_root, topic)?.join(format!("{}.md", op.new_slug));
+
+    if !from_abs.exists() {
+        bail!("rename_atomic: source note '{}' not found in workspace", op.path);
+    }
+    if to_abs.exists() {
+        bail!(
+            "rename_atomic: '{}' already exists in topic '{}'",
+            op.new_slug, topic
+        );
+    }
+
+    std::fs::rename(&from_abs, &to_abs).with_context(|| {
+        format!(
+            "rename_atomic: renaming '{}' → '{}.md'",
+            from_abs.display(),
+            op.new_slug
+        )
+    })?;
+
+    crate::frontmatter::update_frontmatter(&to_abs, |fm| {
+        fm.title = op.new_title.clone();
+    })?;
+
+    let old_link = format!("{}/{}", topic, old_slug);
+    let new_link = format!("{}/{}", topic, op.new_slug);
+    rewrite_note_links(&synthetic_root, &old_link, &new_link)?;
+
+    Ok(())
+}
+
 /// Execute a `move_atomic` op against the workspace.
 ///
 /// Moves an atomic note from its current topic folder to an **existing** topic
@@ -616,6 +676,116 @@ fn replace_note_links(content: &str, old_stem: &str, new_stem: &str) -> String {
     result
 }
 
+// ── Raw-note relinking ────────────────────────────────────────────────────────
+
+/// After structural ops have been applied to `_synthetic/`, propagate the same
+/// link rewrites to raw notes so that user-authored notes stay in sync.
+///
+/// `raw_note_roots` is a list of directories to scan (e.g. one per active
+/// course, or just `vault_root/notes/` for flat vaults).  Errors on individual
+/// files are swallowed — relink is best-effort after a committed session.
+///
+/// Returns the total number of files that had at least one link rewritten.
+pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
+    if raw_note_roots.is_empty() {
+        return Ok(0);
+    }
+
+    // Represent each rewrite as either a prefix rewrite ("inheritance/" →
+    // "oop-basics/") or an exact-stem rewrite ("cs/old-slug" → "cs/new-slug").
+    enum Rw {
+        Prefix { old: String, new: String },
+        Exact  { old: String, new: String },
+    }
+
+    let mut total = 0usize;
+
+    for op in ops {
+        let rewrites: Vec<Rw> = match op {
+            Op::RenameTopic(o) => vec![Rw::Prefix {
+                old: format!("{}/", o.from),
+                new: format!("{}/", o.to),
+            }],
+            Op::RenameAtomic(o) => {
+                let p = std::path::Path::new(&o.path);
+                let old_slug = match p.file_stem().and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let topic = match p.parent().and_then(|pp| pp.file_name()).and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                vec![Rw::Exact {
+                    old: format!("{}/{}", topic, old_slug),
+                    new: format!("{}/{}", topic, o.new_slug),
+                }]
+            }
+            Op::MoveAtomic(o) => {
+                let p = std::path::Path::new(&o.from_path);
+                let slug = match p.file_stem().and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let old_topic = match p.parent().and_then(|pp| pp.file_name()).and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                vec![Rw::Exact {
+                    old: format!("{}/{}", old_topic, slug),
+                    new: format!("{}/{}", o.to_topic, slug),
+                }]
+            }
+            Op::PromoteAtomic(o) => {
+                let p = std::path::Path::new(&o.from_path);
+                let slug = match p.file_stem().and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let old_topic = match p.parent().and_then(|pp| pp.file_name()).and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                vec![Rw::Exact {
+                    old: format!("{}/{}", old_topic, slug),
+                    new: format!("{}/{}", o.to_topic, slug),
+                }]
+            }
+            Op::DemoteTopic(o) => vec![Rw::Prefix {
+                old: format!("{}/", o.from_topic),
+                new: format!("{}/", o.into_topic),
+            }],
+            Op::MergeTopics(o) => o.from.iter()
+                .filter(|from| *from != &o.into)
+                .map(|from| Rw::Prefix {
+                    old: format!("{}/", from),
+                    new: format!("{}/", o.into),
+                })
+                .collect(),
+            Op::SplitTopic(o) => o.into.iter()
+                .filter(|t| t.topic != o.from)
+                .flat_map(|t| t.atomics.iter().map(move |slug| Rw::Exact {
+                    old: format!("{}/{}", o.from, slug),
+                    new: format!("{}/{}", t.topic, slug),
+                }))
+                .collect(),
+            Op::CreateNote(_) | Op::UpdateNote(_) | Op::SetEmbed(_) => vec![],
+        };
+
+        for rw in &rewrites {
+            for &root in raw_note_roots {
+                let n = match rw {
+                    Rw::Prefix { old, new } => rewrite_links(root, old, new).unwrap_or(0),
+                    Rw::Exact  { old, new } => rewrite_note_links(root, old, new).unwrap_or(0),
+                };
+                total += n;
+            }
+        }
+    }
+
+    Ok(total)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -717,6 +887,110 @@ mod tests {
             reason: "test".to_string(),
         };
         assert!(execute_rename_topic(&op, tmp.path(), "_synthetic").is_err());
+    }
+
+    // ── rename_atomic ────────────────────────────────────────────────────────
+
+    fn atomic_note_with_title(topic: &str, title: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: {topic}\ntitle: {title}\n\
+             block_id: test-id\nembeds: ~\ncontributing_sessions: []\n\
+             contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
+             last_updated: \"2026-01-01T00:00:00Z\"\n---\n\nBody.\n\n^test-id\n"
+        )
+    }
+
+    #[test]
+    fn rename_atomic_renames_file_and_updates_title() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old Title"));
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New Title".to_string(),
+            reason: "better name".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        assert!(!synthetic.join("cs/old-slug.md").exists(), "old file should be gone");
+        assert!(synthetic.join("cs/new-slug.md").exists(), "new file should exist");
+        let content = std::fs::read_to_string(synthetic.join("cs/new-slug.md")).unwrap();
+        assert!(content.contains("title: New Title"), "title not updated in frontmatter");
+        assert!(content.contains("topic: cs"), "topic should be unchanged");
+    }
+
+    #[test]
+    fn rename_atomic_rewrites_links_in_other_notes() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old Title"));
+        write_note(
+            &synthetic,
+            "other/index.md",
+            "See [[cs/old-slug]] and ![[cs/old-slug#^test-id]] and [[cs/old-slug|My Label]].\n",
+        );
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New Title".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(synthetic.join("other/index.md")).unwrap();
+        assert!(content.contains("[[cs/new-slug]]"), "plain link not rewritten");
+        assert!(content.contains("![[cs/new-slug#^test-id]]"), "embed link not rewritten");
+        // Alias label preserved, only the slug updated
+        assert!(content.contains("[[cs/new-slug|My Label]]"), "alias not preserved");
+        assert!(!content.contains("old-slug"), "old slug should be gone from links");
+    }
+
+    #[test]
+    fn rename_atomic_fails_if_source_missing() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/missing.md".to_string(),
+            new_slug: "new-name".to_string(),
+            new_title: "New".to_string(),
+            reason: "test".to_string(),
+        };
+        assert!(execute_rename_atomic(&op, tmp.path(), "_synthetic").is_err());
+    }
+
+    #[test]
+    fn rename_atomic_fails_if_dest_exists() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old"));
+        write_note(&synthetic, "cs/new-slug.md", &atomic_note_with_title("cs", "Existing"));
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New".to_string(),
+            reason: "test".to_string(),
+        };
+        assert!(execute_rename_atomic(&op, tmp.path(), "_synthetic").is_err());
+    }
+
+    #[test]
+    fn rename_atomic_fails_if_new_slug_empty() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old"));
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "".to_string(),
+            new_title: "New".to_string(),
+            reason: "test".to_string(),
+        };
+        assert!(execute_rename_atomic(&op, tmp.path(), "_synthetic").is_err());
     }
 
     // ── move_atomic ──────────────────────────────────────────────────────────
@@ -1195,5 +1469,86 @@ mod tests {
 
         let content = std::fs::read_to_string(tmp.path().join("a.md")).unwrap();
         assert!(content.contains("[[topic/new-sorting]]"), "link should be rewritten");
+    }
+
+    // ── relink_raw_notes ─────────────────────────────────────────────────────
+
+    #[test]
+    fn relink_raw_notes_rename_topic_rewrites_raw_notes() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        std::fs::write(raw.join("lecture.md"), "See [[inheritance/poly]].\n").unwrap();
+
+        let ops = vec![Op::RenameTopic(RenameTopicOp {
+            from: "inheritance".to_string(),
+            to: "oop-basics".to_string(),
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1);
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(content.contains("[[oop-basics/poly]]"));
+        assert!(!content.contains("[[inheritance/"));
+    }
+
+    #[test]
+    fn relink_raw_notes_rename_atomic_rewrites_raw_notes() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        std::fs::write(raw.join("lecture.md"), "See [[cs/old-slug]] and [[cs/old-slug|Label]].\n").unwrap();
+
+        let ops = vec![Op::RenameAtomic(RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New".to_string(),
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1);
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(content.contains("[[cs/new-slug]]"));
+        assert!(content.contains("[[cs/new-slug|Label]]"), "alias preserved");
+        assert!(!content.contains("old-slug"));
+    }
+
+    #[test]
+    fn relink_raw_notes_no_roots_returns_zero() {
+        let ops = vec![Op::RenameTopic(RenameTopicOp {
+            from: "a".to_string(),
+            to: "b".to_string(),
+            reason: "test".to_string(),
+        })];
+        let n = relink_raw_notes(&ops, &[]).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn relink_raw_notes_non_structural_ops_are_no_ops() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        std::fs::write(raw.join("lecture.md"), "Some content [[cs/note]].\n").unwrap();
+
+        let ops = vec![
+            Op::CreateNote(crate::report::CreateNoteOp {
+                kind: crate::frontmatter::NoteKind::Atomic,
+                path: "_synthetic/cs/note.md".to_string(),
+                title: "Note".to_string(),
+                topic: "cs".to_string(),
+                block_id: Some("note-id".to_string()),
+                embed_in: vec![],
+                provenance: crate::frontmatter::ProvenanceDelta::default(),
+                change_summary: "test".to_string(),
+            }),
+        ];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 0, "create_note should cause no rewrites");
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(content.contains("[[cs/note]]"), "content should be unchanged");
     }
 }

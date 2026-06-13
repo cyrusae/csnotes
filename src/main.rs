@@ -46,16 +46,25 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             backend,
             fixture,
             agy_model,
-        } => process::run(process::ProcessArgs {
-            session,
-            course,
-            sources: source,
-            topic,
-            dry_run,
-            backend,
-            fixture,
-            agy_model,
-        }),
+            resume,
+        } => {
+            if resume {
+                return recover::run(recover::RecoverArgs {
+                    resume: true,
+                    discard: false,
+                });
+            }
+            process::run(process::ProcessArgs {
+                session,
+                course,
+                sources: source,
+                topic,
+                dry_run,
+                backend,
+                fixture,
+                agy_model,
+            })
+        }
 
         Command::Status => status::run(),
 
@@ -181,6 +190,10 @@ enum Command {
         /// Example: gemini-2.5-flash, gemini-2.5-pro
         #[arg(long)]
         agy_model: Option<String>,
+
+        /// Resume an in-progress session (equivalent to `csnotes recover --resume`).
+        #[arg(long)]
+        resume: bool,
     },
 
     /// Show processing status for sessions, sources, topics, and flags.

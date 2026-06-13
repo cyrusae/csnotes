@@ -86,6 +86,7 @@ pub enum Op {
 
     // ── Structural (Phase 1+) ──────────────────────────────────────────────
     RenameTopic(RenameTopicOp),
+    RenameAtomic(RenameAtomicOp),
     MoveAtomic(MoveAtomicOp),
     PromoteAtomic(PromoteAtomicOp),
     DemoteTopic(DemoteTopicOp),
@@ -100,6 +101,7 @@ impl Op {
             Op::CreateNote(_) => "create_note",
             Op::UpdateNote(_) => "update_note",
             Op::RenameTopic(_) => "rename_topic",
+            Op::RenameAtomic(_) => "rename_atomic",
             Op::MoveAtomic(_) => "move_atomic",
             Op::PromoteAtomic(_) => "promote_atomic",
             Op::DemoteTopic(_) => "demote_topic",
@@ -153,6 +155,15 @@ pub struct UpdateNoteOp {
 pub struct RenameTopicOp {
     pub from: String,
     pub to: String,
+    pub reason: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RenameAtomicOp {
+    /// Workspace-relative path to the note (e.g. `_synthetic/cs/old-slug.md`).
+    pub path: String,
+    pub new_slug: String,
+    pub new_title: String,
     pub reason: String,
 }
 
