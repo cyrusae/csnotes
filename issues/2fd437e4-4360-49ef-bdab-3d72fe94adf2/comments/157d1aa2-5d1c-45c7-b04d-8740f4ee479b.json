@@ -1,0 +1,10 @@
+{
+  "uuid": "157d1aa2-5d1c-45c7-b04d-8740f4ee479b",
+  "issue_uuid": "2fd437e4-4360-49ef-bdab-3d72fe94adf2",
+  "author": "3owj",
+  "content": "Added 3 tests for AiConversation scan coverage: courses field extracted from frontmatter, path stored relative to vault root, multiple providers (Gemini + Claude) get distinct 3-level IDs. 257 unit tests total.",
+  "created_at": "2026-06-13T06:55:15.694662Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA4t2x2HK2AR3H3fBLWWxDrirnqImd1hdalN5AEsclMA2iySZqNjGWkvQXCj0/94dRWrvqYiOlTpdT21MEj/XODw=="
+}
