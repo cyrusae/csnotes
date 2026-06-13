@@ -1,0 +1,10 @@
+{
+  "uuid": "628a5bcf-1457-4336-8c2d-05b53b90bb2f",
+  "issue_uuid": "0fd7b183-36ab-4f17-8036-764733c96f71",
+  "author": "3owj",
+  "content": "Added --resume flag to 'csnotes process'. In main.rs dispatch: if resume=true, delegates immediately to recover::run(RecoverArgs { resume: true, discard: false }) before acquiring any locks, avoiding lock reentrance. Added resume: bool field to Command::Process variant with #[arg(long)] and help text. No changes to ProcessArgs, process.rs, or recover.rs — recover's existing --resume logic handles both report-present (teardown) and report-absent (re-enter AI) cases. 237 tests, no warnings.",
+  "created_at": "2026-06-13T03:53:38.241700Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAUvDN3JDfGWEFfzUGVC56Xh5syuyKJ0XusbOkp5pouiV+lFOrY0zr3CKstgbcKXxMmhxqTuHpIJd8+vR54ablAA=="
+}
