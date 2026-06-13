@@ -2,11 +2,12 @@
   "uuid": "1aa8f53c-6ca0-48f3-a4ca-15d1bc4cd2d3",
   "display_id": null,
   "title": "synthetic_dir hardcoded in open_for_topic and topic_from_path",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-11T17:55:12.090902Z",
-  "updated_at": "2026-06-11T17:55:12.226461Z",
+  "updated_at": "2026-06-13T02:26:17.392261Z",
+  "closed_at": "2026-06-13T02:26:17.392261Z",
   "labels": [
     "bug"
   ]
