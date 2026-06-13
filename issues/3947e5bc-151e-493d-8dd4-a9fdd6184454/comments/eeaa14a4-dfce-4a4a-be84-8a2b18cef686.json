@@ -1,0 +1,10 @@
+{
+  "uuid": "eeaa14a4-dfce-4a4a-be84-8a2b18cef686",
+  "issue_uuid": "3947e5bc-151e-493d-8dd4-a9fdd6184454",
+  "author": "3owj",
+  "content": "Added 2 tests for missing precondition_pass error branches: (1) UpdateNote with no valid csnotes frontmatter → error; (2) RenameTopic happy path: source under _synthetic/ exists, dest absent → passes. 37 audit tests pass.",
+  "created_at": "2026-06-13T04:02:10.810011Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAHOL5UauuJoxA4Sbeml0wwTgWxssKAUoThrP6964Tn3IkcxwsBvRg8hJvJjZQmAkEhokZuUFXEwSWDCi1GQ2qAg=="
+}
