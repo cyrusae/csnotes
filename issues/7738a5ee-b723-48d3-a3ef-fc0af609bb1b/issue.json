@@ -2,11 +2,12 @@
   "uuid": "7738a5ee-b723-48d3-a3ef-fc0af609bb1b",
   "display_id": null,
   "title": "Suppress notify() during cargo mutants / test runs via env var",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-12T00:10:49.238704Z",
-  "updated_at": "2026-06-12T00:10:49.393292Z",
+  "updated_at": "2026-06-13T00:59:10.739929Z",
+  "closed_at": "2026-06-13T00:59:10.739929Z",
   "labels": [
     "bug"
   ]
