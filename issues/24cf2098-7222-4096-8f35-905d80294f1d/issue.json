@@ -2,11 +2,12 @@
   "uuid": "24cf2098-7222-4096-8f35-905d80294f1d",
   "display_id": null,
   "title": "Course name regex rejects hyphens and underscores (e.g. CS-101)",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-11T17:55:14.742723Z",
-  "updated_at": "2026-06-11T17:55:14.861431Z",
+  "updated_at": "2026-06-13T02:26:17.805018Z",
+  "closed_at": "2026-06-13T02:26:17.805018Z",
   "labels": [
     "bug"
   ]
