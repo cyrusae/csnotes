@@ -2,11 +2,12 @@
   "uuid": "0870427a-b500-49fa-97ac-3c87f0627330",
   "display_id": null,
   "title": "Unit tests for check_links_resolve and check_orphan_atomics callers",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-11T19:20:00.864715Z",
-  "updated_at": "2026-06-11T19:20:01.028818Z",
+  "updated_at": "2026-06-13T00:59:03.199459Z",
+  "closed_at": "2026-06-13T00:59:03.199459Z",
   "labels": [
     "testing"
   ]
