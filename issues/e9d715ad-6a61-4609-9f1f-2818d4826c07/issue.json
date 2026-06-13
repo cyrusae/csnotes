@@ -2,11 +2,12 @@
   "uuid": "e9d715ad-6a61-4609-9f1f-2818d4826c07",
   "display_id": null,
   "title": "Quadratic WalkDir in check_links_resolve (O(N^2*L))",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-11T17:55:15.616314Z",
-  "updated_at": "2026-06-11T17:55:15.731324Z",
+  "updated_at": "2026-06-13T02:29:00.412643Z",
+  "closed_at": "2026-06-13T02:29:00.412643Z",
   "labels": [
     "performance"
   ]
