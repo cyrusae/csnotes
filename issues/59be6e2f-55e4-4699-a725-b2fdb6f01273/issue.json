@@ -2,11 +2,12 @@
   "uuid": "59be6e2f-55e4-4699-a725-b2fdb6f01273",
   "display_id": null,
   "title": "Deadline keyword extraction misses case variants and word boundaries",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-11T17:55:17.385052Z",
-  "updated_at": "2026-06-11T17:55:17.500409Z",
+  "updated_at": "2026-06-13T03:56:18.491245Z",
+  "closed_at": "2026-06-13T03:56:18.491245Z",
   "labels": [
     "bug"
   ]
