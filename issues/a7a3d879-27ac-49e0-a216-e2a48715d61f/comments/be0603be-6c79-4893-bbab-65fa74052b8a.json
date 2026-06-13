@@ -1,0 +1,10 @@
+{
+  "uuid": "be0603be-6c79-4893-bbab-65fa74052b8a",
+  "issue_uuid": "a7a3d879-27ac-49e0-a216-e2a48715d61f",
+  "author": "3owj",
+  "content": "Implemented AI conversation sidecar index for >4500-word conversations. Added: AI_CONVERSATION_WORD_LIMIT constant, count_words, extract_conversation_turns (recognises > blockquote / Q: / **Human / **User formats, up to 20 turns), write_source_sidecar (Conversation Index header + summary/tags/courses + turn list). write_source_file now returns Option<usize> (Some(word_count) when sidecar written). copy_sources_to_workspace returns HashMap<String, usize> of large sources. write_sources_index accepts large_sources map and annotates oversized AI conversations with word count + sidecar path. 6 new tests: sidecar written for long conversation, no sidecar for short, no sidecar for textbook, index annotates large sources, turn extraction, word counting. 287 unit tests total.",
+  "created_at": "2026-06-13T07:06:16.831213Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAuBDPZDwFBQeyBEasSb0MYIwK7ZZtyky6ngVPtdjLscsfNYdXXbmTFX48BkgaNPC90Na9OpmtwLKlFaBvRFYrCQ=="
+}
