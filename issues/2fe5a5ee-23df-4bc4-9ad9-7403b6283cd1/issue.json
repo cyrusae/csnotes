@@ -2,11 +2,12 @@
   "uuid": "2fe5a5ee-23df-4bc4-9ad9-7403b6283cd1",
   "display_id": null,
   "title": "remove ShadowGit snapshot mode variant",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-10T08:09:03.092784Z",
-  "updated_at": "2026-06-10T08:09:03.212654Z",
+  "updated_at": "2026-06-13T02:23:41.564140Z",
+  "closed_at": "2026-06-13T02:23:41.564140Z",
   "labels": [
     "cleanup"
   ]
