@@ -2,11 +2,12 @@
   "uuid": "c581c69b-a5e5-42f6-b697-be79c288e248",
   "display_id": null,
   "title": "replace_note_links timeout: + mutants cause test suite hang",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-06-12T00:52:13.033379Z",
-  "updated_at": "2026-06-12T00:52:13.189554Z",
+  "updated_at": "2026-06-13T00:59:10.871798Z",
+  "closed_at": "2026-06-13T00:59:10.871798Z",
   "labels": [
     "test"
   ]
