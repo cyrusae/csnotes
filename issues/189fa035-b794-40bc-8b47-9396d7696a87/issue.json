@@ -2,11 +2,12 @@
   "uuid": "189fa035-b794-40bc-8b47-9396d7696a87",
   "display_id": null,
   "title": "Document run_interactive SIGINT cfg(unix) lines as intentionally untestable",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-11T19:15:31.152389Z",
-  "updated_at": "2026-06-11T19:15:31.365074Z",
+  "updated_at": "2026-06-13T00:59:02.941446Z",
+  "closed_at": "2026-06-13T00:59:02.941446Z",
   "labels": [
     "documentation"
   ]
