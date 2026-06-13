@@ -2,11 +2,12 @@
   "uuid": "e5d9715b-fc78-468c-a1fa-4f1d58770b21",
   "display_id": null,
   "title": "mutant coverage: command handlers (diff, extract, flags_cmd, status, config_cmd, reconcile, process)",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-12T00:52:35.197710Z",
-  "updated_at": "2026-06-12T00:52:35.340821Z",
+  "updated_at": "2026-06-13T07:00:25.066937Z",
+  "closed_at": "2026-06-13T07:00:25.066937Z",
   "labels": [
     "test"
   ]
