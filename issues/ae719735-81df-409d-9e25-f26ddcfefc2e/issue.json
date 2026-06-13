@@ -2,11 +2,12 @@
   "uuid": "ae719735-81df-409d-9e25-f26ddcfefc2e",
   "display_id": null,
   "title": "WalkDir depth limits silently drop nested sources and artifacts",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-11T17:55:16.495879Z",
-  "updated_at": "2026-06-11T17:55:16.613356Z",
+  "updated_at": "2026-06-13T02:29:00.554651Z",
+  "closed_at": "2026-06-13T02:29:00.554651Z",
   "labels": [
     "bug"
   ]
