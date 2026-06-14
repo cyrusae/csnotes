@@ -1,0 +1,10 @@
+{
+  "uuid": "088da121-838e-4c08-a2f8-4f428c041dca",
+  "display_id": null,
+  "title": "add test for replace_note_links fallback branch to eliminate timeout mutants",
+  "status": "open",
+  "priority": "high",
+  "created_by": "3owj",
+  "created_at": "2026-06-14T05:38:15.771518Z",
+  "updated_at": "2026-06-14T05:38:15.771518Z"
+}
