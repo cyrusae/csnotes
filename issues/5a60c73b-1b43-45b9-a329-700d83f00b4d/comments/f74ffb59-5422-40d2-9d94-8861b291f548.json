@@ -1,0 +1,10 @@
+{
+  "uuid": "f74ffb59-5422-40d2-9d94-8861b291f548",
+  "issue_uuid": "5a60c73b-1b43-45b9-a329-700d83f00b4d",
+  "author": "3owj",
+  "content": "Migrated from Rust edition 2021 → 2024 via cargo fix --edition. One auto-fix in flags.rs. Clippy clean, 291 tests passing. Four tail-expr-drop-order warnings appear only during compat scan, not in live clippy.",
+  "created_at": "2026-06-14T02:22:33.638386Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAGv/lkgl6JRoEMbr5QDlLRYOoqZhFxCrgSXAShclq36ZKe5hOWHpJKKd7TMHgtSVbSzWLXNXxmvFJC2vfWbWHCA=="
+}
