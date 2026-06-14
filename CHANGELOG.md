@@ -52,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- migrate to Rust 2024 edition (L61)
 - dev: pre-commit hook should auto-fix rather than warn (L60)
 - dev: add clippy + fmt pre-commit hook (L59)
 - AI conversation sidecar index: design integration for >4.5k-word conversations (L53)

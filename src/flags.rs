@@ -94,7 +94,7 @@ impl FlagStore {
         &'a self,
         topic: &'a str,
         synthetic_dir: &str,
-    ) -> impl Iterator<Item = &'a StoredFlag> + 'a {
+    ) -> impl Iterator<Item = &'a StoredFlag> + 'a + use<'a> {
         let prefix = format!("{}/{}/", synthetic_dir, topic);
         self.flags
             .iter()
