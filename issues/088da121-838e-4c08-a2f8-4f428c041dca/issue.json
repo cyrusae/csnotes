@@ -6,5 +6,8 @@
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-06-14T05:38:15.771518Z",
-  "updated_at": "2026-06-14T05:38:15.771518Z"
+  "updated_at": "2026-06-14T05:38:15.934235Z",
+  "labels": [
+    "test"
+  ]
 }
