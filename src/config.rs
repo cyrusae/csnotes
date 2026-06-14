@@ -113,6 +113,13 @@ pub struct VaultConfig {
     /// Set to false to ignore that subtree entirely.
     #[serde(default = "default_scan_ai_conversations")]
     pub scan_ai_conversations: bool,
+
+    /// Subdirectory names under `sources/` (and its subdirectories) that
+    /// `reconcile` skips entirely.  Add folder names containing generator
+    /// scripts, instruction files, or other non-source assets here.
+    /// Example: `sources_ignore_dirs = ["_tools", "_gen"]`
+    #[serde(default)]
+    pub sources_ignore_dirs: Vec<String>,
 }
 
 fn default_raw_dir() -> String { "notes".into() }
@@ -542,6 +549,7 @@ mod tests {
             require_recordings: true,
             courses_without_recordings: vec![],
             scan_ai_conversations: true,
+            sources_ignore_dirs: vec![],
         };
         assert!(cfg.is_recording_qualifier("transcript"));
         assert!(cfg.is_recording_qualifier("summary"));

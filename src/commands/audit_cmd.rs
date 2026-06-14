@@ -14,7 +14,7 @@ pub struct AuditArgs {
 pub fn run(args: AuditArgs) -> Result<()> {
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     let config = VaultConfig::load(&vault_root)?;
-    let _manifest = Manifest::load(&vault_root)?;
+    let manifest = Manifest::load(&vault_root)?;
 
     if args.reindex {
         let _lock = ManifestLock::acquire(&vault_root)?;
@@ -32,7 +32,7 @@ pub fn run(args: AuditArgs) -> Result<()> {
 
     // ── Read-only invariant run ───────────────────────────────────────────────
     println!("Running invariant suite (read-only)...");
-    let audit = crate::audit::audit_vault(&vault_root, &config)?;
+    let audit = crate::audit::audit_vault(&vault_root, &config, &manifest)?;
     audit.print();
 
     // ── Fix plan ──────────────────────────────────────────────────────────────

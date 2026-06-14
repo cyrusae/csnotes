@@ -87,6 +87,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         require_recordings: true,
         courses_without_recordings: vec![],
         scan_ai_conversations: true,
+        sources_ignore_dirs: vec![],
     };
 
     // ── Create directory tree ──────────────────────────────────────────────────
@@ -958,6 +959,7 @@ mod tests {
             require_recordings: false,
             courses_without_recordings: vec![],
             scan_ai_conversations: true,
+            sources_ignore_dirs: vec![],
         }
     }
 

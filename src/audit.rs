@@ -12,7 +12,7 @@ use anyhow::Result;
 
 use crate::error::CsnotesError;
 use crate::frontmatter::{parse_frontmatter, read_note, NoteKind};
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, SourceKind};
 use crate::obsidian::{extract_block_ids, extract_embeds, extract_wikilinks, find_collisions};
 use crate::pathutil::safe_join;
 use crate::report::{Op, SessionReport};
@@ -244,9 +244,11 @@ pub fn invariant_suite(
 
 // ── Direct vault audit (no report context) ────────────────────────────────────
 
+const AI_CONVERSATION_SIDECAR_WORD_THRESHOLD: usize = 4_500;
+
 /// Run the invariant suite against the vault directly (for `csnotes audit`).
 /// Does not require a session report — checks structural consistency only.
-pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig) -> Result<AuditResult> {
+pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig, manifest: &Manifest) -> Result<AuditResult> {
     let mut result = AuditResult::default();
     let synthetic_root = vault_root.join(&config.synthetic_dir);
 
@@ -255,7 +257,6 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig) -> Re
             "{} does not exist — no synthetic notes yet",
             config.synthetic_dir
         ));
-        return Ok(result);
     }
 
     // Block ID uniqueness
@@ -304,6 +305,28 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig) -> Re
 
     // Orphan atomics (soft)
     check_orphan_atomics(&synthetic_root, &mut result)?;
+
+    // Sidecar nudge: AI conversation sources that are long but have no .json
+    for (source_id, entry) in &manifest.sources {
+        if entry.kind != SourceKind::AiConversation {
+            continue;
+        }
+        let full_path = vault_root.join(&entry.path);
+        let json_path = full_path.with_extension("json");
+        if json_path.exists() {
+            continue;
+        }
+        if let Ok(content) = read_note(&full_path) {
+            let word_count = content.split_whitespace().count();
+            if word_count >= AI_CONVERSATION_SIDECAR_WORD_THRESHOLD {
+                result.soft_warnings.push(format!(
+                    "AI conversation '{}' is ~{} words but has no sidecar — \
+                     generate a .json alongside the .md to enable workspace indexing",
+                    source_id, word_count
+                ));
+            }
+        }
+    }
 
     Ok(result)
 }
@@ -969,7 +992,7 @@ mod tests {
     fn audit_vault_broken_embed_is_hard_violation() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "_synthetic/index.md", "![[ghost-atomic#^id]]\n");
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("ghost-atomic")),
             "expected hard violation for broken embed, got: {:?}", result.hard_violations
@@ -1009,7 +1032,7 @@ mod tests {
     fn audit_vault_warns_when_synthetic_dir_absent() {
         let tmp = TempDir::new().unwrap();
         // No _synthetic/ directory created.
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(result.hard_violations.is_empty());
         assert_eq!(result.soft_warnings.len(), 1);
         assert!(result.soft_warnings[0].contains("does not exist"), "{:?}", result.soft_warnings);
@@ -1020,7 +1043,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         // _synthetic/ exists but the link target does not.
         write(tmp.path(), "_synthetic/index.md", "See [[missing-note]].\n");
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("missing-note")),
             "expected hard violation for missing-note, got: {:?}", result.hard_violations
@@ -1032,7 +1055,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         // Atomic note not embedded by any index → orphan warning.
         write(tmp.path(), "_synthetic/cs/sorting.md", csnotes_note());
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(
             result.soft_warnings.iter().any(|w| w.contains("orphan")),
             "expected orphan warning, got: {:?}", result.soft_warnings
@@ -1141,7 +1164,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "_synthetic/cs/note-a.md", &clean_note("dup-01"));
         write(tmp.path(), "_synthetic/cs/note-b.md", &clean_note("dup-01"));
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("dup-01")),
             "expected duplicate block_id violation, got: {:?}", result.hard_violations
@@ -1154,7 +1177,7 @@ mod tests {
     fn audit_vault_atomic_missing_anchor_is_hard_violation() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "_synthetic/cs/sorting.md", &note_missing_anchor("sort-01"));
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("sort-01")),
             "expected hard violation for missing anchor, got: {:?}", result.hard_violations
@@ -1170,7 +1193,7 @@ mod tests {
              contributing_sessions: []\ncontributing_sources: []\n\
              created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
              ---\n![[sorting#^sort-01]]\n");
-        let result = audit_vault(tmp.path(), &make_vault_config()).unwrap();
+        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
         assert!(result.hard_violations.is_empty(), "{:?}", result.hard_violations);
     }
 
@@ -1313,6 +1336,81 @@ mod tests {
         let topic = manifest.topics.get("cs").expect("cs topic should exist after reindex");
         assert_eq!(topic.atomic_notes.len(), 1);
         assert!(topic.atomic_notes[0].contains("sorting.md"), "{:?}", topic.atomic_notes);
+    }
+
+    // ── sidecar nudge (audit_vault) ───────────────────────────────────────────
+
+    fn make_ai_source_manifest(vault_root: &Path, source_id: &str, path: &str) -> Manifest {
+        use crate::manifest::{SourceEntry, SourceStatus};
+        let mut m = make_empty_manifest(vault_root);
+        m.sources.insert(source_id.to_string(), SourceEntry {
+            path: path.to_string(),
+            kind: SourceKind::AiConversation,
+            status: SourceStatus::Unprocessed,
+            last_processed_at: None,
+            heading_scheme: vec![],
+            topics_updated: vec![],
+            summary: None,
+            tags: vec![],
+            courses: vec![],
+        });
+        m
+    }
+
+    #[test]
+    fn audit_vault_warns_when_long_ai_conversation_has_no_sidecar() {
+        let tmp = TempDir::new().unwrap();
+        // Write a long AI conversation (well over the 4 500-word threshold).
+        let body = "word ".repeat(4_600);
+        write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
+        // No chat.json alongside it.
+        let manifest = make_ai_source_manifest(
+            tmp.path(),
+            "AI-Conversations/Gemini/chat",
+            "sources/AI-Conversations/Gemini/chat.md",
+        );
+        let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
+        assert!(
+            result.soft_warnings.iter().any(|w| w.contains("AI-Conversations/Gemini/chat")),
+            "expected sidecar nudge warning, got: {:?}", result.soft_warnings
+        );
+    }
+
+    #[test]
+    fn audit_vault_no_sidecar_warn_when_json_present() {
+        let tmp = TempDir::new().unwrap();
+        let body = "word ".repeat(2_100);
+        write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
+        // Sidecar exists — no warning expected.
+        write(tmp.path(), "sources/AI-Conversations/Gemini/chat.json", "{}");
+        let manifest = make_ai_source_manifest(
+            tmp.path(),
+            "AI-Conversations/Gemini/chat",
+            "sources/AI-Conversations/Gemini/chat.md",
+        );
+        let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
+        assert!(
+            !result.soft_warnings.iter().any(|w| w.contains("sidecar")),
+            "no sidecar warning expected when .json present: {:?}", result.soft_warnings
+        );
+    }
+
+    #[test]
+    fn audit_vault_no_sidecar_warn_for_short_ai_conversation() {
+        let tmp = TempDir::new().unwrap();
+        // Short conversation — under threshold, no nudge.
+        let body = "word ".repeat(500);
+        write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
+        let manifest = make_ai_source_manifest(
+            tmp.path(),
+            "AI-Conversations/Gemini/chat",
+            "sources/AI-Conversations/Gemini/chat.md",
+        );
+        let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
+        assert!(
+            !result.soft_warnings.iter().any(|w| w.contains("sidecar")),
+            "no sidecar warning expected for short conversation: {:?}", result.soft_warnings
+        );
     }
 
     #[test]

@@ -127,7 +127,7 @@ pub fn run_for_vault(
     // ── Scan sources_dir ──────────────────────────────────────────────────────
     let sources_dir = vault_root.join(&config.sources_dir);
     if sources_dir.exists() {
-        scan_sources_dir(&sources_dir, vault_root, &mut manifest, config.scan_ai_conversations, &mut new_sources)?;
+        scan_sources_dir(&sources_dir, vault_root, &mut manifest, config.scan_ai_conversations, &config.sources_ignore_dirs, &mut new_sources)?;
     }
 
     // ── Space warnings ────────────────────────────────────────────────────────
@@ -559,10 +559,19 @@ fn scan_sources_dir(
     vault_root: &Path,
     manifest: &mut Manifest,
     scan_ai_conversations: bool,
+    ignore_dirs: &[String],
     new_sources: &mut Vec<String>,
 ) -> Result<()> {
     for entry in walkdir::WalkDir::new(sources_dir)
         .into_iter()
+        .filter_entry(|e| {
+            if e.depth() > 0 && e.file_type().is_dir() {
+                let name = e.file_name().to_str().unwrap_or("");
+                !ignore_dirs.iter().any(|d| d == name)
+            } else {
+                true
+            }
+        })
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -866,7 +875,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         assert_eq!(new_sources.len(), 1, "AI conversation with frontmatter should be registered");
         assert_eq!(new_sources[0], "AI-Conversations/Gemini/sorting-questions");
@@ -886,7 +895,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         assert!(new_sources.is_empty(), "AI conversation without frontmatter must be skipped");
     }
@@ -904,7 +913,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, false, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, false, &[], &mut new_sources).unwrap();
 
         assert!(new_sources.is_empty(), "AI conversations should be ignored when scan_ai_conversations is false");
     }
@@ -922,7 +931,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         let entry = &manifest.sources["AI-Conversations/Gemini/exam-prep"];
         assert_eq!(entry.courses, vec!["CPSC5001"]);
@@ -941,7 +950,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         let entry = &manifest.sources["AI-Conversations/Gemini/sorting-questions"];
         assert_eq!(
@@ -968,7 +977,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         assert_eq!(new_sources.len(), 2);
         assert!(manifest.sources.contains_key("AI-Conversations/Gemini/chat-a"));
@@ -984,7 +993,7 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         assert_eq!(new_sources.len(), 1, "textbook chapter should register without frontmatter");
         let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
@@ -1006,11 +1015,64 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &mut new_sources).unwrap();
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
 
         let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
         assert_eq!(entry.summary.as_deref(), Some("Procedures and processes"));
         assert_eq!(entry.tags, vec!["lisp", "recursion"]);
+    }
+
+    #[test]
+    fn scan_sources_ignore_dirs_skips_matching_subdirectory() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        // A real source alongside a tool folder that should be skipped.
+        write_file(
+            &sources_dir.join("Textbooks").join("SICP"),
+            "Chapter-01.md",
+            "# Chapter 1\n",
+        );
+        write_file(
+            &sources_dir.join("_tools"),
+            "generate.md",
+            "# Generator instructions\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        let ignore = vec!["_tools".to_string()];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &ignore, &mut new_sources).unwrap();
+
+        assert_eq!(new_sources.len(), 1, "only the textbook chapter should be registered");
+        assert!(manifest.sources.contains_key("Textbooks/SICP/Chapter-01"));
+        assert!(!manifest.sources.contains_key("_tools/generate"), "ignored dir must not be registered");
+    }
+
+    #[test]
+    fn scan_sources_ignore_dirs_matches_by_name_not_full_path() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        // Nested: sources/AI-Conversations/_tools/helper.md
+        // The name "_tools" appears deep in the tree; it must still be skipped.
+        write_file(
+            &sources_dir.join("AI-Conversations").join("Gemini"),
+            "chat.md",
+            "---\nsummary: Real chat\n---\n\nContent.\n",
+        );
+        write_file(
+            &sources_dir.join("AI-Conversations").join("_tools"),
+            "prompt-template.md",
+            "# Prompt template\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        let ignore = vec!["_tools".to_string()];
+        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &ignore, &mut new_sources).unwrap();
+
+        assert_eq!(new_sources.len(), 1);
+        assert!(manifest.sources.contains_key("AI-Conversations/Gemini/chat"));
+        assert!(!manifest.sources.contains_key("AI-Conversations/_tools/prompt-template"));
     }
 
     #[test]

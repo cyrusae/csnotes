@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- audit: nudge for AI conversation sources missing .json sidecar (long conversations) (L57)
+- reconcile: sources_ignore_dirs config — skip specified subdirectories during source scan (L58)
 - AI conversation sidecar ingestion: read {stem}.json, render markdown index in workspace (L56)
 - Sources in session workspaces: index, course filtering, multi-source scope (L44)
 - AI conversation source type: AiConversation kind, 3-level path parsing, scan command (L36)
