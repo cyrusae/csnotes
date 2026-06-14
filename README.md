@@ -81,7 +81,7 @@ It creates:
 
 ```text
 notes/                ← flat fallback dirs (only used if active_courses is empty)
-plaud/
+recordings/
 artifacts/
 sources/              ← textbook chapters, papers (always vault-level)
 _synthetic/           ← AI-maintained atomic notes (do not edit manually)
@@ -92,18 +92,18 @@ _csnotes/
     gemini.md         ← workflow instructions for Gemini/Agy
     synthesis.md      ← note-writing philosophy
     report_schema.md  ← JSON schema reference
-.csnotes              ← TOML config (see below)
+csnotes.toml          ← TOML config (see below)
 csnotes.json          ← manifest (sessions, sources, topics, in-progress state)
 ```
 
-**Important:** when `active_courses` is set, `reconcile` looks for files under `{course}/notes/`, `{course}/plaud/`, and `{course}/artifacts/` — not the flat `notes/` directory that `init` creates. Create those per-course directories yourself (they just need to exist):
+**Important:** when `active_courses` is set, `reconcile` looks for files under `{course}/notes/`, `{course}/recordings/`, and `{course}/artifacts/` — not the flat `notes/` directory that `init` creates. Create those per-course directories yourself (they just need to exist):
 
 ```sh
-mkdir -p CPSC5001/notes CPSC5001/plaud CPSC5001/artifacts
-mkdir -p CPSC5002/notes CPSC5002/plaud CPSC5002/artifacts
+mkdir -p CPSC5001/notes CPSC5001/recordings CPSC5001/artifacts
+mkdir -p CPSC5002/notes CPSC5002/recordings CPSC5002/artifacts
 ```
 
-The flat `notes/`, `plaud/`, `artifacts/` at the vault root are only scanned when `active_courses = []`.
+The flat `notes/`, `recordings/`, `artifacts/` at the vault root are only scanned when `active_courses = []`.
 
 ### 2. Add courses
 
@@ -116,7 +116,7 @@ csnotes config --add-course CPSC5002
 
 ### 3. Drop your files and reconcile
 
-Put raw notes in `notes/`, Plaud exports in `plaud/`, slides in `artifacts/`, textbook chapters in `sources/`. Then:
+Put raw notes in `notes/`, recording exports in `recordings/`, slides in `artifacts/`, textbook chapters in `sources/`. Then:
 
 ```sh
 csnotes reconcile
@@ -126,9 +126,9 @@ csnotes reconcile
 
 ---
 
-## `.csnotes` reference
+## `csnotes.toml` reference
 
-`.csnotes` is a TOML file at the vault root. All keys are optional — missing keys use the defaults shown below.
+`csnotes.toml` is a TOML file at the vault root. All keys are optional — missing keys use the defaults shown below.
 
 ```toml
 # Courses currently being taken.  No spaces allowed in names.
@@ -140,38 +140,47 @@ active_courses = ["CPSC5001"]
 filename_format = "{course}-{mm}-{dd}"
 
 # Subdirectory names (relative to vault root)
-raw_dir       = "notes"       # raw lecture notes
-plaud_dir     = "plaud"       # Plaud exports
-artifacts_dir = "artifacts"   # slides, code handouts
-sources_dir   = "sources"     # textbooks, papers
-synthetic_dir = "_synthetic"  # AI-maintained notes (managed automatically)
-generated_dir = "_generated"  # reports, flags, extracts (managed automatically)
+raw_dir          = "notes"        # raw lecture notes
+recordings_dir   = "recordings"   # recording exports (transcripts, summaries, mindmaps)
+artifacts_dir    = "artifacts"    # slides, code handouts
+sources_dir      = "sources"      # textbooks, papers
+synthetic_dir    = "_synthetic"   # AI-maintained notes (managed automatically)
+generated_dir    = "_generated"   # reports, flags, extracts (managed automatically)
 
 # AI backend: "claude" or "agy"
 default_backend = "claude"
 
-# Plaud filename qualifiers (anything containing these strings is a Plaud export)
-plaud_qualifiers = ["transcript", "summary", "mindmap"]
+# Recording export filename qualifiers (any file whose name contains one of these
+# strings is treated as a recording export and attached to the matching session)
+recording_qualifiers = ["transcript", "summary", "mindmap"]
+
+# Set to false to never require or prompt for recording exports
+require_recordings = true
+
+# Courses that never have recording exports (even when require_recordings = true)
+# Edit csnotes.toml directly to manage this list
+courses_without_recordings = []
 
 # Weeks before a processed course disappears from `status` output
 archive_threshold_weeks = 8
 
 # Agy/Gemini model (optional — omit to use agy's default)
-# agy_model = "gemini-3.5-flash"
+# agy_model = "gemini-2.5-flash"
 ```
 
 ### Configuring via CLI
 
 ```sh
-csnotes config --show                          # print current config
-csnotes config --set default_backend=agy       # change a value
-csnotes config --set agy_model=gemini-2.5-pro  # set Gemini model
+csnotes config --show                            # print current config
+csnotes config --set default_backend=agy         # change a value
+csnotes config --set agy_model=gemini-2.5-pro    # set Gemini model
 csnotes config --set archive_threshold_weeks=12
-csnotes config --add-course CPSC5005           # add a course
-csnotes config --archive CPSC5001              # remove from active list
+csnotes config --set require_recordings=false    # disable recording prompts globally
+csnotes config --add-course CPSC5005             # add a course
+csnotes config --archive CPSC5001                # remove from active list
 ```
 
-Settable keys: `filename_format`, `raw_dir`, `plaud_dir`, `artifacts_dir`, `sources_dir`, `default_backend`, `archive_threshold_weeks`, `agy_model`.
+Settable keys: `filename_format`, `raw_dir`, `recordings_dir`, `artifacts_dir`, `sources_dir`, `default_backend`, `require_recordings`, `archive_threshold_weeks`, `agy_model`.
 
 ---
 
@@ -190,10 +199,12 @@ csnotes process --session 09-03 --course CPSC5001  # explicit course+date
 csnotes process --backend agy               # override backend for this run
 csnotes process --agy-model gemini-2.5-pro  # override Gemini model
 csnotes process --dry-run                   # show scope and inputs, don't launch
+csnotes process --resume                    # re-enter an interrupted session (same as recover --resume)
 
 # 3. After the session completes:
-csnotes diff              # semantic diff of what changed
-csnotes flags list        # actionable review flags raised by the AI
+csnotes diff                    # semantic diff of what changed in the last session
+csnotes diff --session 09-03    # diff for a specific session
+csnotes flags list              # actionable review flags raised by the AI
 ```
 
 ### Processing sources (textbook chapters, papers)
@@ -227,6 +238,7 @@ csnotes flags resolve <id> --follow-up "addressed in CPSC5001-10-04"
 csnotes extract                             # actions + deadlines + questions → _generated/extracts/
 csnotes extract --type actions
 csnotes extract --type deadlines
+csnotes extract --session 09-03             # extract from a specific session
 csnotes extract --stdout                    # print to stdout instead of file
 ```
 
@@ -266,17 +278,17 @@ When `active_courses` is set, each course gets its own subdirectory and the per-
 ```text
 CPSC5001/
   notes/
-    CPSC5001-09-03.md           ← raw lecture note
+    CPSC5001-09-03.md              ← raw lecture note
     CPSC5001-09-10.md
-  plaud/
-    CPSC5001-09-03-transcript.md  ← Plaud export (matched by course+date prefix)
-    CPSC5001-09-03-summary.md     ← second export for the same session
+  recordings/
+    CPSC5001-09-03-transcript.md   ← recording export (matched by course+date prefix)
+    CPSC5001-09-03-summary.md      ← second export for the same session
   artifacts/
-    CPSC5001-09-03-slides.pdf     ← matched by session prefix, classified as Slides
+    CPSC5001-09-03-slides.pdf      ← matched by session prefix, classified as Slides
 
 CPSC5002/
   notes/
-  plaud/
+  recordings/
   artifacts/
 
 sources/                        ← vault-level, not per-course
@@ -292,11 +304,11 @@ _synthetic/                     ← vault-level, AI-managed
   …
 ```
 
-The subdirectory names (`notes`, `plaud`, `artifacts`) are the values of `raw_dir`, `plaud_dir`, and `artifacts_dir` in `.csnotes`. `sources/` and `_synthetic/` are always at the vault root.
+The subdirectory names (`notes`, `recordings`, `artifacts`) are the values of `raw_dir`, `recordings_dir`, and `artifacts_dir` in `csnotes.toml`. `sources/` and `_synthetic/` are always at the vault root.
 
-If `active_courses` is empty, the fallback is a flat layout with `raw_dir`, `plaud_dir`, and `artifacts_dir` directly at the vault root — useful for single-course or test setups.
+If `active_courses` is empty, the fallback is a flat layout with `raw_dir`, `recordings_dir`, and `artifacts_dir` directly at the vault root — useful for single-course or test setups.
 
-Plaud exports are matched to sessions by filename prefix (`{course}-{mm}-{dd}`). Any file whose name starts with a known session prefix and contains one of the `plaud_qualifiers` strings (`transcript`, `summary`, `mindmap` by default) is attached to that session.
+Recording exports are matched to sessions by filename prefix (`{course}-{mm}-{dd}`). Any file whose name starts with a known session prefix and contains one of the `recording_qualifiers` strings (`transcript`, `summary`, `mindmap` by default) is attached to that session.
 
 ---
 
@@ -308,7 +320,7 @@ Requires [Claude Code](https://claude.ai/code) (`claude` CLI on PATH). Launches 
 
 ### Agy / Gemini
 
-Requires [Antigravity](https://antigravity.dev) (`agy` CLI on PATH). Configured with `default_backend = "agy"` in `.csnotes` or `--backend agy` per run.
+Requires [Antigravity](https://antigravity.dev) (`agy` CLI on PATH). Configured with `default_backend = "agy"` in `csnotes.toml` or `--backend agy` per run.
 
 ```sh
 csnotes config --set default_backend=agy
