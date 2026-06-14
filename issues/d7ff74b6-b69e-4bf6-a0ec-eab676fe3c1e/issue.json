@@ -1,0 +1,10 @@
+{
+  "uuid": "d7ff74b6-b69e-4bf6-a0ec-eab676fe3c1e",
+  "display_id": null,
+  "title": "dev: pre-commit hook should auto-fix rather than warn",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-06-14T02:13:10.321760Z",
+  "updated_at": "2026-06-14T02:13:10.321760Z"
+}
