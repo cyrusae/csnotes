@@ -1,0 +1,10 @@
+{
+  "uuid": "ffd5a29d-7ff7-4395-8137-5a472faf0d9e",
+  "issue_uuid": "280fdac5-d68a-42f5-b09c-cc93037e41e2",
+  "author": "3owj",
+  "content": "L67: Added 23 tests to extract.rs — filter_by_deadlines/deadline_singular (catches || with && in extract_from), 3 line-number tests (catches + with * mutations), star-checkbox action test, 5 is_question tests (Q: without trailing ?, ?? prefix, QUESTION: prefix, trailing space/asterisk trims), 4 clean_question tests, 2 render_extract tests (kind grouping, header), capitalise, 2 relative_path tests, ExtractKind::label. All 348 tests pass.",
+  "created_at": "2026-06-14T16:49:48.381275Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAFeN60tNDqzjFyj02hHdU6GltKKIZnzTubpQGj1Db2OdpoNrTl/vATzzMaZv8AtmgrDhh0Blk5IiKCdcCtNPkDw=="
+}
