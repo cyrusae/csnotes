@@ -2,11 +2,12 @@
   "uuid": "5a60c73b-1b43-45b9-a329-700d83f00b4d",
   "display_id": null,
   "title": "migrate to Rust 2024 edition",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-14T02:21:38.767634Z",
-  "updated_at": "2026-06-14T02:21:38.942042Z",
+  "updated_at": "2026-06-14T02:22:38.414607Z",
+  "closed_at": "2026-06-14T02:22:38.414607Z",
   "labels": [
     "chore"
   ]
