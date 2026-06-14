@@ -1,0 +1,10 @@
+{
+  "uuid": "ab6896f2-382e-4097-a031-3bbb4ffdda64",
+  "issue_uuid": "9f860766-6432-4cc4-bcf8-c2eda7d7e816",
+  "author": "3owj",
+  "content": "Replaced generated-sidecar approach with vault sidecar ingestion. Removed: AI_CONVERSATION_WORD_LIMIT, count_words, extract_conversation_turns, write_source_sidecar. Added: ConversationSidecar/SidecarTurn/SidecarSummary/SidecarLineRange serde structs, SidecarMeta (word_count, total_turns, overall_summary), render_sidecar_md (turn headers with line ranges, prompt, query, response, takeaway, concepts). write_source_file checks for {stem}.json alongside AiConversation sources; on hit reads JSON, renders markdown, writes {source_id}_index.md. copy_sources_to_workspace returns HashMap<String, SidecarMeta>. write_sources_index prefers overall_summary from JSON over frontmatter summary, annotates with word count + turn count + _index.md pointer. 5 new tests: json ingested → markdown written, no json → no sidecar, textbook json ignored, index annotated from SidecarMeta, render_sidecar_md covers all turn fields. 286 unit tests total.",
+  "created_at": "2026-06-14T00:21:00.959305Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAgF8EeA1gvRMGbj4/nuAMCsCuAMXKeF1idai6wUjubL5PsU5tiKu5PfLlFjlS0Y/+G9iURya2Hl5VXTuK4w3QAg=="
+}
