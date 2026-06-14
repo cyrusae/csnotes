@@ -2,11 +2,12 @@
   "uuid": "c1a6b4d6-3719-4184-8f0f-0c0ee5e3182d",
   "display_id": null,
   "title": "reconcile: sources_ignore_dirs config — skip specified subdirectories during source scan",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-14T00:32:03.621260Z",
-  "updated_at": "2026-06-14T00:32:03.741850Z",
+  "updated_at": "2026-06-14T01:59:41.365466Z",
+  "closed_at": "2026-06-14T01:59:41.365466Z",
   "labels": [
     "feature"
   ]
