@@ -85,12 +85,7 @@ pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Resul
                             .file_stem()
                             .unwrap_or_default()
                             .to_string_lossy();
-                        check_embed_line_present(
-                            workspace_root,
-                            target,
-                            &note_stem,
-                            block_id,
-                        )?;
+                        check_embed_line_present(workspace_root, target, &note_stem, block_id)?;
                     }
                 }
             }
@@ -172,7 +167,8 @@ pub fn invariant_suite(
                     }
                 }
                 Err(e) => result.hard_violations.push(format!(
-                    "unsafe path in create_note op '{}': {}", op.path, e
+                    "unsafe path in create_note op '{}': {}",
+                    op.path, e
                 )),
             }
         }
@@ -187,7 +183,8 @@ pub fn invariant_suite(
                     }
                 }
                 Err(e) => result.hard_violations.push(format!(
-                    "unsafe path in update_note op '{}': {}", op.path, e
+                    "unsafe path in update_note op '{}': {}",
+                    op.path, e
                 )),
             }
         }
@@ -198,7 +195,7 @@ pub fn invariant_suite(
         for entry in walkdir::WalkDir::new(&synthetic_root)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
         {
             let content = match crate::frontmatter::read_note(entry.path()) {
                 Ok(c) => c,
@@ -248,7 +245,11 @@ const AI_CONVERSATION_SIDECAR_WORD_THRESHOLD: usize = 4_500;
 
 /// Run the invariant suite against the vault directly (for `csnotes audit`).
 /// Does not require a session report — checks structural consistency only.
-pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig, manifest: &Manifest) -> Result<AuditResult> {
+pub fn audit_vault(
+    vault_root: &Path,
+    config: &crate::config::VaultConfig,
+    manifest: &Manifest,
+) -> Result<AuditResult> {
     let mut result = AuditResult::default();
     let synthetic_root = vault_root.join(&config.synthetic_dir);
 
@@ -272,7 +273,7 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig, manif
     for entry in walkdir::WalkDir::new(&synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match read_note(entry.path()) {
             Ok(c) => c,
@@ -282,7 +283,8 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig, manif
             Err(e) => {
                 result.hard_violations.push(format!(
                     "invalid frontmatter in '{}': {}",
-                    entry.path().display(), e
+                    entry.path().display(),
+                    e
                 ));
             }
             Ok(fm) => {
@@ -291,7 +293,9 @@ pub fn audit_vault(vault_root: &Path, config: &crate::config::VaultConfig, manif
                         if !extract_block_ids(&content).contains(id) {
                             result.hard_violations.push(format!(
                                 "'{}': block_id '{}' in frontmatter but '^{}' not in body",
-                                entry.path().display(), id, id
+                                entry.path().display(),
+                                id,
+                                id
                             ));
                         }
                     }
@@ -356,7 +360,7 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
         for entry in walkdir::WalkDir::new(&synthetic_root)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
         {
             let content = match crate::frontmatter::read_note(entry.path()) {
                 Ok(c) => c,
@@ -399,9 +403,11 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
 
             // Merge contributing sessions
             for contrib in fm.contributing_sessions {
-                if !topic.contributing_sessions.iter().any(|c| {
-                    c.course == contrib.course && c.date == contrib.date
-                }) {
+                if !topic
+                    .contributing_sessions
+                    .iter()
+                    .any(|c| c.course == contrib.course && c.date == contrib.date)
+                {
                     topic.contributing_sessions.push(contrib);
                 }
             }
@@ -423,8 +429,7 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
             .iter()
             .filter(|(_, s)| {
                 if let Some(processed_at) = s.processed_at {
-                    processed_at > topic_entry.last_updated
-                        && s.topics_updated.contains(topic_name)
+                    processed_at > topic_entry.last_updated && s.topics_updated.contains(topic_name)
                 } else {
                     false
                 }
@@ -443,7 +448,7 @@ fn block_id_collisions(synthetic_root: &Path) -> Result<HashMap<String, Vec<Stri
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         if let Ok(content) = crate::frontmatter::read_note(entry.path()) {
             let rel = entry
@@ -455,7 +460,9 @@ fn block_id_collisions(synthetic_root: &Path) -> Result<HashMap<String, Vec<Stri
             files.push((content, rel));
         }
     }
-    Ok(find_collisions(files.iter().map(|(c, p)| (c.as_str(), p.as_str()))))
+    Ok(find_collisions(
+        files.iter().map(|(c, p)| (c.as_str(), p.as_str())),
+    ))
 }
 
 fn parse_frontmatter_from_path(path: &Path) -> Result<crate::frontmatter::NoteFrontmatter> {
@@ -489,9 +496,9 @@ fn check_embed_line_present(
     }
     let content = crate::frontmatter::read_note(&path)?;
     let embeds = extract_embeds(&content);
-    let found = embeds.iter().any(|e| {
-        e.file == atomic_stem && e.block_id() == Some(block_id)
-    });
+    let found = embeds
+        .iter()
+        .any(|e| e.file == atomic_stem && e.block_id() == Some(block_id));
     if !found {
         return Err(CsnotesError::EmbedLineMissing {
             atomic: atomic_stem.to_string(),
@@ -515,7 +522,7 @@ fn check_links_resolve(
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match read_note(entry.path()) {
             Ok(c) => c,
@@ -555,7 +562,7 @@ fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
     walkdir::WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
         .filter_map(|e| {
             e.path()
                 .file_stem()
@@ -564,7 +571,6 @@ fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
         })
         .collect()
 }
-
 
 // ── Fix plan ──────────────────────────────────────────────────────────────────
 
@@ -600,7 +606,7 @@ pub fn collect_fixes(
     for entry in walkdir::WalkDir::new(&synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match read_note(entry.path()) {
             Ok(c) => c,
@@ -649,7 +655,11 @@ pub fn apply_fixes(fixes: &[FixItem]) -> Result<usize> {
                 // Append anchor on its own line, preceded by a blank line if
                 // the body doesn't already end with one.
                 let trimmed = content.trim_end_matches('\n');
-                let gap = if trimmed.ends_with('\n') { "\n" } else { "\n\n" };
+                let gap = if trimmed.ends_with('\n') {
+                    "\n"
+                } else {
+                    "\n\n"
+                };
                 let new_content = format!("{}{}\n^{}\n", trimmed, gap, block_id);
                 std::fs::write(path, new_content)
                     .with_context(|| format!("writing {}", path.display()))?;
@@ -670,7 +680,7 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match read_note(entry.path()) {
             Ok(c) => c,
@@ -685,7 +695,7 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match read_note(entry.path()) {
             Ok(c) => c,
@@ -716,14 +726,14 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use chrono::Utc;
     use crate::config::{AiBackend, SkillVariant, SnapshotMode, VaultConfig};
     use crate::frontmatter::ProvenanceDelta;
     use crate::manifest::ManifestConfig;
     use crate::report::{
         CreateNoteOp, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp,
     };
+    use chrono::Utc;
+    use tempfile::TempDir;
 
     fn write(dir: &std::path::Path, name: &str, body: &str) {
         if let Some(parent) = dir.join(name).parent() {
@@ -965,7 +975,11 @@ mod tests {
         write(tmp.path(), "index.md", "See [[Sorting]].\n");
         let mut result = AuditResult::default();
         check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
-        assert!(result.hard_violations.is_empty(), "{:?}", result.hard_violations);
+        assert!(
+            result.hard_violations.is_empty(),
+            "{:?}",
+            result.hard_violations
+        );
     }
 
     #[test]
@@ -992,10 +1006,19 @@ mod tests {
     fn audit_vault_broken_embed_is_hard_violation() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "_synthetic/index.md", "![[ghost-atomic#^id]]\n");
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
         assert!(
-            result.hard_violations.iter().any(|v| v.contains("ghost-atomic")),
-            "expected hard violation for broken embed, got: {:?}", result.hard_violations
+            result
+                .hard_violations
+                .iter()
+                .any(|v| v.contains("ghost-atomic")),
+            "expected hard violation for broken embed, got: {:?}",
+            result.hard_violations
         );
     }
 
@@ -1007,8 +1030,12 @@ mod tests {
         let manifest = make_empty_manifest(tmp.path());
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         assert!(
-            result.hard_violations.iter().any(|v| v.contains("ghost-atomic")),
-            "expected hard violation for broken embed, got: {:?}", result.hard_violations
+            result
+                .hard_violations
+                .iter()
+                .any(|v| v.contains("ghost-atomic")),
+            "expected hard violation for broken embed, got: {:?}",
+            result.hard_violations
         );
     }
 
@@ -1022,7 +1049,8 @@ mod tests {
         check_orphan_atomics(tmp.path(), &mut result).unwrap();
         assert!(
             result.soft_warnings.is_empty(),
-            "embedded atomic should not be flagged as orphan: {:?}", result.soft_warnings
+            "embedded atomic should not be flagged as orphan: {:?}",
+            result.soft_warnings
         );
     }
 
@@ -1032,10 +1060,19 @@ mod tests {
     fn audit_vault_warns_when_synthetic_dir_absent() {
         let tmp = TempDir::new().unwrap();
         // No _synthetic/ directory created.
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
         assert!(result.hard_violations.is_empty());
         assert_eq!(result.soft_warnings.len(), 1);
-        assert!(result.soft_warnings[0].contains("does not exist"), "{:?}", result.soft_warnings);
+        assert!(
+            result.soft_warnings[0].contains("does not exist"),
+            "{:?}",
+            result.soft_warnings
+        );
     }
 
     #[test]
@@ -1043,10 +1080,19 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         // _synthetic/ exists but the link target does not.
         write(tmp.path(), "_synthetic/index.md", "See [[missing-note]].\n");
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
         assert!(
-            result.hard_violations.iter().any(|v| v.contains("missing-note")),
-            "expected hard violation for missing-note, got: {:?}", result.hard_violations
+            result
+                .hard_violations
+                .iter()
+                .any(|v| v.contains("missing-note")),
+            "expected hard violation for missing-note, got: {:?}",
+            result.hard_violations
         );
     }
 
@@ -1055,10 +1101,16 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         // Atomic note not embedded by any index → orphan warning.
         write(tmp.path(), "_synthetic/cs/sorting.md", csnotes_note());
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
         assert!(
             result.soft_warnings.iter().any(|w| w.contains("orphan")),
-            "expected orphan warning, got: {:?}", result.soft_warnings
+            "expected orphan warning, got: {:?}",
+            result.soft_warnings
         );
     }
 
@@ -1071,7 +1123,11 @@ mod tests {
         let manifest = make_empty_manifest(tmp.path());
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         // Both check_links_resolve and check_orphan_atomics guard on dir existence.
-        assert!(result.is_clean(), "expected clean result, got: {:?}", result);
+        assert!(
+            result.is_clean(),
+            "expected clean result, got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1082,8 +1138,12 @@ mod tests {
         let manifest = make_empty_manifest(tmp.path());
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         assert!(
-            result.hard_violations.iter().any(|v| v.contains("ghost-note")),
-            "expected hard violation for ghost-note, got: {:?}", result.hard_violations
+            result
+                .hard_violations
+                .iter()
+                .any(|v| v.contains("ghost-note")),
+            "expected hard violation for ghost-note, got: {:?}",
+            result.hard_violations
         );
     }
 
@@ -1096,7 +1156,8 @@ mod tests {
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         assert!(
             result.soft_warnings.iter().any(|w| w.contains("orphan")),
-            "expected orphan warning, got: {:?}", result.soft_warnings
+            "expected orphan warning, got: {:?}",
+            result.soft_warnings
         );
     }
 
@@ -1155,7 +1216,8 @@ mod tests {
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("dup-01")),
-            "expected duplicate block_id violation, got: {:?}", result.hard_violations
+            "expected duplicate block_id violation, got: {:?}",
+            result.hard_violations
         );
     }
 
@@ -1164,10 +1226,16 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "_synthetic/cs/note-a.md", &clean_note("dup-01"));
         write(tmp.path(), "_synthetic/cs/note-b.md", &clean_note("dup-01"));
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("dup-01")),
-            "expected duplicate block_id violation, got: {:?}", result.hard_violations
+            "expected duplicate block_id violation, got: {:?}",
+            result.hard_violations
         );
     }
 
@@ -1176,25 +1244,51 @@ mod tests {
     #[test]
     fn audit_vault_atomic_missing_anchor_is_hard_violation() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "_synthetic/cs/sorting.md", &note_missing_anchor("sort-01"));
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &note_missing_anchor("sort-01"),
+        );
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("sort-01")),
-            "expected hard violation for missing anchor, got: {:?}", result.hard_violations
+            "expected hard violation for missing anchor, got: {:?}",
+            result.hard_violations
         );
     }
 
     #[test]
     fn audit_vault_atomic_with_anchor_is_clean() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "_synthetic/cs/sorting.md", &clean_note("sort-01"));
-        write(tmp.path(), "_synthetic/cs/index.md",
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &clean_note("sort-01"),
+        );
+        write(
+            tmp.path(),
+            "_synthetic/cs/index.md",
             "---\ncsnotes_schema: 1\nkind: index\ntopic: cs\ntitle: CS\n\
              contributing_sessions: []\ncontributing_sources: []\n\
              created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-             ---\n![[sorting#^sort-01]]\n");
-        let result = audit_vault(tmp.path(), &make_vault_config(), &make_empty_manifest(tmp.path())).unwrap();
-        assert!(result.hard_violations.is_empty(), "{:?}", result.hard_violations);
+             ---\n![[sorting#^sort-01]]\n",
+        );
+        let result = audit_vault(
+            tmp.path(),
+            &make_vault_config(),
+            &make_empty_manifest(tmp.path()),
+        )
+        .unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "{:?}",
+            result.hard_violations
+        );
     }
 
     // ── check_block_id_anchor (via precondition_pass) ─────────────────────────
@@ -1271,18 +1365,38 @@ mod tests {
     #[test]
     fn collect_fixes_returns_fix_for_atomic_missing_anchor() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "_synthetic/cs/sorting.md", &note_missing_anchor("sort-01"));
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &note_missing_anchor("sort-01"),
+        );
         let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
-        assert_eq!(fixes.len(), 1, "expected one fix, got: {:?}", fixes.iter().map(|f| &f.description).collect::<Vec<_>>());
-        assert!(fixes[0].description.contains("sort-01"), "{}", fixes[0].description);
+        assert_eq!(
+            fixes.len(),
+            1,
+            "expected one fix, got: {:?}",
+            fixes.iter().map(|f| &f.description).collect::<Vec<_>>()
+        );
+        assert!(
+            fixes[0].description.contains("sort-01"),
+            "{}",
+            fixes[0].description
+        );
     }
 
     #[test]
     fn collect_fixes_returns_no_fix_when_anchor_present() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "_synthetic/cs/sorting.md", &clean_note("sort-01"));
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &clean_note("sort-01"),
+        );
         let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
-        assert!(fixes.is_empty(), "no fix needed for note with anchor present");
+        assert!(
+            fixes.is_empty(),
+            "no fix needed for note with anchor present"
+        );
     }
 
     #[test]
@@ -1300,7 +1414,10 @@ mod tests {
         let count = apply_fixes(&fixes).unwrap();
         assert_eq!(count, 1);
         let content = std::fs::read_to_string(&note_path).unwrap();
-        assert!(content.contains("^sort-01"), "anchor not appended:\n{content}");
+        assert!(
+            content.contains("^sort-01"),
+            "anchor not appended:\n{content}"
+        );
     }
 
     #[test]
@@ -1313,11 +1430,17 @@ mod tests {
         let fixes = vec![
             FixItem {
                 description: "fix a".into(),
-                action: FixAction::AppendAnchor { path: path_a.clone(), block_id: "id-a".into() },
+                action: FixAction::AppendAnchor {
+                    path: path_a.clone(),
+                    block_id: "id-a".into(),
+                },
             },
             FixItem {
                 description: "fix b".into(),
-                action: FixAction::AppendAnchor { path: path_b.clone(), block_id: "id-b".into() },
+                action: FixAction::AppendAnchor {
+                    path: path_b.clone(),
+                    block_id: "id-b".into(),
+                },
             },
         ];
         let count = apply_fixes(&fixes).unwrap();
@@ -1331,11 +1454,22 @@ mod tests {
     #[test]
     fn reindex_collects_atomic_notes_for_topic() {
         let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "_synthetic/cs/sorting.md", &clean_note("sort-01"));
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &clean_note("sort-01"),
+        );
         let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist after reindex");
+        let topic = manifest
+            .topics
+            .get("cs")
+            .expect("cs topic should exist after reindex");
         assert_eq!(topic.atomic_notes.len(), 1);
-        assert!(topic.atomic_notes[0].contains("sorting.md"), "{:?}", topic.atomic_notes);
+        assert!(
+            topic.atomic_notes[0].contains("sorting.md"),
+            "{:?}",
+            topic.atomic_notes
+        );
     }
 
     // ── sidecar nudge (audit_vault) ───────────────────────────────────────────
@@ -1343,17 +1477,20 @@ mod tests {
     fn make_ai_source_manifest(vault_root: &Path, source_id: &str, path: &str) -> Manifest {
         use crate::manifest::{SourceEntry, SourceStatus};
         let mut m = make_empty_manifest(vault_root);
-        m.sources.insert(source_id.to_string(), SourceEntry {
-            path: path.to_string(),
-            kind: SourceKind::AiConversation,
-            status: SourceStatus::Unprocessed,
-            last_processed_at: None,
-            heading_scheme: vec![],
-            topics_updated: vec![],
-            summary: None,
-            tags: vec![],
-            courses: vec![],
-        });
+        m.sources.insert(
+            source_id.to_string(),
+            SourceEntry {
+                path: path.to_string(),
+                kind: SourceKind::AiConversation,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: None,
+                tags: vec![],
+                courses: vec![],
+            },
+        );
         m
     }
 
@@ -1371,8 +1508,12 @@ mod tests {
         );
         let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(
-            result.soft_warnings.iter().any(|w| w.contains("AI-Conversations/Gemini/chat")),
-            "expected sidecar nudge warning, got: {:?}", result.soft_warnings
+            result
+                .soft_warnings
+                .iter()
+                .any(|w| w.contains("AI-Conversations/Gemini/chat")),
+            "expected sidecar nudge warning, got: {:?}",
+            result.soft_warnings
         );
     }
 
@@ -1382,7 +1523,11 @@ mod tests {
         let body = "word ".repeat(2_100);
         write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
         // Sidecar exists — no warning expected.
-        write(tmp.path(), "sources/AI-Conversations/Gemini/chat.json", "{}");
+        write(
+            tmp.path(),
+            "sources/AI-Conversations/Gemini/chat.json",
+            "{}",
+        );
         let manifest = make_ai_source_manifest(
             tmp.path(),
             "AI-Conversations/Gemini/chat",
@@ -1391,7 +1536,8 @@ mod tests {
         let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(
             !result.soft_warnings.iter().any(|w| w.contains("sidecar")),
-            "no sidecar warning expected when .json present: {:?}", result.soft_warnings
+            "no sidecar warning expected when .json present: {:?}",
+            result.soft_warnings
         );
     }
 
@@ -1409,7 +1555,8 @@ mod tests {
         let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(
             !result.soft_warnings.iter().any(|w| w.contains("sidecar")),
-            "no sidecar warning expected for short conversation: {:?}", result.soft_warnings
+            "no sidecar warning expected for short conversation: {:?}",
+            result.soft_warnings
         );
     }
 
@@ -1421,7 +1568,7 @@ mod tests {
                      block_id: early-01\ncontributing_sessions: []\ncontributing_sources: []\n\
                      created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
                      ---\nContent.\n\n^early-01\n";
-        let late  = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Late\n\
+        let late = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Late\n\
                      block_id: late-01\ncontributing_sessions: []\ncontributing_sources: []\n\
                      created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-06-01T00:00:00Z\"\n\
                      ---\nContent.\n\n^late-01\n";
@@ -1433,7 +1580,8 @@ mod tests {
         assert_eq!(
             topic.last_updated.format("%Y-%m-%d").to_string(),
             "2026-06-01",
-            "expected max last_updated, got: {}", topic.last_updated
+            "expected max last_updated, got: {}",
+            topic.last_updated
         );
     }
 }

@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use owo_colors::OwoColorize;
 
-use crate::config::{VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, VaultConfig};
 use crate::flags::FlagStore;
 use crate::manifest::{Manifest, SessionStatus};
 use crate::ui::rainbow;
@@ -26,12 +26,21 @@ pub fn run() -> Result<()> {
     if let Some(ref rec) = manifest.session_in_progress {
         println!("{}", "⚠  Session in progress".red().bold());
         println!("   run_id : {}", rec.run_id.dimmed());
-        println!("   started: {}", rec.started_at.format("%Y-%m-%d %H:%M UTC").to_string().dimmed());
+        println!(
+            "   started: {}",
+            rec.started_at
+                .format("%Y-%m-%d %H:%M UTC")
+                .to_string()
+                .dimmed()
+        );
         println!("   phase  : {}", rec.phase);
         if let Some(ref err) = rec.error {
             println!("   error  : {}", err.red());
         }
-        println!("   Run {} to resume or discard.", "`csnotes recover`".bold());
+        println!(
+            "   Run {} to resume or discard.",
+            "`csnotes recover`".bold()
+        );
         println!();
     }
 
@@ -127,7 +136,11 @@ pub fn run() -> Result<()> {
                 "  {} — {} atomic{}{}{}",
                 name,
                 topic.atomic_notes.len(),
-                if topic.atomic_notes.len() == 1 { "" } else { "s" },
+                if topic.atomic_notes.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                },
                 pending,
                 flags,
             );

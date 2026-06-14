@@ -52,6 +52,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- dev: pre-commit hook should auto-fix rather than warn (L60)
+- dev: add clippy + fmt pre-commit hook (L59)
 - AI conversation sidecar index: design integration for >4.5k-word conversations (L53)
 - mutant coverage: command handlers (diff, extract, flags_cmd, status, config_cmd, reconcile, process) (L51)
 - unit tests for check_links_resolve and check_orphan_atomics callers (L35)

@@ -20,12 +20,10 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{bail, Result};
 #[cfg(unix)]
-use libc;
-
 use crate::config::{AiBackend, SkillVariant};
 use crate::error::CsnotesError;
+use anyhow::{bail, Result};
 
 // ── Trait ─────────────────────────────────────────────────────────────────────
 
@@ -89,8 +87,15 @@ pub fn make_backend(
     resume: bool,
 ) -> Box<dyn BackendLauncher> {
     match backend {
-        AiBackend::Claude => Box::new(ClaudeBackend { skill_variant, resume }),
-        AiBackend::Agy => Box::new(AgyBackend { skill_variant, model: agy_model, resume }),
+        AiBackend::Claude => Box::new(ClaudeBackend {
+            skill_variant,
+            resume,
+        }),
+        AiBackend::Agy => Box::new(AgyBackend {
+            skill_variant,
+            model: agy_model,
+            resume,
+        }),
         AiBackend::Mock => Box::new(MockBackend { fixture }),
     }
 }
@@ -227,8 +232,9 @@ impl BackendLauncher for MockBackend {
             let mut report: serde_json::Value = serde_json::from_str(&content)
                 .map_err(|e| CsnotesError::BackendFailed(format!("parsing fixture report: {e}")))?;
             report["run_id"] = serde_json::Value::String(run_id);
-            let patched = serde_json::to_string_pretty(&report)
-                .map_err(|e| CsnotesError::BackendFailed(format!("serialising patched report: {e}")))?;
+            let patched = serde_json::to_string_pretty(&report).map_err(|e| {
+                CsnotesError::BackendFailed(format!("serialising patched report: {e}"))
+            })?;
             std::fs::write(workspace.join("_session_report.json"), patched)
                 .map_err(|e| CsnotesError::BackendFailed(format!("writing fixture report: {e}")))?;
         }
@@ -267,7 +273,10 @@ fn locate_fixture_dir(name: &str) -> Result<std::path::PathBuf> {
         }
     }
 
-    bail!("fixture '{}' not found (set CSNOTES_FIXTURES or run from the project root)", name);
+    bail!(
+        "fixture '{}' not found (set CSNOTES_FIXTURES or run from the project root)",
+        name
+    );
 }
 
 /// Recursively copy `src/` into `dst/`, overwriting files that exist.

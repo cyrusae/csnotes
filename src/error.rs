@@ -35,7 +35,11 @@ pub enum CsnotesError {
     FrontmatterParse { path: PathBuf, reason: String },
 
     #[error("frontmatter schema version {got} unsupported (expected {expected}) in {path}")]
-    FrontmatterSchemaMismatch { path: PathBuf, got: u32, expected: u32 },
+    FrontmatterSchemaMismatch {
+        path: PathBuf,
+        got: u32,
+        expected: u32,
+    },
 
     // ── Session report ────────────────────────────────────────────────────────
     #[error("no session report found at {0}")]
@@ -60,7 +64,9 @@ pub enum CsnotesError {
     #[error("embed_in target '{0}' declared but file not found in workspace")]
     EmbedInTargetMissing(String),
 
-    #[error("embed_in declared for '{atomic}' but ![[{atomic}#^{block_id}]] not found in '{index}'")]
+    #[error(
+        "embed_in declared for '{atomic}' but ![[{atomic}#^{block_id}]] not found in '{index}'"
+    )]
     EmbedLineMissing {
         atomic: String,
         block_id: String,

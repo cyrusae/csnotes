@@ -11,7 +11,6 @@
 ///
 /// 3. **lifecycle / transactionality** — deterministic crash-and-recovery and
 ///    reindex-fidelity scenarios that don't need varied random inputs.
-
 use proptest::prelude::*;
 use std::collections::HashSet;
 use std::fs;
@@ -247,7 +246,10 @@ fn recover_discard_clears_stale_in_progress() {
         .current_dir(root)
         .status()
         .expect("spawn recover --discard");
-    assert!(status.success(), "recover --discard should succeed with a ghost workspace");
+    assert!(
+        status.success(),
+        "recover --discard should succeed with a ghost workspace"
+    );
 
     let after = read_manifest(root);
     assert!(
@@ -269,7 +271,10 @@ fn reindex_is_stable_after_clean_process() {
         .current_dir(root)
         .status()
         .expect("spawn process");
-    assert!(status.success(), "process should succeed with default fixture");
+    assert!(
+        status.success(),
+        "process should succeed with default fixture"
+    );
 
     let before = read_manifest(root);
 
@@ -278,7 +283,10 @@ fn reindex_is_stable_after_clean_process() {
         .current_dir(root)
         .status()
         .expect("spawn audit --reindex");
-    assert!(status.success(), "audit --reindex should succeed after clean process");
+    assert!(
+        status.success(),
+        "audit --reindex should succeed after clean process"
+    );
 
     let after = read_manifest(root);
 
@@ -320,8 +328,7 @@ fn reindex_is_stable_after_clean_process() {
 
     // Processed status must survive reindex.
     assert_eq!(
-        after["sessions"]["CPSC5001-09-03"]["status"],
-        "processed",
+        after["sessions"]["CPSC5001-09-03"]["status"], "processed",
         "reindex must preserve the processed status for committed sessions"
     );
 

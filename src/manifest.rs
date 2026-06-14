@@ -69,10 +69,8 @@ impl Manifest {
 
     pub fn save(&self, vault_root: &Path) -> Result<()> {
         let path = vault_root.join(MANIFEST_FILENAME);
-        let content = serde_json::to_string_pretty(self)
-            .context("serializing manifest")?;
-        std::fs::write(&path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        let content = serde_json::to_string_pretty(self).context("serializing manifest")?;
+        std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 
@@ -83,7 +81,9 @@ impl Manifest {
 
     /// Path to the last session report copy (written during merge-back).
     pub fn last_report_path(&self) -> PathBuf {
-        self.vault_root.join(&self.config.generated_dir).join("last_report.json")
+        self.vault_root
+            .join(&self.config.generated_dir)
+            .join("last_report.json")
     }
 
     /// Path for storing the report from a specific session.
@@ -339,6 +339,7 @@ impl ManifestLock {
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
+                .truncate(false)
                 .open(&lock_path)
                 .with_context(|| format!("opening lock file {}", lock_path.display()))?;
             let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
@@ -348,7 +349,7 @@ impl ManifestLock {
                     std::io::Error::last_os_error()
                 );
             }
-            return Ok(ManifestLock { _file: file });
+            Ok(ManifestLock { _file: file })
         }
         #[cfg(not(unix))]
         {
@@ -411,7 +412,10 @@ mod tests {
     #[test]
     fn flags_path_absolute_joins_vault_root() {
         let m = test_manifest();
-        assert_eq!(m.flags_path_absolute(), PathBuf::from("/tmp/test-vault/_generated/flags.json"));
+        assert_eq!(
+            m.flags_path_absolute(),
+            PathBuf::from("/tmp/test-vault/_generated/flags.json")
+        );
     }
 
     #[test]
@@ -471,7 +475,10 @@ mod tests {
         assert_eq!(SourceKind::Textbook.as_str(), "textbook");
         assert_eq!(SourceKind::AiConversation.as_str(), "ai_conversation");
         assert_eq!(SourceKind::Paper.as_str(), "paper");
-        assert_eq!(SourceKind::AssignmentFeedback.as_str(), "assignment_feedback");
+        assert_eq!(
+            SourceKind::AssignmentFeedback.as_str(),
+            "assignment_feedback"
+        );
         assert_eq!(SourceKind::Other.as_str(), "other");
     }
 
@@ -491,7 +498,10 @@ mod tests {
             .open(&lock_path)
             .unwrap();
         let ret = unsafe { libc::flock(file2.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-        assert_ne!(ret, 0, "second lock attempt should fail while first is held");
+        assert_ne!(
+            ret, 0,
+            "second lock attempt should fail while first is held"
+        );
     }
 
     #[test]

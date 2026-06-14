@@ -323,7 +323,9 @@ fn check_no_unregistered(
     }
 
     // Paths already registered as raw notes
-    let known_raw: HashSet<String> = manifest.sessions.values()
+    let known_raw: HashSet<String> = manifest
+        .sessions
+        .values()
         .map(|e| e.raw_note.clone())
         .collect();
 
@@ -348,10 +350,7 @@ fn check_no_unregistered(
             .max_depth(1)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_type().is_file()
-                    && e.path().extension().map_or(false, |x| x == "md")
-            })
+            .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "md"))
         {
             let rel = entry
                 .path()
@@ -367,7 +366,10 @@ fn check_no_unregistered(
                 None => continue,
             };
             // Does this unregistered file match any old format?
-            if old_fmts.iter().any(|fmt| fmt.try_parse_stem(stem).is_some()) {
+            if old_fmts
+                .iter()
+                .any(|fmt| fmt.try_parse_stem(stem).is_some())
+            {
                 unregistered.push(rel);
             }
         }
@@ -429,9 +431,9 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
             };
         }
         "archive_threshold_weeks" => {
-            config.archive_threshold_weeks = value
-                .parse()
-                .map_err(|_| anyhow::anyhow!("archive_threshold_weeks must be a positive integer"))?;
+            config.archive_threshold_weeks = value.parse().map_err(|_| {
+                anyhow::anyhow!("archive_threshold_weeks must be a positive integer")
+            })?;
         }
         "agy_model" => {
             if value.is_empty() {
@@ -447,7 +449,9 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
                 _ => bail!("scan_ai_conversations must be true or false"),
             };
         }
-        _ => bail!(crate::error::CsnotesError::InvalidConfigKey { key: key.to_string() }),
+        _ => bail!(crate::error::CsnotesError::InvalidConfigKey {
+            key: key.to_string()
+        }),
     }
     Ok(())
 }
@@ -571,11 +575,8 @@ mod tests {
 
     #[test]
     fn try_rename_in_path_flat_file() {
-        let result = try_rename_in_path(
-            "CPSC5001-09-03.md",
-            "CPSC5001-09-03",
-            "CPSC5001-2026-09-03",
-        );
+        let result =
+            try_rename_in_path("CPSC5001-09-03.md", "CPSC5001-09-03", "CPSC5001-2026-09-03");
         assert_eq!(result, Some("CPSC5001-2026-09-03.md".to_string()));
     }
 

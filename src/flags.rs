@@ -32,8 +32,8 @@ impl FlagStore {
         if !path.exists() {
             return Ok(FlagStore::default());
         }
-        let content = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let content =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let store: FlagStore = serde_json::from_str(&content)
             .with_context(|| format!("parsing {}", path.display()))?;
         Ok(store)
@@ -44,21 +44,14 @@ impl FlagStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = serde_json::to_string_pretty(self)
-            .context("serializing flag store")?;
-        std::fs::write(path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        let content = serde_json::to_string_pretty(self).context("serializing flag store")?;
+        std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 
     /// Append flags from a session report.  `ambiguity` flags are
     /// auto-resolved immediately (logged only).
-    pub fn append_from_report(
-        &mut self,
-        flags: &[ReviewFlag],
-        run_id: &str,
-        now: DateTime<Utc>,
-    ) {
+    pub fn append_from_report(&mut self, flags: &[ReviewFlag], run_id: &str, now: DateTime<Utc>) {
         for flag in flags {
             let auto_resolved = flag.kind == FlagKind::Ambiguity;
             self.flags.push(StoredFlag {
@@ -85,25 +78,27 @@ impl FlagStore {
 
     /// All open thread flags (`unresolved_question`).
     pub fn open_threads(&self) -> impl Iterator<Item = &StoredFlag> {
-        self.flags
-            .iter()
-            .filter(|f| f.open && f.kind.is_thread())
+        self.flags.iter().filter(|f| f.open && f.kind.is_thread())
     }
 
     /// Open flags relevant to a specific note path (for briefing injection).
     pub fn open_for_path<'a>(&'a self, path: &'a str) -> impl Iterator<Item = &'a StoredFlag> + 'a {
-        self.flags.iter().filter(move |f| {
-            f.open && f.path.as_deref() == Some(path)
-        })
+        self.flags
+            .iter()
+            .filter(move |f| f.open && f.path.as_deref() == Some(path))
     }
 
     /// Open flags relevant to a topic (flags whose path starts with the topic
     /// directory — used to populate the briefing).
-    pub fn open_for_topic<'a>(&'a self, topic: &'a str, synthetic_dir: &str) -> impl Iterator<Item = &'a StoredFlag> + 'a {
+    pub fn open_for_topic<'a>(
+        &'a self,
+        topic: &'a str,
+        synthetic_dir: &str,
+    ) -> impl Iterator<Item = &'a StoredFlag> + 'a {
         let prefix = format!("{}/{}/", synthetic_dir, topic);
-        self.flags.iter().filter(move |f| {
-            f.open && f.path.as_deref().map_or(false, |p| p.starts_with(&prefix))
-        })
+        self.flags
+            .iter()
+            .filter(move |f| f.open && f.path.as_deref().is_some_and(|p| p.starts_with(&prefix)))
     }
 
     /// Resolved flags that have a follow-up note — injected into the next
@@ -189,11 +184,7 @@ mod tests {
     #[test]
     fn actionable_flags_persist_open() {
         let mut store = FlagStore::default();
-        store.append_from_report(
-            &[make_flag(FlagKind::NeedsConfirmation)],
-            "run-1",
-            now(),
-        );
+        store.append_from_report(&[make_flag(FlagKind::NeedsConfirmation)], "run-1", now());
         assert_eq!(store.count_open_actionable(), 1);
     }
 
@@ -208,11 +199,7 @@ mod tests {
     #[test]
     fn resolve_flag() {
         let mut store = FlagStore::default();
-        store.append_from_report(
-            &[make_flag(FlagKind::PossibleMisread)],
-            "run-1",
-            now(),
-        );
+        store.append_from_report(&[make_flag(FlagKind::PossibleMisread)], "run-1", now());
         let id = store.flags[0].id.clone();
         assert!(store.resolve(&id, now(), None));
         assert_eq!(store.count_open_actionable(), 0);
@@ -242,7 +229,12 @@ mod tests {
 
     // ── FlagStore filter methods ──────────────────────────────────────────────
 
-    fn stored(kind: FlagKind, path: Option<&str>, open: bool, follow_up: Option<&str>) -> StoredFlag {
+    fn stored(
+        kind: FlagKind,
+        path: Option<&str>,
+        open: bool,
+        follow_up: Option<&str>,
+    ) -> StoredFlag {
         StoredFlag {
             id: uuid::Uuid::new_v4().to_string(),
             kind,
@@ -277,7 +269,12 @@ mod tests {
         let store = FlagStore {
             flags: vec![
                 stored(FlagKind::NeedsConfirmation, Some(target), true, None),
-                stored(FlagKind::NeedsConfirmation, Some("_synthetic/cs/other.md"), true, None),
+                stored(
+                    FlagKind::NeedsConfirmation,
+                    Some("_synthetic/cs/other.md"),
+                    true,
+                    None,
+                ),
                 stored(FlagKind::NeedsConfirmation, Some(target), false, None), // closed
             ],
         };
@@ -290,9 +287,24 @@ mod tests {
     fn open_for_topic_filters_by_path_prefix() {
         let store = FlagStore {
             flags: vec![
-                stored(FlagKind::NeedsConfirmation, Some("_synthetic/cs/sorting.md"), true, None),
-                stored(FlagKind::NeedsConfirmation, Some("_synthetic/math/sets.md"), true, None),
-                stored(FlagKind::NeedsConfirmation, Some("_synthetic/cs/graphs.md"), false, None),
+                stored(
+                    FlagKind::NeedsConfirmation,
+                    Some("_synthetic/cs/sorting.md"),
+                    true,
+                    None,
+                ),
+                stored(
+                    FlagKind::NeedsConfirmation,
+                    Some("_synthetic/math/sets.md"),
+                    true,
+                    None,
+                ),
+                stored(
+                    FlagKind::NeedsConfirmation,
+                    Some("_synthetic/cs/graphs.md"),
+                    false,
+                    None,
+                ),
             ],
         };
         let hits: Vec<_> = store.open_for_topic("cs", "_synthetic").collect();
@@ -304,7 +316,12 @@ mod tests {
     fn resolved_with_follow_up_returns_closed_flags_with_note() {
         let store = FlagStore {
             flags: vec![
-                stored(FlagKind::NeedsConfirmation, None, false, Some("The answer is yes.")),
+                stored(
+                    FlagKind::NeedsConfirmation,
+                    None,
+                    false,
+                    Some("The answer is yes."),
+                ),
                 stored(FlagKind::NeedsConfirmation, None, false, None), // no follow-up
                 stored(FlagKind::NeedsConfirmation, None, true, Some("Still open")), // open
             ],
@@ -316,9 +333,21 @@ mod tests {
 
     #[test]
     fn stored_flag_display_kind_matches_variant() {
-        assert_eq!(stored(FlagKind::PossibleMisread, None, true, None).display_kind(), "possible misread");
-        assert_eq!(stored(FlagKind::NeedsConfirmation, None, true, None).display_kind(), "needs confirmation");
-        assert_eq!(stored(FlagKind::UnresolvedQuestion, None, true, None).display_kind(), "unresolved question");
-        assert_eq!(stored(FlagKind::Ambiguity, None, true, None).display_kind(), "ambiguity (auto-resolved)");
+        assert_eq!(
+            stored(FlagKind::PossibleMisread, None, true, None).display_kind(),
+            "possible misread"
+        );
+        assert_eq!(
+            stored(FlagKind::NeedsConfirmation, None, true, None).display_kind(),
+            "needs confirmation"
+        );
+        assert_eq!(
+            stored(FlagKind::UnresolvedQuestion, None, true, None).display_kind(),
+            "unresolved question"
+        );
+        assert_eq!(
+            stored(FlagKind::Ambiguity, None, true, None).display_kind(),
+            "ambiguity (auto-resolved)"
+        );
     }
 }

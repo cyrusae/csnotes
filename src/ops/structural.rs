@@ -57,7 +57,7 @@ pub fn execute_rename_topic(
     for entry in WalkDir::new(&to_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         crate::frontmatter::update_frontmatter(entry.path(), |fm| {
             if fm.topic == op.from {
@@ -112,12 +112,16 @@ pub fn execute_rename_atomic(
     let to_abs = safe_join(&synthetic_root, topic)?.join(format!("{}.md", op.new_slug));
 
     if !from_abs.exists() {
-        bail!("rename_atomic: source note '{}' not found in workspace", op.path);
+        bail!(
+            "rename_atomic: source note '{}' not found in workspace",
+            op.path
+        );
     }
     if to_abs.exists() {
         bail!(
             "rename_atomic: '{}' already exists in topic '{}'",
-            op.new_slug, topic
+            op.new_slug,
+            topic
         );
     }
 
@@ -163,13 +167,18 @@ pub fn execute_move_atomic(
         .parent()
         .and_then(|p| p.file_name())
         .and_then(|s| s.to_str())
-        .ok_or_else(|| anyhow::anyhow!("move_atomic: cannot parse topic from '{}'", op.from_path))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("move_atomic: cannot parse topic from '{}'", op.from_path)
+        })?;
 
     let to_dir = safe_join(&synthetic_root, &op.to_topic)?;
     let to_abs = to_dir.join(format!("{}.md", slug));
 
     if !from_abs.exists() {
-        bail!("move_atomic: source note '{}' not found in workspace", op.from_path);
+        bail!(
+            "move_atomic: source note '{}' not found in workspace",
+            op.from_path
+        );
     }
     if !to_dir.exists() {
         bail!(
@@ -222,21 +231,25 @@ pub fn execute_promote_atomic(
     let from_abs = safe_join(workspace_root, &op.from_path)?;
 
     let from_p = std::path::Path::new(&op.from_path);
-    let slug = from_p
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| anyhow::anyhow!("promote_atomic: cannot parse slug from '{}'", op.from_path))?;
+    let slug = from_p.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+        anyhow::anyhow!("promote_atomic: cannot parse slug from '{}'", op.from_path)
+    })?;
     let old_topic = from_p
         .parent()
         .and_then(|p| p.file_name())
         .and_then(|s| s.to_str())
-        .ok_or_else(|| anyhow::anyhow!("promote_atomic: cannot parse topic from '{}'", op.from_path))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("promote_atomic: cannot parse topic from '{}'", op.from_path)
+        })?;
 
     let to_dir = safe_join(&synthetic_root, &op.to_topic)?;
     let to_abs = to_dir.join(format!("{}.md", slug));
 
     if !from_abs.exists() {
-        bail!("promote_atomic: source note '{}' not found in workspace", op.from_path);
+        bail!(
+            "promote_atomic: source note '{}' not found in workspace",
+            op.from_path
+        );
     }
     if to_dir.exists() {
         bail!(
@@ -289,10 +302,16 @@ pub fn execute_demote_topic(
     let into_dir = safe_join(&synthetic_root, &op.into_topic)?;
 
     if op.from_topic == op.into_topic {
-        bail!("demote_topic: source and target are the same topic '{}'", op.from_topic);
+        bail!(
+            "demote_topic: source and target are the same topic '{}'",
+            op.from_topic
+        );
     }
     if !from_dir.exists() {
-        bail!("demote_topic: source topic '{}' does not exist", op.from_topic);
+        bail!(
+            "demote_topic: source topic '{}' does not exist",
+            op.from_topic
+        );
     }
     if !into_dir.exists() {
         bail!(
@@ -308,9 +327,8 @@ pub fn execute_demote_topic(
         &format!("{}/", op.from_topic),
         &format!("{}/", op.into_topic),
     )?;
-    std::fs::remove_dir(&from_dir).with_context(|| {
-        format!("demote_topic: removing source folder '{}'", op.from_topic)
-    })?;
+    std::fs::remove_dir(&from_dir)
+        .with_context(|| format!("demote_topic: removing source folder '{}'", op.from_topic))?;
 
     Ok(())
 }
@@ -335,16 +353,15 @@ pub fn execute_merge_topics(
 
     // Create the target if it doesn't yet exist (and isn't one of the sources).
     if !into_dir.exists() {
-        std::fs::create_dir_all(&into_dir).with_context(|| {
-            format!("merge_topics: creating target folder '{}'", op.into)
-        })?;
+        std::fs::create_dir_all(&into_dir)
+            .with_context(|| format!("merge_topics: creating target folder '{}'", op.into))?;
     }
 
     // Pre-flight: collect all filenames that will land in `into` to detect conflicts.
     let mut landing: std::collections::HashSet<String> = std::fs::read_dir(&into_dir)
         .map(|rd| {
             rd.filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+                .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
                 .map(|e| e.file_name().to_string_lossy().to_string())
                 .collect()
         })
@@ -362,7 +379,7 @@ pub fn execute_merge_topics(
             .max_depth(1)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file() && e.path().extension().map_or(false, |x| x == "md"))
+            .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "md"))
         {
             let name = entry.file_name().to_string_lossy().to_string();
             if !landing.insert(name.clone()) {
@@ -386,9 +403,8 @@ pub fn execute_merge_topics(
             &format!("{}/", from_topic),
             &format!("{}/", op.into),
         )?;
-        std::fs::remove_dir(&from_dir).with_context(|| {
-            format!("merge_topics: removing source folder '{}'", from_topic)
-        })?;
+        std::fs::remove_dir(&from_dir)
+            .with_context(|| format!("merge_topics: removing source folder '{}'", from_topic))?;
     }
 
     Ok(())
@@ -421,9 +437,8 @@ pub fn execute_split_topic(
         }
         let target_dir = safe_join(&synthetic_root, &target.topic)?;
         if !target_dir.exists() {
-            std::fs::create_dir_all(&target_dir).with_context(|| {
-                format!("split_topic: creating folder '{}'", target.topic)
-            })?;
+            std::fs::create_dir_all(&target_dir)
+                .with_context(|| format!("split_topic: creating folder '{}'", target.topic))?;
         }
 
         for slug in &target.atomics {
@@ -445,9 +460,8 @@ pub fn execute_split_topic(
                 );
             }
 
-            std::fs::rename(&from_note, &to_note).with_context(|| {
-                format!("split_topic: moving '{}' to '{}'", slug, target.topic)
-            })?;
+            std::fs::rename(&from_note, &to_note)
+                .with_context(|| format!("split_topic: moving '{}' to '{}'", slug, target.topic))?;
 
             crate::frontmatter::update_frontmatter(&to_note, |fm| {
                 fm.topic = target.topic.clone();
@@ -510,10 +524,8 @@ pub fn execute_set_embed(op: &SetEmbedOp, workspace_root: &Path) -> Result<()> {
         .with_context(|| format!("set_embed: reading '{}'", op.index_path))?;
     let (yaml, body) = crate::frontmatter::split_frontmatter(&raw)
         .ok_or_else(|| anyhow::anyhow!("set_embed: '{}' has no frontmatter", op.index_path))?;
-    let mut fm: crate::frontmatter::NoteFrontmatter =
-        serde_yml::from_str(yaml).with_context(|| {
-            format!("set_embed: parsing frontmatter of '{}'", op.index_path)
-        })?;
+    let mut fm: crate::frontmatter::NoteFrontmatter = serde_yml::from_str(yaml)
+        .with_context(|| format!("set_embed: parsing frontmatter of '{}'", op.index_path))?;
 
     let embeds = fm.embeds.get_or_insert_with(Vec::new);
 
@@ -531,10 +543,7 @@ pub fn execute_set_embed(op: &SetEmbedOp, workspace_root: &Path) -> Result<()> {
     } else {
         embeds.retain(|e| e != &atomic_slug);
         // Remove the embed line; preserve all other lines.
-        let lines: Vec<&str> = body
-            .lines()
-            .filter(|l| *l != embed_line.as_str())
-            .collect();
+        let lines: Vec<&str> = body.lines().filter(|l| *l != embed_line.as_str()).collect();
         if lines.is_empty() {
             String::new()
         } else {
@@ -563,7 +572,7 @@ fn move_topic_notes(
         .max_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file() && e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "md"))
     {
         let filename = entry.path().file_name().unwrap().to_owned();
         let dest = to_dir.join(&filename);
@@ -579,8 +588,7 @@ fn move_topic_notes(
     }
 
     for (src, dest) in to_move {
-        std::fs::rename(&src, &dest)
-            .with_context(|| format!("moving '{}'", src.display()))?;
+        std::fs::rename(&src, &dest).with_context(|| format!("moving '{}'", src.display()))?;
         crate::frontmatter::update_frontmatter(&dest, |fm| {
             if fm.topic == from_topic {
                 fm.topic = to_topic.to_string();
@@ -610,7 +618,7 @@ pub fn rewrite_links(root: &Path, old_target: &str, new_target: &str) -> Result<
     for entry in WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = crate::frontmatter::read_note(entry.path())?;
         if content.contains(&old_wiki) || content.contains(&old_embed) {
@@ -637,7 +645,7 @@ fn rewrite_note_links(root: &Path, old_stem: &str, new_stem: &str) -> Result<usi
     for entry in WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = crate::frontmatter::read_note(entry.path())?;
         let updated = replace_note_links(&content, old_stem, new_stem);
@@ -695,7 +703,7 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
     // "oop-basics/") or an exact-stem rewrite ("cs/old-slug" → "cs/new-slug").
     enum Rw {
         Prefix { old: String, new: String },
-        Exact  { old: String, new: String },
+        Exact { old: String, new: String },
     }
 
     let mut total = 0usize;
@@ -712,7 +720,11 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
                     Some(s) => s,
                     None => continue,
                 };
-                let topic = match p.parent().and_then(|pp| pp.file_name()).and_then(|s| s.to_str()) {
+                let topic = match p
+                    .parent()
+                    .and_then(|pp| pp.file_name())
+                    .and_then(|s| s.to_str())
+                {
                     Some(s) => s,
                     None => continue,
                 };
@@ -727,7 +739,11 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
                     Some(s) => s,
                     None => continue,
                 };
-                let old_topic = match p.parent().and_then(|pp| pp.file_name()).and_then(|s| s.to_str()) {
+                let old_topic = match p
+                    .parent()
+                    .and_then(|pp| pp.file_name())
+                    .and_then(|s| s.to_str())
+                {
                     Some(s) => s,
                     None => continue,
                 };
@@ -742,7 +758,11 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
                     Some(s) => s,
                     None => continue,
                 };
-                let old_topic = match p.parent().and_then(|pp| pp.file_name()).and_then(|s| s.to_str()) {
+                let old_topic = match p
+                    .parent()
+                    .and_then(|pp| pp.file_name())
+                    .and_then(|s| s.to_str())
+                {
                     Some(s) => s,
                     None => continue,
                 };
@@ -755,19 +775,25 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
                 old: format!("{}/", o.from_topic),
                 new: format!("{}/", o.into_topic),
             }],
-            Op::MergeTopics(o) => o.from.iter()
+            Op::MergeTopics(o) => o
+                .from
+                .iter()
                 .filter(|from| *from != &o.into)
                 .map(|from| Rw::Prefix {
                     old: format!("{}/", from),
                     new: format!("{}/", o.into),
                 })
                 .collect(),
-            Op::SplitTopic(o) => o.into.iter()
+            Op::SplitTopic(o) => o
+                .into
+                .iter()
                 .filter(|t| t.topic != o.from)
-                .flat_map(|t| t.atomics.iter().map(move |slug| Rw::Exact {
-                    old: format!("{}/{}", o.from, slug),
-                    new: format!("{}/{}", t.topic, slug),
-                }))
+                .flat_map(|t| {
+                    t.atomics.iter().map(move |slug| Rw::Exact {
+                        old: format!("{}/{}", o.from, slug),
+                        new: format!("{}/{}", t.topic, slug),
+                    })
+                })
                 .collect(),
             Op::CreateNote(_) | Op::UpdateNote(_) | Op::SetEmbed(_) => vec![],
         };
@@ -776,7 +802,7 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
             for &root in raw_note_roots {
                 let n = match rw {
                     Rw::Prefix { old, new } => rewrite_links(root, old, new).unwrap_or(0),
-                    Rw::Exact  { old, new } => rewrite_note_links(root, old, new).unwrap_or(0),
+                    Rw::Exact { old, new } => rewrite_note_links(root, old, new).unwrap_or(0),
                 };
                 total += n;
             }
@@ -812,8 +838,16 @@ mod tests {
     fn rename_topic_renames_folder_and_frontmatter() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "inheritance/index.md", &minimal_note("inheritance"));
-        write_note(&synthetic, "inheritance/poly.md", &minimal_note("inheritance"));
+        write_note(
+            &synthetic,
+            "inheritance/index.md",
+            &minimal_note("inheritance"),
+        );
+        write_note(
+            &synthetic,
+            "inheritance/poly.md",
+            &minimal_note("inheritance"),
+        );
 
         let op = RenameTopicOp {
             from: "inheritance".to_string(),
@@ -830,15 +864,25 @@ mod tests {
 
         // Frontmatter topic field updated
         let content = std::fs::read_to_string(synthetic.join("oop-basics/index.md")).unwrap();
-        assert!(content.contains("topic: oop-basics"), "frontmatter topic not updated");
-        assert!(!content.contains("topic: inheritance"), "old topic name still present");
+        assert!(
+            content.contains("topic: oop-basics"),
+            "frontmatter topic not updated"
+        );
+        assert!(
+            !content.contains("topic: inheritance"),
+            "old topic name still present"
+        );
     }
 
     #[test]
     fn rename_topic_rewrites_path_qualified_links() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "inheritance/index.md", &minimal_note("inheritance"));
+        write_note(
+            &synthetic,
+            "inheritance/index.md",
+            &minimal_note("inheritance"),
+        );
         // Another note that uses a path-qualified link to the old topic
         write_note(
             &synthetic,
@@ -904,7 +948,11 @@ mod tests {
     fn rename_atomic_renames_file_and_updates_title() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old Title"));
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old Title"),
+        );
 
         let op = RenameAtomicOp {
             path: "_synthetic/cs/old-slug.md".to_string(),
@@ -914,10 +962,19 @@ mod tests {
         };
         execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
 
-        assert!(!synthetic.join("cs/old-slug.md").exists(), "old file should be gone");
-        assert!(synthetic.join("cs/new-slug.md").exists(), "new file should exist");
+        assert!(
+            !synthetic.join("cs/old-slug.md").exists(),
+            "old file should be gone"
+        );
+        assert!(
+            synthetic.join("cs/new-slug.md").exists(),
+            "new file should exist"
+        );
         let content = std::fs::read_to_string(synthetic.join("cs/new-slug.md")).unwrap();
-        assert!(content.contains("title: New Title"), "title not updated in frontmatter");
+        assert!(
+            content.contains("title: New Title"),
+            "title not updated in frontmatter"
+        );
         assert!(content.contains("topic: cs"), "topic should be unchanged");
     }
 
@@ -925,7 +982,11 @@ mod tests {
     fn rename_atomic_rewrites_links_in_other_notes() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old Title"));
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old Title"),
+        );
         write_note(
             &synthetic,
             "other/index.md",
@@ -941,11 +1002,23 @@ mod tests {
         execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
 
         let content = std::fs::read_to_string(synthetic.join("other/index.md")).unwrap();
-        assert!(content.contains("[[cs/new-slug]]"), "plain link not rewritten");
-        assert!(content.contains("![[cs/new-slug#^test-id]]"), "embed link not rewritten");
+        assert!(
+            content.contains("[[cs/new-slug]]"),
+            "plain link not rewritten"
+        );
+        assert!(
+            content.contains("![[cs/new-slug#^test-id]]"),
+            "embed link not rewritten"
+        );
         // Alias label preserved, only the slug updated
-        assert!(content.contains("[[cs/new-slug|My Label]]"), "alias not preserved");
-        assert!(!content.contains("old-slug"), "old slug should be gone from links");
+        assert!(
+            content.contains("[[cs/new-slug|My Label]]"),
+            "alias not preserved"
+        );
+        assert!(
+            !content.contains("old-slug"),
+            "old slug should be gone from links"
+        );
     }
 
     #[test]
@@ -966,8 +1039,16 @@ mod tests {
     fn rename_atomic_fails_if_dest_exists() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old"));
-        write_note(&synthetic, "cs/new-slug.md", &atomic_note_with_title("cs", "Existing"));
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old"),
+        );
+        write_note(
+            &synthetic,
+            "cs/new-slug.md",
+            &atomic_note_with_title("cs", "Existing"),
+        );
 
         let op = RenameAtomicOp {
             path: "_synthetic/cs/old-slug.md".to_string(),
@@ -982,7 +1063,11 @@ mod tests {
     fn rename_atomic_fails_if_new_slug_empty() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "cs/old-slug.md", &atomic_note_with_title("cs", "Old"));
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old"),
+        );
 
         let op = RenameAtomicOp {
             path: "_synthetic/cs/old-slug.md".to_string(),
@@ -999,8 +1084,16 @@ mod tests {
     fn move_atomic_moves_note_and_updates_frontmatter() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
-        write_note(&synthetic, "data-structures/index.md", &minimal_note("data-structures"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
+        write_note(
+            &synthetic,
+            "data-structures/index.md",
+            &minimal_note("data-structures"),
+        );
 
         let op = MoveAtomicOp {
             from_path: "_synthetic/algorithms/sorting.md".to_string(),
@@ -1009,18 +1102,36 @@ mod tests {
         };
         execute_move_atomic(&op, tmp.path(), "_synthetic").unwrap();
 
-        assert!(!synthetic.join("algorithms/sorting.md").exists(), "source should be gone");
-        assert!(synthetic.join("data-structures/sorting.md").exists(), "dest should exist");
-        let content = std::fs::read_to_string(synthetic.join("data-structures/sorting.md")).unwrap();
-        assert!(content.contains("topic: data-structures"), "frontmatter topic not updated");
+        assert!(
+            !synthetic.join("algorithms/sorting.md").exists(),
+            "source should be gone"
+        );
+        assert!(
+            synthetic.join("data-structures/sorting.md").exists(),
+            "dest should exist"
+        );
+        let content =
+            std::fs::read_to_string(synthetic.join("data-structures/sorting.md")).unwrap();
+        assert!(
+            content.contains("topic: data-structures"),
+            "frontmatter topic not updated"
+        );
     }
 
     #[test]
     fn move_atomic_rewrites_path_qualified_links() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
-        write_note(&synthetic, "data-structures/index.md", &minimal_note("data-structures"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
+        write_note(
+            &synthetic,
+            "data-structures/index.md",
+            &minimal_note("data-structures"),
+        );
         // A third note that links to the moving note
         write_note(
             &synthetic,
@@ -1059,7 +1170,11 @@ mod tests {
     fn move_atomic_fails_if_dest_topic_missing() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
 
         let op = MoveAtomicOp {
             from_path: "_synthetic/algorithms/sorting.md".to_string(),
@@ -1075,7 +1190,11 @@ mod tests {
     fn promote_atomic_creates_new_topic_folder() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
 
         let op = PromoteAtomicOp {
             from_path: "_synthetic/algorithms/sorting.md".to_string(),
@@ -1086,7 +1205,8 @@ mod tests {
 
         assert!(synthetic.join("sorting-algorithms").is_dir());
         assert!(synthetic.join("sorting-algorithms/sorting.md").exists());
-        let content = std::fs::read_to_string(synthetic.join("sorting-algorithms/sorting.md")).unwrap();
+        let content =
+            std::fs::read_to_string(synthetic.join("sorting-algorithms/sorting.md")).unwrap();
         assert!(content.contains("topic: sorting-algorithms"));
     }
 
@@ -1094,8 +1214,16 @@ mod tests {
     fn promote_atomic_fails_if_dest_topic_exists() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
-        write_note(&synthetic, "sorting-algorithms/index.md", &minimal_note("sorting-algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
+        write_note(
+            &synthetic,
+            "sorting-algorithms/index.md",
+            &minimal_note("sorting-algorithms"),
+        );
 
         let op = PromoteAtomicOp {
             from_path: "_synthetic/algorithms/sorting.md".to_string(),
@@ -1114,7 +1242,11 @@ mod tests {
         // graphs uses distinct filenames to avoid conflict with algorithms/index.md
         write_note(&synthetic, "graphs/bfs.md", &minimal_note("graphs"));
         write_note(&synthetic, "graphs/dfs.md", &minimal_note("graphs"));
-        write_note(&synthetic, "algorithms/index.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/index.md",
+            &minimal_note("algorithms"),
+        );
 
         let op = DemoteTopicOp {
             from_topic: "graphs".to_string(),
@@ -1123,7 +1255,10 @@ mod tests {
         };
         execute_demote_topic(&op, tmp.path(), "_synthetic").unwrap();
 
-        assert!(!synthetic.join("graphs").exists(), "source folder should be deleted");
+        assert!(
+            !synthetic.join("graphs").exists(),
+            "source folder should be deleted"
+        );
         assert!(synthetic.join("algorithms/index.md").exists()); // original untouched
         assert!(synthetic.join("algorithms/bfs.md").exists());
         assert!(synthetic.join("algorithms/dfs.md").exists());
@@ -1137,7 +1272,11 @@ mod tests {
         let synthetic = tmp.path().join("_synthetic");
         // Both topics have an "index.md" — conflict
         write_note(&synthetic, "graphs/index.md", &minimal_note("graphs"));
-        write_note(&synthetic, "algorithms/index.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/index.md",
+            &minimal_note("algorithms"),
+        );
 
         let op = DemoteTopicOp {
             from_topic: "graphs".to_string(),
@@ -1155,7 +1294,11 @@ mod tests {
         let synthetic = tmp.path().join("_synthetic");
         write_note(&synthetic, "red-black/rb.md", &minimal_note("red-black"));
         write_note(&synthetic, "avl/avl.md", &minimal_note("avl"));
-        write_note(&synthetic, "balanced-trees/index.md", &minimal_note("balanced-trees"));
+        write_note(
+            &synthetic,
+            "balanced-trees/index.md",
+            &minimal_note("balanced-trees"),
+        );
 
         let op = MergeTopicsOp {
             from: vec!["red-black".to_string(), "avl".to_string()],
@@ -1196,9 +1339,21 @@ mod tests {
     fn split_topic_distributes_atomics_to_new_topics() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
-        write_note(&synthetic, "algorithms/searching.md", &minimal_note("algorithms"));
-        write_note(&synthetic, "algorithms/graphs.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
+        write_note(
+            &synthetic,
+            "algorithms/searching.md",
+            &minimal_note("algorithms"),
+        );
+        write_note(
+            &synthetic,
+            "algorithms/graphs.md",
+            &minimal_note("algorithms"),
+        );
 
         let op = SplitTopicOp {
             from: "algorithms".to_string(),
@@ -1221,7 +1376,10 @@ mod tests {
         execute_split_topic(&op, tmp.path(), "_synthetic").unwrap();
 
         // All three distributed — source folder removed
-        assert!(!synthetic.join("algorithms").exists(), "source should be gone when emptied");
+        assert!(
+            !synthetic.join("algorithms").exists(),
+            "source should be gone when emptied"
+        );
         assert!(synthetic.join("sorting/sorting.md").exists());
         assert!(synthetic.join("searching/searching.md").exists());
         assert!(synthetic.join("graphs/graphs.md").exists());
@@ -1231,8 +1389,16 @@ mod tests {
     fn split_topic_leaves_remainder_in_source() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
-        write_note(&synthetic, "algorithms/sorting.md", &minimal_note("algorithms"));
-        write_note(&synthetic, "algorithms/searching.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/sorting.md",
+            &minimal_note("algorithms"),
+        );
+        write_note(
+            &synthetic,
+            "algorithms/searching.md",
+            &minimal_note("algorithms"),
+        );
 
         // Only move sorting; searching stays in algorithms
         let op = SplitTopicOp {
@@ -1245,7 +1411,10 @@ mod tests {
         };
         execute_split_topic(&op, tmp.path(), "_synthetic").unwrap();
 
-        assert!(synthetic.join("algorithms/searching.md").exists(), "remainder should stay");
+        assert!(
+            synthetic.join("algorithms/searching.md").exists(),
+            "remainder should stay"
+        );
         assert!(synthetic.join("sorting/sorting.md").exists());
     }
 
@@ -1276,9 +1445,18 @@ mod tests {
         execute_set_embed(&op, tmp.path()).unwrap();
 
         let content = std::fs::read_to_string(synthetic.join("cs/cs.md")).unwrap();
-        assert!(content.contains("![[sorting#^test-id]]"), "embed line should be present");
-        assert!(content.contains("embeds:"), "embeds frontmatter should be updated");
-        assert!(content.contains("- sorting"), "sorting should be in embeds list");
+        assert!(
+            content.contains("![[sorting#^test-id]]"),
+            "embed line should be present"
+        );
+        assert!(
+            content.contains("embeds:"),
+            "embeds frontmatter should be updated"
+        );
+        assert!(
+            content.contains("- sorting"),
+            "sorting should be in embeds list"
+        );
     }
 
     #[test]
@@ -1312,8 +1490,14 @@ mod tests {
     fn replace_note_links_does_not_match_longer_prefix() {
         let content = "See [[topic/sorting]] and [[topic/sorting-redux]].";
         let result = replace_note_links(content, "topic/sorting", "topic/new-sorting");
-        assert!(result.contains("[[topic/new-sorting]]"), "exact match should be replaced");
-        assert!(result.contains("[[topic/sorting-redux]]"), "longer stem must not be replaced");
+        assert!(
+            result.contains("[[topic/new-sorting]]"),
+            "exact match should be replaced"
+        );
+        assert!(
+            result.contains("[[topic/sorting-redux]]"),
+            "longer stem must not be replaced"
+        );
     }
 
     #[test]
@@ -1348,7 +1532,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
         write_note(&synthetic, "sorting/sorting.md", &minimal_note("sorting"));
-        write_note(&synthetic, "algorithms/algo.md", &minimal_note("algorithms"));
+        write_note(
+            &synthetic,
+            "algorithms/algo.md",
+            &minimal_note("algorithms"),
+        );
 
         // "algorithms" appears in both `from` and `into`; it should be skipped.
         let op = MergeTopicsOp {
@@ -1359,9 +1547,18 @@ mod tests {
         execute_merge_topics(&op, tmp.path(), "_synthetic").unwrap();
 
         // sorting should be merged in; algorithms' own file stays untouched.
-        assert!(!synthetic.join("sorting").exists(), "source topic should be removed");
-        assert!(synthetic.join("algorithms/sorting.md").exists(), "sorting.md moved to algorithms");
-        assert!(synthetic.join("algorithms/algo.md").exists(), "algo.md should be unchanged");
+        assert!(
+            !synthetic.join("sorting").exists(),
+            "source topic should be removed"
+        );
+        assert!(
+            synthetic.join("algorithms/sorting.md").exists(),
+            "sorting.md moved to algorithms"
+        );
+        assert!(
+            synthetic.join("algorithms/algo.md").exists(),
+            "algo.md should be unchanged"
+        );
     }
 
     #[test]
@@ -1399,9 +1596,18 @@ mod tests {
 
         move_topic_notes(&from, &to, "from", "to").unwrap();
 
-        assert!(to.join("note.md").exists(), "md file should be moved to target");
-        assert!(!to.join("readme.txt").exists(), "non-md file must not be moved");
-        assert!(from.join("readme.txt").exists(), "non-md file must stay in source");
+        assert!(
+            to.join("note.md").exists(),
+            "md file should be moved to target"
+        );
+        assert!(
+            !to.join("readme.txt").exists(),
+            "non-md file must not be moved"
+        );
+        assert!(
+            from.join("readme.txt").exists(),
+            "non-md file must stay in source"
+        );
     }
 
     // ── execute_set_embed (present: false removes existing embed) ─────────────
@@ -1438,7 +1644,10 @@ mod tests {
             !content.contains("- sorting"),
             "sorting should be removed from embeds list in frontmatter"
         );
-        assert!(content.contains("Index body."), "non-embed body content must be preserved");
+        assert!(
+            content.contains("Index body."),
+            "non-embed body content must be preserved"
+        );
     }
 
     // ── rewrite_links (|| vs &&) ──────────────────────────────────────────────
@@ -1451,9 +1660,15 @@ mod tests {
         std::fs::write(&f, "See [[old/note]].\n").unwrap();
 
         let changed = rewrite_links(tmp.path(), "old/", "new/").unwrap();
-        assert_eq!(changed, 1, "file with only a wikilink (no embed) must be updated");
+        assert_eq!(
+            changed, 1,
+            "file with only a wikilink (no embed) must be updated"
+        );
         let content = std::fs::read_to_string(&f).unwrap();
-        assert!(content.contains("[[new/note]]"), "wikilink should be rewritten");
+        assert!(
+            content.contains("[[new/note]]"),
+            "wikilink should be rewritten"
+        );
     }
 
     // ── rewrite_note_links (count) ────────────────────────────────────────────
@@ -1468,7 +1683,10 @@ mod tests {
         assert_eq!(count, 1, "exactly one file should be reported as changed");
 
         let content = std::fs::read_to_string(tmp.path().join("a.md")).unwrap();
-        assert!(content.contains("[[topic/new-sorting]]"), "link should be rewritten");
+        assert!(
+            content.contains("[[topic/new-sorting]]"),
+            "link should be rewritten"
+        );
     }
 
     // ── relink_raw_notes ─────────────────────────────────────────────────────
@@ -1498,7 +1716,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let raw = tmp.path().join("notes");
         std::fs::create_dir_all(&raw).unwrap();
-        std::fs::write(raw.join("lecture.md"), "See [[cs/old-slug]] and [[cs/old-slug|Label]].\n").unwrap();
+        std::fs::write(
+            raw.join("lecture.md"),
+            "See [[cs/old-slug]] and [[cs/old-slug|Label]].\n",
+        )
+        .unwrap();
 
         let ops = vec![Op::RenameAtomic(RenameAtomicOp {
             path: "_synthetic/cs/old-slug.md".to_string(),
@@ -1533,22 +1755,23 @@ mod tests {
         std::fs::create_dir_all(&raw).unwrap();
         std::fs::write(raw.join("lecture.md"), "Some content [[cs/note]].\n").unwrap();
 
-        let ops = vec![
-            Op::CreateNote(crate::report::CreateNoteOp {
-                kind: crate::frontmatter::NoteKind::Atomic,
-                path: "_synthetic/cs/note.md".to_string(),
-                title: "Note".to_string(),
-                topic: "cs".to_string(),
-                block_id: Some("note-id".to_string()),
-                embed_in: vec![],
-                provenance: crate::frontmatter::ProvenanceDelta::default(),
-                change_summary: "test".to_string(),
-            }),
-        ];
+        let ops = vec![Op::CreateNote(crate::report::CreateNoteOp {
+            kind: crate::frontmatter::NoteKind::Atomic,
+            path: "_synthetic/cs/note.md".to_string(),
+            title: "Note".to_string(),
+            topic: "cs".to_string(),
+            block_id: Some("note-id".to_string()),
+            embed_in: vec![],
+            provenance: crate::frontmatter::ProvenanceDelta::default(),
+            change_summary: "test".to_string(),
+        })];
         let roots = [raw.as_path()];
         let n = relink_raw_notes(&ops, &roots).unwrap();
         assert_eq!(n, 0, "create_note should cause no rewrites");
         let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
-        assert!(content.contains("[[cs/note]]"), "content should be unchanged");
+        assert!(
+            content.contains("[[cs/note]]"),
+            "content should be unchanged"
+        );
     }
 }

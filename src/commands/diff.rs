@@ -4,7 +4,7 @@
 /// given, or `_generated/last_report.json` otherwise.
 use anyhow::{bail, Result};
 
-use crate::config::{VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, VaultConfig};
 use crate::manifest::Manifest;
 use crate::report::{Op, SessionReport};
 
@@ -54,13 +54,31 @@ pub fn run(args: DiffArgs) -> Result<()> {
     let synthetic_dir = &config.synthetic_dir;
 
     // ── Operations ────────────────────────────────────────────────────────────
-    let creates: Vec<_> = report.operations.iter()
-        .filter_map(|op| if let Op::CreateNote(o) = op { Some(o) } else { None })
+    let creates: Vec<_> = report
+        .operations
+        .iter()
+        .filter_map(|op| {
+            if let Op::CreateNote(o) = op {
+                Some(o)
+            } else {
+                None
+            }
+        })
         .collect();
-    let updates: Vec<_> = report.operations.iter()
-        .filter_map(|op| if let Op::UpdateNote(o) = op { Some(o) } else { None })
+    let updates: Vec<_> = report
+        .operations
+        .iter()
+        .filter_map(|op| {
+            if let Op::UpdateNote(o) = op {
+                Some(o)
+            } else {
+                None
+            }
+        })
         .collect();
-    let structural: Vec<_> = report.operations.iter()
+    let structural: Vec<_> = report
+        .operations
+        .iter()
         .filter(|op| op.is_structural())
         .collect();
 
@@ -97,10 +115,14 @@ pub fn run(args: DiffArgs) -> Result<()> {
     }
 
     // ── Flags ─────────────────────────────────────────────────────────────────
-    let actionable: Vec<_> = report.review_flags.iter()
+    let actionable: Vec<_> = report
+        .review_flags
+        .iter()
         .filter(|f| f.kind.is_actionable())
         .collect();
-    let threads: Vec<_> = report.review_flags.iter()
+    let threads: Vec<_> = report
+        .review_flags
+        .iter()
         .filter(|f| f.kind.is_thread())
         .collect();
 
@@ -180,11 +202,8 @@ mod tests {
         for &id in sessions {
             let parts: Vec<&str> = id.splitn(2, '-').collect();
             let course = parts[0].to_string();
-            let date = NaiveDate::parse_from_str(
-                &id[course.len() + 1..],
-                "%Y-%m-%d",
-            )
-            .unwrap_or_else(|_| NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+            let date = NaiveDate::parse_from_str(&id[course.len() + 1..], "%Y-%m-%d")
+                .unwrap_or_else(|_| NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
             m.sessions.insert(
                 id.to_string(),
                 SessionEntry {

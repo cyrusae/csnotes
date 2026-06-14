@@ -169,9 +169,9 @@ pub struct ProvenanceDelta {
 pub fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
     let content = content.strip_prefix("---\n")?;
     // Find the closing fence (must be `---` on its own line)
-    let close = content.find("\n---\n").or_else(|| {
-        content.strip_suffix("\n---").map(|_| content.len() - 4)
-    })?;
+    let close = content
+        .find("\n---\n")
+        .or_else(|| content.strip_suffix("\n---").map(|_| content.len() - 4))?;
     let yaml = &content[..close];
     let body_start = close + "\n---\n".len();
     let body = if body_start <= content.len() {
@@ -196,24 +196,21 @@ pub fn read_note(path: &Path) -> std::io::Result<String> {
 
 /// Parse the frontmatter from a markdown file on disk.
 pub fn read_frontmatter(path: &Path) -> Result<NoteFrontmatter> {
-    let content = read_note(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let content = read_note(path).with_context(|| format!("reading {}", path.display()))?;
     parse_frontmatter(&content, path)
 }
 
 /// Parse frontmatter from an in-memory string.  `path` is used only for
 /// error messages.
 pub fn parse_frontmatter(content: &str, path: &Path) -> Result<NoteFrontmatter> {
-    let (yaml, _body) = split_frontmatter(content).ok_or_else(|| {
-        CsnotesError::NoFrontmatter(path.to_path_buf())
-    })?;
+    let (yaml, _body) = split_frontmatter(content)
+        .ok_or_else(|| CsnotesError::NoFrontmatter(path.to_path_buf()))?;
 
-    let fm: NoteFrontmatter = serde_yml::from_str(yaml).map_err(|e| {
-        CsnotesError::FrontmatterParse {
+    let fm: NoteFrontmatter =
+        serde_yml::from_str(yaml).map_err(|e| CsnotesError::FrontmatterParse {
             path: path.to_path_buf(),
             reason: e.to_string(),
-        }
-    })?;
+        })?;
 
     if fm.csnotes_schema != FRONTMATTER_SCHEMA_VERSION {
         bail!(CsnotesError::FrontmatterSchemaMismatch {
@@ -228,11 +225,9 @@ pub fn parse_frontmatter(content: &str, path: &Path) -> Result<NoteFrontmatter> 
 
 /// Write updated frontmatter back to a file, preserving the body unchanged.
 pub fn write_frontmatter(path: &Path, fm: &NoteFrontmatter, body: &str) -> Result<()> {
-    let yaml = serde_yml::to_string(fm).map_err(|e| {
-        CsnotesError::FrontmatterParse {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        }
+    let yaml = serde_yml::to_string(fm).map_err(|e| CsnotesError::FrontmatterParse {
+        path: path.to_path_buf(),
+        reason: e.to_string(),
     })?;
 
     // serde_yml may or may not emit a leading `---\n`; strip it if present so
@@ -252,17 +247,15 @@ pub fn update_frontmatter<F>(path: &Path, f: F) -> Result<()>
 where
     F: FnOnce(&mut NoteFrontmatter),
 {
-    let content = read_note(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let content = read_note(path).with_context(|| format!("reading {}", path.display()))?;
     let (yaml, body) = split_frontmatter(&content)
         .ok_or_else(|| CsnotesError::NoFrontmatter(path.to_path_buf()))?;
 
-    let mut fm: NoteFrontmatter = serde_yml::from_str(yaml).map_err(|e| {
-        CsnotesError::FrontmatterParse {
+    let mut fm: NoteFrontmatter =
+        serde_yml::from_str(yaml).map_err(|e| CsnotesError::FrontmatterParse {
             path: path.to_path_buf(),
             reason: e.to_string(),
-        }
-    })?;
+        })?;
 
     f(&mut fm);
     write_frontmatter(path, &fm, body)
@@ -309,8 +302,8 @@ Body content here. ^polymorphism-core
 
     #[test]
     fn merge_provenance_dedupes() {
-        use chrono::TimeZone;
         use crate::manifest::Relationship;
+        use chrono::TimeZone;
 
         let now = Utc.with_ymd_and_hms(2026, 7, 30, 14, 10, 0).unwrap();
         let mut fm = NoteFrontmatter::new_atomic("inheritance", "Polymorphism", "poly-core", now);
@@ -354,12 +347,19 @@ Body content here. ^polymorphism-core
         write_frontmatter(file.path(), &fm, body).unwrap();
 
         let content = std::fs::read_to_string(file.path()).unwrap();
-        assert!(content.starts_with("---\n"), "file must start with YAML fence; got: {:?}", &content[..content.len().min(40)]);
+        assert!(
+            content.starts_with("---\n"),
+            "file must start with YAML fence; got: {:?}",
+            &content[..content.len().min(40)]
+        );
 
         let parsed = parse_frontmatter(&content, file.path()).unwrap();
         assert_eq!(parsed.kind, NoteKind::Atomic);
         assert_eq!(parsed.block_id.as_deref(), Some("algo-intro"));
-        assert!(content.contains("Big-O notation."), "body must be preserved");
+        assert!(
+            content.contains("Big-O notation."),
+            "body must be preserved"
+        );
     }
 
     // ── CRLF normalization tests ───────────────────────────────────────────
@@ -381,7 +381,8 @@ Body content here. ^polymorphism-core
         // Simulate a CRLF note normalized by read_note
         let crlf = "---\r\ncsnotes_schema: 1\r\nkind: atomic\r\ntopic: t\r\ntitle: T\r\nblock_id: x\r\ncontributing_sessions: []\r\ncontributing_sources: []\r\ncreated: \"2026-01-01T00:00:00Z\"\r\nlast_updated: \"2026-01-01T00:00:00Z\"\r\n---\r\nbody\r\n";
         let normalized = crlf.replace("\r\n", "\n");
-        let (yaml, body) = split_frontmatter(&normalized).expect("should parse after normalization");
+        let (yaml, body) =
+            split_frontmatter(&normalized).expect("should parse after normalization");
         assert!(!yaml.contains('\r'));
         assert_eq!(body.trim(), "body");
     }
@@ -393,7 +394,10 @@ Body content here. ^polymorphism-core
         std::fs::write(tmp.path(), lf_content).unwrap();
 
         let result = read_note(tmp.path()).unwrap();
-        assert_eq!(result, lf_content, "LF-only content must be returned unchanged");
+        assert_eq!(
+            result, lf_content,
+            "LF-only content must be returned unchanged"
+        );
     }
 
     // ── touch ─────────────────────────────────────────────────────────────────
@@ -413,8 +417,8 @@ Body content here. ^polymorphism-core
 
     #[test]
     fn merge_provenance_updates_last_updated_when_new_session_added() {
-        use chrono::TimeZone;
         use crate::manifest::Relationship;
+        use chrono::TimeZone;
         let t0 = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
         let t1 = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
         let mut fm = NoteFrontmatter::new_atomic("cs", "Sorting", "sort-01", t0);
@@ -427,14 +431,17 @@ Body content here. ^polymorphism-core
             sources: vec![],
         };
         fm.merge_provenance(&delta, t1);
-        assert_eq!(fm.last_updated, t1, "last_updated should advance when provenance changes");
+        assert_eq!(
+            fm.last_updated, t1,
+            "last_updated should advance when provenance changes"
+        );
         assert_eq!(fm.contributing_sessions.len(), 1);
     }
 
     #[test]
     fn merge_provenance_does_not_update_last_updated_when_nothing_new() {
-        use chrono::TimeZone;
         use crate::manifest::Relationship;
+        use chrono::TimeZone;
         let t0 = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
         let t1 = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
         let mut fm = NoteFrontmatter::new_atomic("cs", "Sorting", "sort-01", t0);
@@ -443,11 +450,18 @@ Body content here. ^polymorphism-core
             date: chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
             relationship: Relationship::Introduced,
         };
-        let delta = ProvenanceDelta { sessions: vec![contrib], sources: vec![] };
-        fm.merge_provenance(&delta, t1);     // adds it
-        fm.merge_provenance(&delta, t1);     // duplicate — no change
-        // last_updated must still be t1, not something newer
-        assert_eq!(fm.contributing_sessions.len(), 1, "duplicate session must not be added");
+        let delta = ProvenanceDelta {
+            sessions: vec![contrib],
+            sources: vec![],
+        };
+        fm.merge_provenance(&delta, t1); // adds it
+        fm.merge_provenance(&delta, t1); // duplicate — no change
+                                         // last_updated must still be t1, not something newer
+        assert_eq!(
+            fm.contributing_sessions.len(),
+            1,
+            "duplicate session must not be added"
+        );
     }
 
     // ── split_frontmatter boundary ────────────────────────────────────────────
@@ -457,7 +471,11 @@ Body content here. ^polymorphism-core
         let content = "---\nkind: atomic\n---\nFirst line of body.\n";
         let (yaml, body) = split_frontmatter(content).unwrap();
         assert_eq!(yaml.trim(), "kind: atomic");
-        assert!(body.starts_with("First line"), "body must start right after closing fence; got: {:?}", body);
+        assert!(
+            body.starts_with("First line"),
+            "body must start right after closing fence; got: {:?}",
+            body
+        );
     }
 
     #[test]

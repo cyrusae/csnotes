@@ -27,7 +27,6 @@ use crate::flags::FlagStore;
 use crate::manifest::{Manifest, SessionEntry, SourceEntry};
 use crate::obsidian::collect_all_block_ids;
 
-
 // ── Workspace paths ───────────────────────────────────────────────────────────
 
 /// Determine the base directory for workspaces.
@@ -65,11 +64,17 @@ pub struct WorkspaceParams<'a> {
 }
 
 pub enum WorkspaceScope {
-    Session { session_id: String },
+    Session {
+        session_id: String,
+    },
     /// One or more source files to ingest (dedicated source-processing session).
     /// Accepts exact source IDs or path prefixes expanded at call time.
-    Source { source_ids: Vec<String> },
-    Topic { topic: String },
+    Source {
+        source_ids: Vec<String>,
+    },
+    Topic {
+        topic: String,
+    },
 }
 
 /// Assemble the workspace and return its root path.
@@ -82,12 +87,14 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     }
 
     if params.dry_run {
-        println!("dry-run: workspace would be created at {}", workspace_root.display());
+        println!(
+            "dry-run: workspace would be created at {}",
+            workspace_root.display()
+        );
         return Ok(workspace_root);
     }
 
-    fs::create_dir_all(&workspace_root)
-        .context("creating workspace directory")?;
+    fs::create_dir_all(&workspace_root).context("creating workspace directory")?;
 
     // 1. Copy instruction files
     copy_instruction_files(params.vault_root, params.config, &workspace_root)?;
@@ -103,8 +110,18 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     }
 
     // 3. Copy sources into sources/ and write _sources_index.md
-    let large_sources = copy_sources_to_workspace(params.vault_root, params.manifest, &params.scope, &workspace_root)?;
-    write_sources_index(params.manifest, &params.scope, &workspace_root, &large_sources)?;
+    let large_sources = copy_sources_to_workspace(
+        params.vault_root,
+        params.manifest,
+        &params.scope,
+        &workspace_root,
+    )?;
+    write_sources_index(
+        params.manifest,
+        &params.scope,
+        &workspace_root,
+        &large_sources,
+    )?;
 
     // 4. Writable copy of _synthetic/
     let vault_synthetic = params.vault_root.join(&params.config.synthetic_dir);
@@ -185,7 +202,11 @@ fn wrap_session_inputs(
     let raw_path = vault_root.join(&entry.raw_note);
     if raw_path.exists() {
         let content = crate::frontmatter::read_note(&raw_path)?;
-        let wrapped = xml_wrap(&content, "raw_student_notes", &[("course", course), ("date", &date)]);
+        let wrapped = xml_wrap(
+            &content,
+            "raw_student_notes",
+            &[("course", course), ("date", &date)],
+        );
         let dest = workspace_root.join(format!("input_raw_{}.md", sanitise(&entry.raw_note)));
         fs::write(&dest, wrapped)?;
         make_readonly(&dest)?;
@@ -239,11 +260,7 @@ fn wrap_session_inputs(
             }
             crate::manifest::ArtifactKind::Code => {
                 tag = "instructor_code_sample";
-                extra_attrs = vec![
-                    ("file", &file_name),
-                    ("course", course),
-                    ("date", &date),
-                ];
+                extra_attrs = vec![("file", &file_name), ("course", course), ("date", &date)];
             }
             _ => {
                 tag = "artifact";
@@ -406,10 +423,7 @@ fn render_sidecar_md(source_id: &str, s: &ConversationSidecar) -> String {
             "**Response:** {}  \n",
             turn.summary.assistant_response
         ));
-        out.push_str(&format!(
-            "**Takeaway:** {}  \n",
-            turn.summary.key_takeaway
-        ));
+        out.push_str(&format!("**Takeaway:** {}  \n", turn.summary.key_takeaway));
         if !turn.concepts_discussed.is_empty() {
             out.push_str(&format!(
                 "**Concepts:** {}  \n",
@@ -475,9 +489,7 @@ fn write_sources_index(
 /// Returns the source IDs that belong in a workspace for the given scope.
 fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> Vec<&'a str> {
     match scope {
-        WorkspaceScope::Source { source_ids } => {
-            source_ids.iter().map(|s| s.as_str()).collect()
-        }
+        WorkspaceScope::Source { source_ids } => source_ids.iter().map(|s| s.as_str()).collect(),
         WorkspaceScope::Session { session_id } => {
             let session_course = manifest
                 .sessions
@@ -491,9 +503,7 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
                 .map(|(id, _)| id.as_str())
                 .collect()
         }
-        WorkspaceScope::Topic { .. } => {
-            manifest.sources.keys().map(|s| s.as_str()).collect()
-        }
+        WorkspaceScope::Topic { .. } => manifest.sources.keys().map(|s| s.as_str()).collect(),
     }
 }
 
@@ -529,7 +539,7 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
             // Inputs
             out.push_str("## Inputs in This Workspace\n");
             if let Some(e) = entry {
-                out.push_str(&format!("- Raw notes: `<raw_student_notes>` tag\n"));
+                out.push_str("- Raw notes: `<raw_student_notes>` tag\n");
                 if e.recording_missing {
                     out.push_str(
                         "- Recording: **not available** — synthesise from raw notes only\n",
@@ -550,7 +560,13 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
                     let names: Vec<_> = e
                         .artifacts
                         .iter()
-                        .map(|a| Path::new(&a.path).file_name().unwrap_or_default().to_string_lossy().to_string())
+                        .map(|a| {
+                            Path::new(&a.path)
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string()
+                        })
                         .collect();
                     out.push_str(&format!("- Artifacts: {}\n", names.join(", ")));
                 }
@@ -596,8 +612,7 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
         std::collections::HashMap::new()
     };
 
-    let flag_store = FlagStore::load(&params.manifest.flags_path_absolute())
-        .unwrap_or_default();
+    let flag_store = FlagStore::load(&params.manifest.flags_path_absolute()).unwrap_or_default();
 
     if params.manifest.topics.is_empty() {
         out.push_str("\n_No synthetic notes yet._\n");
@@ -628,8 +643,8 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
                 .filter(|(_, path)| {
                     // path is relative to _synthetic/, so strip the synthetic
                     // dir prefix to check the topic component.
-                    let stripped = path
-                        .trim_start_matches(&format!("{}/", params.config.synthetic_dir));
+                    let stripped =
+                        path.trim_start_matches(&format!("{}/", params.config.synthetic_dir));
                     stripped.starts_with(&topic_prefix)
                 })
                 .collect();
@@ -642,7 +657,9 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
             }
 
             // Open flags scoped to this topic.
-            let topic_flags: Vec<_> = flag_store.open_for_topic(topic_name, &params.config.synthetic_dir).collect();
+            let topic_flags: Vec<_> = flag_store
+                .open_for_topic(topic_name, &params.config.synthetic_dir)
+                .collect();
             if !topic_flags.is_empty() {
                 out.push_str("- Open flags:\n");
                 for flag in topic_flags {
@@ -668,7 +685,9 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
     let follow_ups: Vec<_> = flag_store.resolved_with_follow_up().collect();
     if !follow_ups.is_empty() {
         out.push_str("\n## Resolved Follow-ups\n");
-        out.push_str("_These flags were resolved by the user; apply any corrections noted below._\n\n");
+        out.push_str(
+            "_These flags were resolved by the user; apply any corrections noted below._\n\n",
+        );
         for flag in follow_ups {
             let path_note = flag
                 .path
@@ -701,16 +720,20 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
         let unscoped_actionable: Vec<_> = flag_store
             .open_actionable()
             .filter(|f| {
-                f.path.as_deref().map_or(true, |p| {
-                    !known_topic_prefixes.iter().any(|prefix| p.starts_with(prefix))
+                f.path.as_deref().is_none_or(|p| {
+                    !known_topic_prefixes
+                        .iter()
+                        .any(|prefix| p.starts_with(prefix))
                 })
             })
             .collect();
         let unscoped_threads: Vec<_> = flag_store
             .open_threads()
             .filter(|f| {
-                f.path.as_deref().map_or(true, |p| {
-                    !known_topic_prefixes.iter().any(|prefix| p.starts_with(prefix))
+                f.path.as_deref().is_none_or(|p| {
+                    !known_topic_prefixes
+                        .iter()
+                        .any(|prefix| p.starts_with(prefix))
                 })
             })
             .collect();
@@ -737,8 +760,7 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
 
     out.push('\n');
 
-    fs::write(workspace_root.join("_session.md"), out)
-        .context("writing _session.md")?;
+    fs::write(workspace_root.join("_session.md"), out).context("writing _session.md")?;
     Ok(())
 }
 
@@ -759,11 +781,7 @@ pub fn take_snapshot(vault_root: &Path, synthetic_dir: &str, run_id: &str) -> Re
 
 /// Merge the workspace's `_synthetic/` into the vault, then clean up.
 /// Called only after the invariant suite passes.
-pub fn merge_back(
-    workspace_root: &Path,
-    vault_root: &Path,
-    synthetic_dir: &str,
-) -> Result<()> {
+pub fn merge_back(workspace_root: &Path, vault_root: &Path, synthetic_dir: &str) -> Result<()> {
     let ws_synthetic = workspace_root.join(synthetic_dir);
     let vault_synthetic = vault_root.join(synthetic_dir);
 
@@ -809,7 +827,7 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match crate::frontmatter::read_note(entry.path()) {
             Ok(c) => c,
@@ -848,7 +866,7 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let stem = match entry.path().file_stem().and_then(|s| s.to_str()) {
             Some(s) => s.to_string(),
@@ -876,8 +894,15 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
         }
 
         let new_value: Option<Vec<String>> = {
-            let v = embedded_by.get(&stem.to_lowercase()).cloned().unwrap_or_default();
-            if v.is_empty() { None } else { Some(v) }
+            let v = embedded_by
+                .get(&stem.to_lowercase())
+                .cloned()
+                .unwrap_or_default();
+            if v.is_empty() {
+                None
+            } else {
+                Some(v)
+            }
         };
 
         // Only write when the value actually changes to avoid unnecessary
@@ -974,13 +999,47 @@ fn sanitise(path: &str) -> String {
 fn is_text_artifact_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "md" | "txt" | "html" | "htm" | "tex"
-            | "py" | "java" | "rs" | "js" | "ts" | "jsx" | "tsx"
-            | "c" | "cpp" | "h" | "hpp" | "cc" | "cxx"
-            | "go" | "rb" | "swift" | "kt" | "kts"
-            | "cs" | "fs" | "ml" | "mli" | "hs" | "lhs"
-            | "r" | "rmd" | "sql" | "sh" | "bash" | "zsh" | "fish"
-            | "yaml" | "yml" | "toml" | "json" | "xml" | "csv"
+        "md" | "txt"
+            | "html"
+            | "htm"
+            | "tex"
+            | "py"
+            | "java"
+            | "rs"
+            | "js"
+            | "ts"
+            | "jsx"
+            | "tsx"
+            | "c"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "cc"
+            | "cxx"
+            | "go"
+            | "rb"
+            | "swift"
+            | "kt"
+            | "kts"
+            | "cs"
+            | "fs"
+            | "ml"
+            | "mli"
+            | "hs"
+            | "lhs"
+            | "r"
+            | "rmd"
+            | "sql"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "fish"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "json"
+            | "xml"
+            | "csv"
             | "ipynb"
     )
 }
@@ -1034,7 +1093,11 @@ mod tests {
 
         write_file(syn, "cs/sorting.md", &atomic_note("cs", "sorting"));
         write_file(syn, "cs/searching.md", &atomic_note("cs", "searching"));
-        write_file(syn, "cs/cs.md", &index_note_with_embeds("cs", &["sorting", "searching"]));
+        write_file(
+            syn,
+            "cs/cs.md",
+            &index_note_with_embeds("cs", &["sorting", "searching"]),
+        );
 
         rebuild_cross_embedded_in(syn).unwrap();
 
@@ -1094,10 +1157,7 @@ mod tests {
         rebuild_cross_embedded_in(syn).unwrap();
         let after_second = std::fs::read_to_string(syn.join("cs/sorting.md")).unwrap();
 
-        assert_eq!(
-            after_first, after_second,
-            "rebuild should be idempotent"
-        );
+        assert_eq!(after_first, after_second, "rebuild should be idempotent");
     }
 
     /// Cross-topic embed: index in topic A embeds atomic from topic B.
@@ -1106,9 +1166,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let syn = tmp.path();
 
-        write_file(syn, "algorithms/sorting.md", &atomic_note("algorithms", "sorting"));
+        write_file(
+            syn,
+            "algorithms/sorting.md",
+            &atomic_note("algorithms", "sorting"),
+        );
         // Index in a different topic embeds the atomic
-        write_file(syn, "overview/overview.md", &index_note_with_embeds("overview", &["sorting"]));
+        write_file(
+            syn,
+            "overview/overview.md",
+            &index_note_with_embeds("overview", &["sorting"]),
+        );
 
         rebuild_cross_embedded_in(syn).unwrap();
 
@@ -1119,8 +1187,8 @@ mod tests {
 
     // ── Source workspace helpers ───────────────────────────────────────────────
 
-    use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
     use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+    use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
 
     fn make_source_entry(kind: SourceKind, courses: Vec<String>) -> SourceEntry {
         SourceEntry {
@@ -1137,18 +1205,21 @@ mod tests {
     }
 
     fn make_manifest_for_sources() -> Manifest {
-        Manifest::empty(std::path::PathBuf::from("/tmp"), ManifestConfig {
-            raw_dir: "notes".into(),
-            recordings_dir: "recordings".into(),
-            artifacts_dir: "artifacts".into(),
-            sources_dir: "sources".into(),
-            synthetic_dir: "_synthetic".into(),
-            generated_dir: "_generated".into(),
-            filename_format: "{course}-{mm}-{dd}".into(),
-            default_backend: AiBackend::Mock,
-            skill_variant: SkillVariant::Claude,
-            snapshot_mode: SnapshotMode::PreMerge,
-        })
+        Manifest::empty(
+            std::path::PathBuf::from("/tmp"),
+            ManifestConfig {
+                raw_dir: "notes".into(),
+                recordings_dir: "recordings".into(),
+                artifacts_dir: "artifacts".into(),
+                sources_dir: "sources".into(),
+                synthetic_dir: "_synthetic".into(),
+                generated_dir: "_generated".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                default_backend: AiBackend::Mock,
+                skill_variant: SkillVariant::Claude,
+                snapshot_mode: SnapshotMode::PreMerge,
+            },
+        )
     }
 
     #[test]
@@ -1179,7 +1250,11 @@ mod tests {
 
     #[test]
     fn source_visible_non_textbook_always_included() {
-        for kind in [SourceKind::AiConversation, SourceKind::Paper, SourceKind::Other] {
+        for kind in [
+            SourceKind::AiConversation,
+            SourceKind::Paper,
+            SourceKind::Other,
+        ] {
             let tagged = make_source_entry(kind, vec!["CPSC5001".into()]);
             assert!(
                 source_visible_for_course(&tagged, "CPSC5002"),
@@ -1194,18 +1269,21 @@ mod tests {
         let mut manifest = make_manifest_for_sources();
         // Session for CPSC5001
         use crate::manifest::{SessionEntry, SessionStatus};
-        manifest.sessions.insert("CPSC5001-01-01".into(), SessionEntry {
-            course: "CPSC5001".into(),
-            date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            raw_note: "notes/CPSC5001-01-01.md".into(),
-            recording_exports: vec![],
-            artifacts: vec![],
-            status: SessionStatus::Unprocessed,
-            recording_missing: false,
-            filename_format: "{course}-{mm}-{dd}".into(),
-            processed_at: None,
-            topics_updated: vec![],
-        });
+        manifest.sessions.insert(
+            "CPSC5001-01-01".into(),
+            SessionEntry {
+                course: "CPSC5001".into(),
+                date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+                raw_note: "notes/CPSC5001-01-01.md".into(),
+                recording_exports: vec![],
+                artifacts: vec![],
+                status: SessionStatus::Unprocessed,
+                recording_missing: false,
+                filename_format: "{course}-{mm}-{dd}".into(),
+                processed_at: None,
+                topics_updated: vec![],
+            },
+        );
         manifest.sources.insert(
             "Textbooks/SICP/Ch01".into(),
             make_source_entry(SourceKind::Textbook, vec!["CPSC5001".into()]),
@@ -1219,20 +1297,40 @@ mod tests {
             make_source_entry(SourceKind::AiConversation, vec![]),
         );
 
-        let scope = WorkspaceScope::Session { session_id: "CPSC5001-01-01".into() };
+        let scope = WorkspaceScope::Session {
+            session_id: "CPSC5001-01-01".into(),
+        };
         let ids = sources_for_scope(&manifest, &scope);
 
-        assert!(ids.contains(&"Textbooks/SICP/Ch01"), "SICP (CPSC5001) should be included");
-        assert!(!ids.contains(&"Textbooks/TAPL/Ch01"), "TAPL (CPSC5002) should be excluded");
-        assert!(ids.contains(&"AI-Conversations/Gemini/sorting"), "AI conversation always included");
+        assert!(
+            ids.contains(&"Textbooks/SICP/Ch01"),
+            "SICP (CPSC5001) should be included"
+        );
+        assert!(
+            !ids.contains(&"Textbooks/TAPL/Ch01"),
+            "TAPL (CPSC5002) should be excluded"
+        );
+        assert!(
+            ids.contains(&"AI-Conversations/Gemini/sorting"),
+            "AI conversation always included"
+        );
     }
 
     #[test]
     fn sources_for_scope_source_returns_only_listed_ids() {
         let mut manifest = make_manifest_for_sources();
-        manifest.sources.insert("Textbooks/SICP/Ch01".into(), make_source_entry(SourceKind::Textbook, vec![]));
-        manifest.sources.insert("Textbooks/SICP/Ch02".into(), make_source_entry(SourceKind::Textbook, vec![]));
-        manifest.sources.insert("Textbooks/TAPL/Ch01".into(), make_source_entry(SourceKind::Textbook, vec![]));
+        manifest.sources.insert(
+            "Textbooks/SICP/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec![]),
+        );
+        manifest.sources.insert(
+            "Textbooks/SICP/Ch02".into(),
+            make_source_entry(SourceKind::Textbook, vec![]),
+        );
+        manifest.sources.insert(
+            "Textbooks/TAPL/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec![]),
+        );
 
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/SICP/Ch01".into(), "Textbooks/SICP/Ch02".into()],
@@ -1250,26 +1348,40 @@ mod tests {
         write_file(vault.path(), "sources/sicp.md", "# SICP\nContent.\n");
 
         let mut manifest = make_manifest_for_sources();
-        manifest.sources.insert("sicp-ch01".into(), SourceEntry {
-            path: "sources/sicp.md".into(),
-            kind: SourceKind::Textbook,
-            status: SourceStatus::Unprocessed,
-            last_processed_at: None,
-            heading_scheme: vec![],
-            topics_updated: vec![],
-            summary: None,
-            tags: vec![],
-            courses: vec![],
-        });
+        manifest.sources.insert(
+            "sicp-ch01".into(),
+            SourceEntry {
+                path: "sources/sicp.md".into(),
+                kind: SourceKind::Textbook,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: None,
+                tags: vec![],
+                courses: vec![],
+            },
+        );
 
-        let scope = WorkspaceScope::Source { source_ids: vec!["sicp-ch01".into()] };
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["sicp-ch01".into()],
+        };
         copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
 
         let dest = ws.path().join("sources/sicp-ch01.md");
-        assert!(dest.exists(), "source file should be written to workspace sources/");
+        assert!(
+            dest.exists(),
+            "source file should be written to workspace sources/"
+        );
         let content = std::fs::read_to_string(&dest).unwrap();
-        assert!(content.contains("SICP"), "source content should appear in dest");
-        assert!(content.contains("sicp-ch01"), "source ID should appear in XML wrapper");
+        assert!(
+            content.contains("SICP"),
+            "source content should appear in dest"
+        );
+        assert!(
+            content.contains("sicp-ch01"),
+            "source ID should appear in XML wrapper"
+        );
     }
 
     #[test]
@@ -1278,19 +1390,24 @@ mod tests {
         let ws = TempDir::new().unwrap();
 
         let mut manifest = make_manifest_for_sources();
-        manifest.sources.insert("ghost".into(), SourceEntry {
-            path: "sources/ghost.md".into(), // does not exist on disk
-            kind: SourceKind::Textbook,
-            status: SourceStatus::Unprocessed,
-            last_processed_at: None,
-            heading_scheme: vec![],
-            topics_updated: vec![],
-            summary: None,
-            tags: vec![],
-            courses: vec![],
-        });
+        manifest.sources.insert(
+            "ghost".into(),
+            SourceEntry {
+                path: "sources/ghost.md".into(), // does not exist on disk
+                kind: SourceKind::Textbook,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: None,
+                tags: vec![],
+                courses: vec![],
+            },
+        );
 
-        let scope = WorkspaceScope::Source { source_ids: vec!["ghost".into()] };
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["ghost".into()],
+        };
         copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
 
         assert!(
@@ -1316,17 +1433,20 @@ mod tests {
     fn sources_index_lists_present_sources_with_metadata() {
         let tmp = TempDir::new().unwrap();
         let mut manifest = make_manifest_for_sources();
-        manifest.sources.insert("Textbooks/SICP/Ch01".into(), SourceEntry {
-            path: String::new(),
-            kind: SourceKind::Textbook,
-            status: SourceStatus::Unprocessed,
-            last_processed_at: None,
-            heading_scheme: vec![],
-            topics_updated: vec![],
-            summary: Some("Building abstractions".into()),
-            tags: vec!["lisp".into()],
-            courses: vec!["CPSC5001".into()],
-        });
+        manifest.sources.insert(
+            "Textbooks/SICP/Ch01".into(),
+            SourceEntry {
+                path: String::new(),
+                kind: SourceKind::Textbook,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: Some("Building abstractions".into()),
+                tags: vec!["lisp".into()],
+                courses: vec!["CPSC5001".into()],
+            },
+        );
 
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/SICP/Ch01".into()],
@@ -1395,8 +1515,16 @@ mod tests {
     fn sidecar_json_ingested_writes_markdown_index() {
         let vault = TempDir::new().unwrap();
         let ws = TempDir::new().unwrap();
-        write_file(vault.path(), "sources/AI-Conversations/Gemini/chat.md", "Conversation content.\n");
-        write_file(vault.path(), "sources/AI-Conversations/Gemini/chat.json", example_sidecar_json());
+        write_file(
+            vault.path(),
+            "sources/AI-Conversations/Gemini/chat.md",
+            "Conversation content.\n",
+        );
+        write_file(
+            vault.path(),
+            "sources/AI-Conversations/Gemini/chat.json",
+            example_sidecar_json(),
+        );
 
         let mut manifest = make_manifest_for_sources();
         manifest.sources.insert(
@@ -1407,29 +1535,54 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["AI-Conversations/Gemini/chat".into()],
         };
-        let sidecars = copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        let sidecars =
+            copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
 
-        assert!(sidecars.contains_key("AI-Conversations/Gemini/chat"), "sidecar meta should be returned");
+        assert!(
+            sidecars.contains_key("AI-Conversations/Gemini/chat"),
+            "sidecar meta should be returned"
+        );
         let meta = &sidecars["AI-Conversations/Gemini/chat"];
         assert_eq!(meta.word_count, 4450);
         assert_eq!(meta.total_turns, 2);
-        assert_eq!(meta.overall_summary, "Setting up a defensive Java environment");
+        assert_eq!(
+            meta.overall_summary,
+            "Setting up a defensive Java environment"
+        );
 
-        let index_path = ws.path().join("sources/AI-Conversations/Gemini/chat_index.md");
-        assert!(index_path.exists(), "rendered markdown sidecar should be written");
+        let index_path = ws
+            .path()
+            .join("sources/AI-Conversations/Gemini/chat_index.md");
+        assert!(
+            index_path.exists(),
+            "rendered markdown sidecar should be written"
+        );
         let md = std::fs::read_to_string(&index_path).unwrap();
-        assert!(md.contains("## Turn 1"), "markdown should have turn headers");
+        assert!(
+            md.contains("## Turn 1"),
+            "markdown should have turn headers"
+        );
         assert!(md.contains("lines 12–167"), "turn line range should appear");
         assert!(md.contains("Maven"), "concepts should appear");
-        assert!(md.contains("Read line-by-line"), "takeaway from turn 2 should appear");
-        assert!(md.contains("chat.md"), "pointer to full source should appear");
+        assert!(
+            md.contains("Read line-by-line"),
+            "takeaway from turn 2 should appear"
+        );
+        assert!(
+            md.contains("chat.md"),
+            "pointer to full source should appear"
+        );
     }
 
     #[test]
     fn no_sidecar_when_json_absent() {
         let vault = TempDir::new().unwrap();
         let ws = TempDir::new().unwrap();
-        write_file(vault.path(), "sources/AI-Conversations/Gemini/chat.md", "Content.\n");
+        write_file(
+            vault.path(),
+            "sources/AI-Conversations/Gemini/chat.md",
+            "Content.\n",
+        );
         // No .json file present.
 
         let mut manifest = make_manifest_for_sources();
@@ -1441,11 +1594,14 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["AI-Conversations/Gemini/chat".into()],
         };
-        let sidecars = copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        let sidecars =
+            copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
 
         assert!(sidecars.is_empty(), "no sidecar meta when json is absent");
         assert!(
-            !ws.path().join("sources/AI-Conversations/Gemini/chat_index.md").exists(),
+            !ws.path()
+                .join("sources/AI-Conversations/Gemini/chat_index.md")
+                .exists(),
             "no markdown sidecar written when json absent"
         );
     }
@@ -1454,8 +1610,16 @@ mod tests {
     fn no_sidecar_for_textbook_even_with_json() {
         let vault = TempDir::new().unwrap();
         let ws = TempDir::new().unwrap();
-        write_file(vault.path(), "sources/Textbooks/SICP/Ch01.md", "Chapter content.\n");
-        write_file(vault.path(), "sources/Textbooks/SICP/Ch01.json", example_sidecar_json());
+        write_file(
+            vault.path(),
+            "sources/Textbooks/SICP/Ch01.md",
+            "Chapter content.\n",
+        );
+        write_file(
+            vault.path(),
+            "sources/Textbooks/SICP/Ch01.json",
+            example_sidecar_json(),
+        );
 
         let mut manifest = make_manifest_for_sources();
         manifest.sources.insert(
@@ -1476,12 +1640,17 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/SICP/Ch01".into()],
         };
-        let sidecars = copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        let sidecars =
+            copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
 
-        assert!(sidecars.is_empty(), "json sidecar should only be ingested for AiConversation sources");
         assert!(
-            !ws.path().join("sources/Textbooks/SICP/Ch01_index.md").exists(),
+            sidecars.is_empty(),
+            "json sidecar should only be ingested for AiConversation sources"
         );
+        assert!(!ws
+            .path()
+            .join("sources/Textbooks/SICP/Ch01_index.md")
+            .exists(),);
     }
 
     #[test]
@@ -1497,18 +1666,27 @@ mod tests {
             source_ids: vec!["AI-Conversations/Gemini/chat".into()],
         };
         let mut sidecars = HashMap::new();
-        sidecars.insert("AI-Conversations/Gemini/chat".to_string(), SidecarMeta {
-            word_count: 4450,
-            total_turns: 2,
-            overall_summary: "Setting up a defensive Java environment".into(),
-        });
+        sidecars.insert(
+            "AI-Conversations/Gemini/chat".to_string(),
+            SidecarMeta {
+                word_count: 4450,
+                total_turns: 2,
+                overall_summary: "Setting up a defensive Java environment".into(),
+            },
+        );
         write_sources_index(&manifest, &scope, tmp.path(), &sidecars).unwrap();
 
         let content = std::fs::read_to_string(tmp.path().join("_sources_index.md")).unwrap();
-        assert!(content.contains("Setting up a defensive Java environment"), "overall_summary should appear");
+        assert!(
+            content.contains("Setting up a defensive Java environment"),
+            "overall_summary should appear"
+        );
         assert!(content.contains("~4450 words"), "word count should appear");
         assert!(content.contains("2 turns"), "turn count should appear");
-        assert!(content.contains("_index.md"), "pointer to sidecar should appear");
+        assert!(
+            content.contains("_index.md"),
+            "pointer to sidecar should appear"
+        );
     }
 
     #[test]

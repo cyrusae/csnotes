@@ -8,14 +8,14 @@
 ///               `by tomorrow`/`by tonight`
 ///   questions — lines ending with `?`, starting with `Q:` / `??`
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::sync::LazyLock;
 
 use anyhow::{bail, Result};
 use regex::Regex;
 
-use crate::config::{VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, VaultConfig};
 use crate::manifest::{Manifest, SessionStatus};
 
 pub struct ExtractArgs {
@@ -113,7 +113,7 @@ enum ExtractKind {
 impl ExtractKind {
     fn label(&self) -> &'static str {
         match self {
-            ExtractKind::Action   => "action",
+            ExtractKind::Action => "action",
             ExtractKind::Deadline => "deadline",
             ExtractKind::Question => "question",
         }
@@ -127,9 +127,9 @@ struct ExtractedItem {
 }
 
 fn extract_from(content: &str, filter: Option<&str>) -> Vec<ExtractedItem> {
-    let want_actions   = filter.map_or(true, |f| f == "actions"   || f == "action");
-    let want_deadlines = filter.map_or(true, |f| f == "deadlines" || f == "deadline");
-    let want_questions = filter.map_or(true, |f| f == "questions" || f == "question");
+    let want_actions = filter.is_none_or(|f| f == "actions" || f == "action");
+    let want_deadlines = filter.is_none_or(|f| f == "deadlines" || f == "deadline");
+    let want_questions = filter.is_none_or(|f| f == "questions" || f == "question");
 
     let mut items = Vec::new();
 
@@ -164,12 +164,10 @@ fn extract_from(content: &str, filter: Option<&str>) -> Vec<ExtractedItem> {
 }
 
 fn is_action(line: &str) -> bool {
-    line.starts_with("- [ ]")
-        || line.starts_with("* [ ]")
-        || {
-            let up = line.to_ascii_uppercase();
-            up.starts_with("TODO:") || up.starts_with("ACTION:") || up.starts_with("- TODO")
-        }
+    line.starts_with("- [ ]") || line.starts_with("* [ ]") || {
+        let up = line.to_ascii_uppercase();
+        up.starts_with("TODO:") || up.starts_with("ACTION:") || up.starts_with("- TODO")
+    }
 }
 
 fn clean_action(line: &str) -> String {
@@ -198,8 +196,8 @@ fn clean_action(line: &str) -> String {
 /// - `\bturn\s+in\b`  catches "turn in the assignment"
 /// - `\bhand\s+in\b`  catches "hand in the project"
 /// - `\bby\s+...`     catches "by Monday", "by January", "by the 15th",
-///                    "by tomorrow", "by tonight" but NOT "maybe thursday"
-///                    or "standby friday" (word boundary before "by")
+///   "by tomorrow", "by tonight" but NOT "maybe thursday"
+///   or "standby friday" (word boundary before "by")
 static DEADLINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?ix)
@@ -219,8 +217,9 @@ static DEADLINE_RE: LazyLock<Regex> = LazyLock::new(|| {
             | tomorrow | tonight
             | \d{1,2}(?:st|nd|rd|th)
           )\b
-        "
-    ).unwrap()
+        ",
+    )
+    .unwrap()
 });
 
 fn is_deadline(line: &str) -> bool {
@@ -256,7 +255,11 @@ fn render_extract(session_id: &str, date: &str, items: &[ExtractedItem]) -> Stri
     let mut out = String::new();
     out.push_str(&format!("# Extracts — {} ({})\n\n", session_id, date));
 
-    for kind in [ExtractKind::Action, ExtractKind::Deadline, ExtractKind::Question] {
+    for kind in [
+        ExtractKind::Action,
+        ExtractKind::Deadline,
+        ExtractKind::Question,
+    ] {
         let section: Vec<_> = items.iter().filter(|i| i.kind == kind).collect();
         if section.is_empty() {
             continue;
@@ -279,7 +282,7 @@ fn capitalise(s: &str) -> String {
     }
 }
 
-fn relative_path(path: &PathBuf, base: &PathBuf) -> String {
+fn relative_path(path: &Path, base: &PathBuf) -> String {
     path.strip_prefix(base)
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| path.display().to_string())
@@ -452,14 +455,26 @@ mod tests {
     fn no_false_positive_tomorrow_without_by() {
         // "tomorrow" alone (no "by") should not trigger
         let items = extract_from("we will cover this tomorrow\n", None);
-        assert!(items.is_empty(), "bare 'tomorrow' without 'by' should not match");
+        assert!(
+            items.is_empty(),
+            "bare 'tomorrow' without 'by' should not match"
+        );
     }
 
     #[test]
     fn deadline_all_full_month_names_by() {
         let months = [
-            "january", "february", "march", "april", "june",
-            "july", "august", "september", "october", "november", "december",
+            "january",
+            "february",
+            "march",
+            "april",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
         ];
         for month in months {
             let line = format!("submit by {}\n", month);

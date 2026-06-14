@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use chrono::{Datelike, NaiveDate, Utc};
 
-use crate::config::{FilenameFormat, VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, FilenameFormat, VaultConfig};
 use crate::manifest::{
     ArtifactEntry, ArtifactKind, Manifest, ManifestLock, RecordingExport, RecordingKind,
     SessionEntry, SessionStatus, SourceEntry, SourceKind, SourceStatus,
@@ -40,19 +40,15 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
 
 /// Core reconcile logic.  Called both by `run` (CLI) and by `process`
 /// (auto-reconcile before launching the AI).
-pub fn run_for_vault(
-    vault_root: &Path,
-    config: &VaultConfig,
-    args: ReconcileArgs,
-) -> Result<()> {
+pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArgs) -> Result<()> {
     let mut manifest = Manifest::load_or_create(vault_root, config)?;
 
     let fmt = FilenameFormat::parse(&config.filename_format)?;
 
     let mut new_sessions: Vec<String> = Vec::new();
-    let mut new_recordings: Vec<(String, String)> = Vec::new();   // (session_id, path)
-    let mut new_sources: Vec<String> = Vec::new();            // source IDs
-    let mut new_artifacts: Vec<(String, String)> = Vec::new();// (session_id, path)
+    let mut new_recordings: Vec<(String, String)> = Vec::new(); // (session_id, path)
+    let mut new_sources: Vec<String> = Vec::new(); // source IDs
+    let mut new_artifacts: Vec<(String, String)> = Vec::new(); // (session_id, path)
     let mut space_warnings: Vec<PathBuf> = Vec::new();
 
     // ── Resolve course roots ──────────────────────────────────────────────────
@@ -93,9 +89,11 @@ pub fn run_for_vault(
     for (course_name, course_root) in &course_entries {
         let required = match course_name.as_deref() {
             Some(c) => config.recordings_required_for(c),
-            None    => config.require_recordings,
+            None => config.require_recordings,
         };
-        if !required { continue; }
+        if !required {
+            continue;
+        }
         let recordings_dir = course_root.join(&config.recordings_dir);
         if recordings_dir.exists() {
             scan_recordings_dir(
@@ -127,7 +125,14 @@ pub fn run_for_vault(
     // ── Scan sources_dir ──────────────────────────────────────────────────────
     let sources_dir = vault_root.join(&config.sources_dir);
     if sources_dir.exists() {
-        scan_sources_dir(&sources_dir, vault_root, &mut manifest, config.scan_ai_conversations, &config.sources_ignore_dirs, &mut new_sources)?;
+        scan_sources_dir(
+            &sources_dir,
+            vault_root,
+            &mut manifest,
+            config.scan_ai_conversations,
+            &config.sources_ignore_dirs,
+            &mut new_sources,
+        )?;
     }
 
     // ── Space warnings ────────────────────────────────────────────────────────
@@ -158,10 +163,24 @@ pub fn run_for_vault(
             println!("  {} {}   {}", "+".green().bold(), "session".dimmed(), id);
         }
         for (session_id, path) in &new_recordings {
-            println!("  {} {}  {} {} {}", "+".green().bold(), "recording".dimmed(), path, "→".dimmed(), session_id);
+            println!(
+                "  {} {}  {} {} {}",
+                "+".green().bold(),
+                "recording".dimmed(),
+                path,
+                "→".dimmed(),
+                session_id
+            );
         }
         for (session_id, path) in &new_artifacts {
-            println!("  {} {}  {} {} {}", "+".green().bold(), "artifact".dimmed(), path, "→".dimmed(), session_id);
+            println!(
+                "  {} {}  {} {} {}",
+                "+".green().bold(),
+                "artifact".dimmed(),
+                path,
+                "→".dimmed(),
+                session_id
+            );
         }
         for id in &new_sources {
             println!("  {} {}    {}", "+".green().bold(), "source".dimmed(), id);
@@ -169,7 +188,11 @@ pub fn run_for_vault(
         if !space_warnings.is_empty() {
             println!(
                 "  {}",
-                format!("{} file(s) have spaces in their names", space_warnings.len()).yellow()
+                format!(
+                    "{} file(s) have spaces in their names",
+                    space_warnings.len()
+                )
+                .yellow()
             );
         }
     }
@@ -191,6 +214,7 @@ pub fn run_for_vault(
 
 // ── Raw note scanning ─────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn scan_raw_dir(
     raw_dir: &Path,
     vault_root: &Path,
@@ -269,6 +293,7 @@ fn scan_raw_dir(
 
 // ── Recording export scanning ─────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn scan_recordings_dir(
     recordings_dir: &Path,
     vault_root: &Path,
@@ -337,7 +362,10 @@ fn scan_recordings_dir(
 
         let kind = recording_kind(qualifier, config);
         new_recordings.push((session_id.to_string(), rel_path.clone()));
-        entry.recording_exports.push(RecordingExport { path: rel_path, kind });
+        entry.recording_exports.push(RecordingExport {
+            path: rel_path,
+            kind,
+        });
     }
     Ok(())
 }
@@ -347,7 +375,9 @@ fn scan_recordings_dir(
 /// Build a `NaiveDate` from a parsed stem.  Fills in the current year when
 /// the format doesn't include `{yyyy}`.
 fn build_date(parsed: &crate::config::ParsedStem) -> Option<NaiveDate> {
-    let year = parsed.year.unwrap_or_else(|| Utc::now().date_naive().year());
+    let year = parsed
+        .year
+        .unwrap_or_else(|| Utc::now().date_naive().year());
     let month = parsed.month?;
     let day = parsed.day?;
     NaiveDate::from_ymd_opt(year, month, day)
@@ -388,7 +418,7 @@ fn recording_kind(qualifier: &str, config: &VaultConfig) -> RecordingKind {
         "transcript" => RecordingKind::Transcript,
         "summary" => RecordingKind::Summary,
         "mindmap" => RecordingKind::Mindmap,
-        q if q.len() == 1 && q.chars().next().map_or(false, |c| c.is_ascii_lowercase()) => {
+        q if q.len() == 1 && q.chars().next().is_some_and(|c| c.is_ascii_lowercase()) => {
             RecordingKind::Anonymous
         }
         _ => {
@@ -406,15 +436,10 @@ fn recording_kind(qualifier: &str, config: &VaultConfig) -> RecordingKind {
 /// read as UTF-8 and the AI can't use them directly.
 const TEXT_ARTIFACT_EXTENSIONS: &[&str] = &[
     // Markup / documentation
-    "md", "txt", "html", "htm", "tex",
-    // Code
-    "py", "java", "rs", "js", "ts", "jsx", "tsx",
-    "c", "cpp", "h", "hpp", "cc", "cxx",
-    "go", "rb", "swift", "kt", "kts",
-    "cs", "fs", "ml", "mli", "hs", "lhs",
-    "r", "rmd", "sql", "sh", "bash", "zsh", "fish",
-    "yaml", "yml", "toml", "json", "xml", "csv",
-    "ipynb",
+    "md", "txt", "html", "htm", "tex", // Code
+    "py", "java", "rs", "js", "ts", "jsx", "tsx", "c", "cpp", "h", "hpp", "cc", "cxx", "go", "rb",
+    "swift", "kt", "kts", "cs", "fs", "ml", "mli", "hs", "lhs", "r", "rmd", "sql", "sh", "bash",
+    "zsh", "fish", "yaml", "yml", "toml", "json", "xml", "csv", "ipynb",
 ];
 
 /// Extensions that signal lecture slides / handouts (text-format only).
@@ -465,24 +490,23 @@ fn scan_artifacts_dir(
         };
 
         // Try to match stem → (session_id, qualifier).
-        let (session_id, qualifier): (&str, &str) =
-            if manifest.sessions.contains_key(stem) {
-                // Bare `{session_id}.{ext}` — no qualifier.
-                (stem, "")
-            } else if let Some((prefix, suffix)) = stem.split_once('-').and_then(|_| {
-                // We want the longest matching session_id prefix, so we try
-                // `rsplit_once` which gives us the last `-` split.  If the
-                // prefix is a known session, use it.
-                stem.rsplit_once('-')
-            }) {
-                if manifest.sessions.contains_key(prefix) {
-                    (prefix, suffix)
-                } else {
-                    continue; // prefix not a session — skip
-                }
+        let (session_id, qualifier): (&str, &str) = if manifest.sessions.contains_key(stem) {
+            // Bare `{session_id}.{ext}` — no qualifier.
+            (stem, "")
+        } else if let Some((prefix, suffix)) = stem.split_once('-').and_then(|_| {
+            // We want the longest matching session_id prefix, so we try
+            // `rsplit_once` which gives us the last `-` split.  If the
+            // prefix is a known session, use it.
+            stem.rsplit_once('-')
+        }) {
+            if manifest.sessions.contains_key(prefix) {
+                (prefix, suffix)
             } else {
-                continue; // no `-` in stem and not an exact session match
-            };
+                continue; // prefix not a session — skip
+            }
+        } else {
+            continue; // no `-` in stem and not an exact session match
+        };
 
         let entry_in_manifest = match manifest.sessions.get_mut(session_id) {
             Some(e) => e,
@@ -496,7 +520,11 @@ fn scan_artifacts_dir(
             .to_string();
 
         // Skip if already recorded.
-        if entry_in_manifest.artifacts.iter().any(|a| a.path == rel_path) {
+        if entry_in_manifest
+            .artifacts
+            .iter()
+            .any(|a| a.path == rel_path)
+        {
             continue;
         }
 
@@ -523,12 +551,9 @@ fn classify_artifact_kind(ext: &str, qualifier: &str) -> ArtifactKind {
     }
     // Code extensions.
     let code_exts = &[
-        "py", "java", "rs", "js", "ts", "jsx", "tsx",
-        "c", "cpp", "h", "hpp", "cc", "cxx",
-        "go", "rb", "swift", "kt", "kts",
-        "cs", "fs", "ml", "mli", "hs", "lhs",
-        "r", "rmd", "sql", "sh", "bash", "zsh", "fish",
-        "ipynb",
+        "py", "java", "rs", "js", "ts", "jsx", "tsx", "c", "cpp", "h", "hpp", "cc", "cxx", "go",
+        "rb", "swift", "kt", "kts", "cs", "fs", "ml", "mli", "hs", "lhs", "r", "rmd", "sql", "sh",
+        "bash", "zsh", "fish", "ipynb",
     ];
     if code_exts.contains(&ext) {
         return ArtifactKind::Code;
@@ -685,8 +710,8 @@ fn extract_source_meta(content: &str) -> (Option<String>, Vec<String>, Vec<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
     use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+    use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
     use chrono::NaiveDate;
     use tempfile::TempDir;
 
@@ -732,7 +757,10 @@ mod tests {
     #[test]
     fn classify_slide_by_qualifier() {
         assert_eq!(classify_artifact_kind("md", "slides"), ArtifactKind::Slides);
-        assert_eq!(classify_artifact_kind("md", "handout"), ArtifactKind::Slides);
+        assert_eq!(
+            classify_artifact_kind("md", "handout"),
+            ArtifactKind::Slides
+        );
         assert_eq!(classify_artifact_kind("py", "slides"), ArtifactKind::Slides);
     }
 
@@ -753,7 +781,10 @@ mod tests {
     #[test]
     fn classify_other() {
         assert_eq!(classify_artifact_kind("csv", "data"), ArtifactKind::Other);
-        assert_eq!(classify_artifact_kind("json", "schema"), ArtifactKind::Other);
+        assert_eq!(
+            classify_artifact_kind("json", "schema"),
+            ArtifactKind::Other
+        );
     }
 
     // ── scan_artifacts_dir ────────────────────────────────────────────────────
@@ -766,7 +797,13 @@ mod tests {
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
 
         assert_eq!(new_artifacts.len(), 1);
         assert_eq!(new_artifacts[0].0, "CPSC5001-09-03");
@@ -779,14 +816,27 @@ mod tests {
     fn scan_attaches_code_by_extension() {
         let tmp = TempDir::new().unwrap();
         let artifacts_dir = tmp.path().join("artifacts");
-        write_file(&artifacts_dir, "CPSC5001-09-03-BinarySearch.java", "class BinarySearch {}");
+        write_file(
+            &artifacts_dir,
+            "CPSC5001-09-03-BinarySearch.java",
+            "class BinarySearch {}",
+        );
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
 
         assert_eq!(new_artifacts.len(), 1);
-        assert_eq!(manifest.sessions["CPSC5001-09-03"].artifacts[0].kind, ArtifactKind::Code);
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Code
+        );
     }
 
     #[test]
@@ -797,7 +847,13 @@ mod tests {
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
 
         assert!(new_artifacts.is_empty(), "PDF should be skipped");
     }
@@ -810,7 +866,13 @@ mod tests {
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
 
         assert!(new_artifacts.is_empty(), "Unmatched stem should be skipped");
     }
@@ -823,10 +885,22 @@ mod tests {
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
         // Run again — should not double-register.
         let mut new_artifacts2 = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts2).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts2,
+        )
+        .unwrap();
 
         assert!(new_artifacts2.is_empty(), "Second scan should add nothing");
         assert_eq!(manifest.sessions["CPSC5001-09-03"].artifacts.len(), 1);
@@ -842,24 +916,37 @@ mod tests {
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
 
-        assert_eq!(new_artifacts.len(), 1, "artifact in subdirectory should be found");
+        assert_eq!(
+            new_artifacts.len(),
+            1,
+            "artifact in subdirectory should be found"
+        );
     }
 
     fn make_empty_manifest_for_sources(vault_root: &std::path::Path) -> Manifest {
-        Manifest::empty(vault_root.to_path_buf(), ManifestConfig {
-            raw_dir: "notes".into(),
-            recordings_dir: "recordings".into(),
-            artifacts_dir: "artifacts".into(),
-            sources_dir: "sources".into(),
-            synthetic_dir: "_synthetic".into(),
-            generated_dir: "_generated".into(),
-            filename_format: "{course}-{mm}-{dd}".into(),
-            default_backend: AiBackend::Mock,
-            skill_variant: SkillVariant::Claude,
-            snapshot_mode: SnapshotMode::PreMerge,
-        })
+        Manifest::empty(
+            vault_root.to_path_buf(),
+            ManifestConfig {
+                raw_dir: "notes".into(),
+                recordings_dir: "recordings".into(),
+                artifacts_dir: "artifacts".into(),
+                sources_dir: "sources".into(),
+                synthetic_dir: "_synthetic".into(),
+                generated_dir: "_generated".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                default_backend: AiBackend::Mock,
+                skill_variant: SkillVariant::Claude,
+                snapshot_mode: SnapshotMode::PreMerge,
+            },
+        )
     }
 
     #[test]
@@ -875,15 +962,33 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
-        assert_eq!(new_sources.len(), 1, "AI conversation with frontmatter should be registered");
+        assert_eq!(
+            new_sources.len(),
+            1,
+            "AI conversation with frontmatter should be registered"
+        );
         assert_eq!(new_sources[0], "AI-Conversations/Gemini/sorting-questions");
         let entry = &manifest.sources["AI-Conversations/Gemini/sorting-questions"];
         assert_eq!(entry.kind, crate::manifest::SourceKind::AiConversation);
-        assert_eq!(entry.summary.as_deref(), Some("Discussion about sorting algorithms"));
+        assert_eq!(
+            entry.summary.as_deref(),
+            Some("Discussion about sorting algorithms")
+        );
         assert_eq!(entry.tags, vec!["algorithms", "sorting"]);
-        assert!(entry.heading_scheme.is_empty(), "AI conversations should have no heading scheme");
+        assert!(
+            entry.heading_scheme.is_empty(),
+            "AI conversations should have no heading scheme"
+        );
     }
 
     #[test]
@@ -891,13 +996,28 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let sources_dir = tmp.path().join("sources");
         let deep_dir = sources_dir.join("AI-Conversations").join("Gemini");
-        write_file(&deep_dir, "sorting-questions.md", "# Sorting Q&A\n\nNo frontmatter here.\n");
+        write_file(
+            &deep_dir,
+            "sorting-questions.md",
+            "# Sorting Q&A\n\nNo frontmatter here.\n",
+        );
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
-        assert!(new_sources.is_empty(), "AI conversation without frontmatter must be skipped");
+        assert!(
+            new_sources.is_empty(),
+            "AI conversation without frontmatter must be skipped"
+        );
     }
 
     #[test]
@@ -913,9 +1033,20 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, false, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
-        assert!(new_sources.is_empty(), "AI conversations should be ignored when scan_ai_conversations is false");
+        assert!(
+            new_sources.is_empty(),
+            "AI conversations should be ignored when scan_ai_conversations is false"
+        );
     }
 
     #[test]
@@ -931,7 +1062,15 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
         let entry = &manifest.sources["AI-Conversations/Gemini/exam-prep"];
         assert_eq!(entry.courses, vec!["CPSC5001"]);
@@ -950,12 +1089,19 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
         let entry = &manifest.sources["AI-Conversations/Gemini/sorting-questions"];
         assert_eq!(
-            entry.path,
-            "sources/AI-Conversations/Gemini/sorting-questions.md",
+            entry.path, "sources/AI-Conversations/Gemini/sorting-questions.md",
             "stored path must be relative to vault root, not sources_dir"
         );
     }
@@ -977,11 +1123,23 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
         assert_eq!(new_sources.len(), 2);
-        assert!(manifest.sources.contains_key("AI-Conversations/Gemini/chat-a"));
-        assert!(manifest.sources.contains_key("AI-Conversations/Claude/chat-b"));
+        assert!(manifest
+            .sources
+            .contains_key("AI-Conversations/Gemini/chat-a"));
+        assert!(manifest
+            .sources
+            .contains_key("AI-Conversations/Claude/chat-b"));
     }
 
     #[test]
@@ -989,13 +1147,29 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let sources_dir = tmp.path().join("sources");
         let chapter_dir = sources_dir.join("Textbooks").join("SICP");
-        write_file(&chapter_dir, "Chapter-01.md", "# Chapter 1: Building Abstractions\n\nContent.\n");
+        write_file(
+            &chapter_dir,
+            "Chapter-01.md",
+            "# Chapter 1: Building Abstractions\n\nContent.\n",
+        );
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
-        assert_eq!(new_sources.len(), 1, "textbook chapter should register without frontmatter");
+        assert_eq!(
+            new_sources.len(),
+            1,
+            "textbook chapter should register without frontmatter"
+        );
         let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
         assert_eq!(entry.kind, crate::manifest::SourceKind::Textbook);
         assert!(entry.summary.is_none());
@@ -1015,7 +1189,15 @@ mod tests {
 
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &[], &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
 
         let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
         assert_eq!(entry.summary.as_deref(), Some("Procedures and processes"));
@@ -1041,11 +1223,26 @@ mod tests {
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
         let ignore = vec!["_tools".to_string()];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &ignore, &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &ignore,
+            &mut new_sources,
+        )
+        .unwrap();
 
-        assert_eq!(new_sources.len(), 1, "only the textbook chapter should be registered");
+        assert_eq!(
+            new_sources.len(),
+            1,
+            "only the textbook chapter should be registered"
+        );
         assert!(manifest.sources.contains_key("Textbooks/SICP/Chapter-01"));
-        assert!(!manifest.sources.contains_key("_tools/generate"), "ignored dir must not be registered");
+        assert!(
+            !manifest.sources.contains_key("_tools/generate"),
+            "ignored dir must not be registered"
+        );
     }
 
     #[test]
@@ -1068,11 +1265,23 @@ mod tests {
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
         let ignore = vec!["_tools".to_string()];
-        scan_sources_dir(&sources_dir, tmp.path(), &mut manifest, true, &ignore, &mut new_sources).unwrap();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &ignore,
+            &mut new_sources,
+        )
+        .unwrap();
 
         assert_eq!(new_sources.len(), 1);
-        assert!(manifest.sources.contains_key("AI-Conversations/Gemini/chat"));
-        assert!(!manifest.sources.contains_key("AI-Conversations/_tools/prompt-template"));
+        assert!(manifest
+            .sources
+            .contains_key("AI-Conversations/Gemini/chat"));
+        assert!(!manifest
+            .sources
+            .contains_key("AI-Conversations/_tools/prompt-template"));
     }
 
     #[test]
@@ -1106,10 +1315,19 @@ mod tests {
 
         let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
         let mut new_artifacts = vec![];
-        scan_artifacts_dir(&artifacts_dir, tmp.path(), &mut manifest, &mut new_artifacts).unwrap();
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
 
         assert_eq!(new_artifacts.len(), 1);
-        assert_eq!(manifest.sessions["CPSC5001-09-03"].artifacts[0].kind, ArtifactKind::Slides);
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Slides
+        );
     }
 }
 
@@ -1118,9 +1336,12 @@ mod tests {
 #[cfg(target_os = "macos")]
 fn notify_macos_args(message: &str) -> Vec<&str> {
     vec![
-        "-e", "on run argv",
-        "-e", "display notification (item 1 of argv) with title \"csnotes\"",
-        "-e", "end run",
+        "-e",
+        "on run argv",
+        "-e",
+        "display notification (item 1 of argv) with title \"csnotes\"",
+        "-e",
+        "end run",
         message,
     ]
 }

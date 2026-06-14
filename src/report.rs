@@ -38,9 +38,8 @@ impl SessionReport {
         }
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let report: SessionReport = serde_json::from_str(&content).map_err(|e| {
-            CsnotesError::ReportParse(e.to_string())
-        })?;
+        let report: SessionReport =
+            serde_json::from_str(&content).map_err(|e| CsnotesError::ReportParse(e.to_string()))?;
         Ok(report)
     }
 }
@@ -246,7 +245,10 @@ pub enum FlagKind {
 
 impl FlagKind {
     pub fn is_actionable(self) -> bool {
-        matches!(self, FlagKind::PossibleMisread | FlagKind::NeedsConfirmation)
+        matches!(
+            self,
+            FlagKind::PossibleMisread | FlagKind::NeedsConfirmation
+        )
     }
 
     pub fn is_thread(self) -> bool {

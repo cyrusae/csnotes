@@ -1,3 +1,4 @@
+use comrak::nodes::{AstNode, NodeValue};
 /// comrak-based Markdown heading parsing for source ingestion.
 ///
 /// Used by `reconcile` when registering a new source file to derive the
@@ -6,7 +7,6 @@
 /// the `_session.md` briefing so the AI can reference textbook locations
 /// precisely.
 use comrak::{parse_document, Arena, Options};
-use comrak::nodes::{AstNode, NodeValue};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -70,8 +70,12 @@ fn collect_headings<'a>(node: &'a AstNode<'a>, source: &str, out: &mut Vec<Headi
         // Collect the plain text of all inline children.
         let text = collect_text(node);
         // Convert 1-based line number to a rough byte offset by counting newlines.
-        let byte_offset = line_to_byte_offset(source, byte_offset as usize);
-        out.push(Heading { level, text, byte_offset });
+        let byte_offset = line_to_byte_offset(source, byte_offset);
+        out.push(Heading {
+            level,
+            text,
+            byte_offset,
+        });
     }
     for child in node.children() {
         collect_headings(child, source, out);
@@ -125,7 +129,10 @@ mod tests {
     fn derive_scheme_three_levels() {
         let md = "# Chapter 1\n## Section 1.1\n### Sub 1.1.1\n";
         let h = parse_headings(md);
-        assert_eq!(derive_heading_scheme(&h), vec!["chapter", "section", "subsection"]);
+        assert_eq!(
+            derive_heading_scheme(&h),
+            vec!["chapter", "section", "subsection"]
+        );
     }
 
     #[test]
@@ -165,8 +172,20 @@ mod tests {
         // map(i → i+1): [4, 8, 12].
         // line_idx uses saturating_sub(1), so idx 0 and 1 both resolve to nth(0)=4.
         let source = "abc\ndef\nghi\n";
-        assert_eq!(line_to_byte_offset(source, 1), 4,  "idx 1 → start of second line");
-        assert_eq!(line_to_byte_offset(source, 2), 8,  "idx 2 → start of third line");
-        assert_eq!(line_to_byte_offset(source, 99), 0, "out-of-range → unwrap_or(0)");
+        assert_eq!(
+            line_to_byte_offset(source, 1),
+            4,
+            "idx 1 → start of second line"
+        );
+        assert_eq!(
+            line_to_byte_offset(source, 2),
+            8,
+            "idx 2 → start of third line"
+        );
+        assert_eq!(
+            line_to_byte_offset(source, 99),
+            0,
+            "out-of-range → unwrap_or(0)"
+        );
     }
 }

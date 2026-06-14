@@ -1,13 +1,20 @@
 use anyhow::{bail, Result};
 use chrono::Utc;
 
-use crate::config::{VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, VaultConfig};
 use crate::flags::FlagStore;
 
 pub enum FlagsSubcommand {
-    List { all: bool },
-    Resolve { id: String, follow_up: Option<String> },
-    Show { id: String },
+    List {
+        all: bool,
+    },
+    Resolve {
+        id: String,
+        follow_up: Option<String>,
+    },
+    Show {
+        id: String,
+    },
 }
 
 pub fn run(sub: FlagsSubcommand) -> Result<()> {

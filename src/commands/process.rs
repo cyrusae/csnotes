@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use anyhow::{bail, Result};
 use chrono::Utc;
@@ -7,15 +7,14 @@ use owo_colors::OwoColorize;
 use crate::audit::{invariant_suite, precondition_pass};
 use crate::backend::make_backend;
 use crate::commands::reconcile;
-use crate::config::{AiBackend, VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, AiBackend, VaultConfig};
 use crate::error::CsnotesError;
 use crate::flags::FlagStore;
 use crate::manifest::{InProgressRecord, Manifest, ManifestLock, SessionStatus};
 use crate::ops::content::{execute_create_note, execute_update_note};
 use crate::report::{Op, SessionReport, REPORT_FILENAME};
 use crate::workspace::{
-    assemble, cleanup, merge_back, new_run_id, take_snapshot, WorkspaceParams,
-    WorkspaceScope,
+    assemble, cleanup, merge_back, new_run_id, take_snapshot, WorkspaceParams, WorkspaceScope,
 };
 
 /// `csnotes process` arguments (set by main.rs from clap).
@@ -43,19 +42,21 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     // sources added since the last run.  Quiet when nothing is new so the
     // normal process flow isn't cluttered; still prints "+ session …" lines
     // if new files are discovered.
-    reconcile::run_for_vault(&vault_root, &config, reconcile::ReconcileArgs {
-        notify: false,
-        rename_spaces: None,
-        quiet: true,
-    })?;
+    reconcile::run_for_vault(
+        &vault_root,
+        &config,
+        reconcile::ReconcileArgs {
+            notify: false,
+            rename_spaces: None,
+            quiet: true,
+        },
+    )?;
 
     let mut manifest = Manifest::load(&vault_root)?;
 
     // ── Guard: existing in-progress session ───────────────────────────────
     if manifest.session_in_progress.is_some() {
-        bail!(
-            "A session is already in progress. Run `csnotes recover` to resume or discard it."
-        );
+        bail!("A session is already in progress. Run `csnotes recover` to resume or discard it.");
     }
 
     // ── Resolve scope ─────────────────────────────────────────────────────
@@ -95,8 +96,8 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     let backend_kind = args.backend.unwrap_or(config.default_backend);
     let skill_variant = match backend_kind {
         crate::config::AiBackend::Claude => crate::config::SkillVariant::Claude,
-        crate::config::AiBackend::Agy   => crate::config::SkillVariant::Gemini,
-        crate::config::AiBackend::Mock  => config.skill_variant, // tests may want either
+        crate::config::AiBackend::Agy => crate::config::SkillVariant::Gemini,
+        crate::config::AiBackend::Mock => config.skill_variant, // tests may want either
     };
 
     let ws_params = WorkspaceParams {
@@ -123,8 +124,18 @@ pub fn run(args: ProcessArgs) -> Result<()> {
                 dim_colon("scope   :", &format!("session {}", session_id));
                 if let Some(entry) = manifest.sessions.get(session_id) {
                     continuation("raw note:", &entry.raw_note);
-                    continuation("recordings:", &format!("{} export{}", entry.recording_exports.len(),
-                        if entry.recording_exports.len() == 1 { "" } else { "s" }));
+                    continuation(
+                        "recordings:",
+                        &format!(
+                            "{} export{}",
+                            entry.recording_exports.len(),
+                            if entry.recording_exports.len() == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
+                        ),
+                    );
                     if !entry.artifacts.is_empty() {
                         continuation("artifacts:", &entry.artifacts.len().to_string());
                     }
@@ -134,7 +145,10 @@ pub fn run(args: ProcessArgs) -> Result<()> {
                 dim_colon("scope   :", &format!("source(s) [{}]", source_ids.len()));
                 for source_id in source_ids {
                     if let Some(entry) = manifest.sources.get(source_id) {
-                        continuation("source  :", &format!("{} ({})", source_id, entry.kind.as_str()));
+                        continuation(
+                            "source  :",
+                            &format!("{} ({})", source_id, entry.kind.as_str()),
+                        );
                     } else {
                         continuation("source  :", source_id);
                     }
@@ -183,13 +197,19 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     }
 
     // ── Teardown ──────────────────────────────────────────────────────────
-    run_teardown(&vault_root, &workspace_root, &run_id, &config, &mut manifest)
+    run_teardown(
+        &vault_root,
+        &workspace_root,
+        &run_id,
+        &config,
+        &mut manifest,
+    )
 }
 
 /// The §7 teardown pipeline.  Separated so `recover` can call it too.
 pub fn run_teardown(
-    vault_root: &PathBuf,
-    workspace_root: &PathBuf,
+    vault_root: &Path,
+    workspace_root: &Path,
     run_id: &str,
     config: &VaultConfig,
     manifest: &mut Manifest,
@@ -225,7 +245,10 @@ pub fn run_teardown(
 
     // Step 4: Precondition pass
     if let Err(e) = precondition_pass(&report, workspace_root) {
-        eprintln!("{}", "Precondition failure — discarding workspace.".red().bold());
+        eprintln!(
+            "{}",
+            "Precondition failure — discarding workspace.".red().bold()
+        );
         eprintln!("  {}", e);
         cleanup(workspace_root, vault_root, run_id)?;
         manifest.session_in_progress = None;
@@ -238,25 +261,39 @@ pub fn run_teardown(
     for op in &report.operations {
         let result = match op {
             Op::RenameTopic(o) => crate::ops::structural::execute_rename_topic(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::RenameAtomic(o) => crate::ops::structural::execute_rename_atomic(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::MoveAtomic(o) => crate::ops::structural::execute_move_atomic(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::PromoteAtomic(o) => crate::ops::structural::execute_promote_atomic(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::DemoteTopic(o) => crate::ops::structural::execute_demote_topic(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::MergeTopics(o) => crate::ops::structural::execute_merge_topics(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::SplitTopic(o) => crate::ops::structural::execute_split_topic(
-                o, workspace_root, &config.synthetic_dir,
+                o,
+                workspace_root,
+                &config.synthetic_dir,
             ),
             Op::SetEmbed(o) => crate::ops::structural::execute_set_embed(o, workspace_root),
             _ => continue, // content ops handled in step 6
@@ -299,7 +336,10 @@ pub fn run_teardown(
     )?;
 
     if !audit.is_clean() {
-        eprintln!("{}", "Invariant violations — discarding workspace.".red().bold());
+        eprintln!(
+            "{}",
+            "Invariant violations — discarding workspace.".red().bold()
+        );
         audit.print();
         cleanup(workspace_root, vault_root, run_id)?;
         manifest.session_in_progress = None;
@@ -310,7 +350,9 @@ pub fn run_teardown(
     audit.print(); // Print any soft warnings
 
     // Step 9: Pre-merge snapshot
-    manifest.session_in_progress.as_mut().map(|r| r.phase = "merging".to_string());
+    if let Some(r) = manifest.session_in_progress.as_mut() {
+        r.phase = "merging".to_string();
+    }
     manifest.save(vault_root)?;
     let _snapshot = take_snapshot(vault_root, &config.synthetic_dir, run_id)?;
 
@@ -321,8 +363,8 @@ pub fn run_teardown(
     // applied to _synthetic/ into user-authored raw notes.
     let raw_roots = collect_raw_note_roots(vault_root, config);
     let raw_root_refs: Vec<&std::path::Path> = raw_roots.iter().map(|p| p.as_path()).collect();
-    let relinked = crate::ops::structural::relink_raw_notes(&report.operations, &raw_root_refs)
-        .unwrap_or(0);
+    let relinked =
+        crate::ops::structural::relink_raw_notes(&report.operations, &raw_root_refs).unwrap_or(0);
 
     // Copy last_report.json and per-session report copies
     let report_src = workspace_root.join(REPORT_FILENAME);
@@ -339,9 +381,7 @@ pub fn run_teardown(
     }
 
     // Append flags to flag store
-    let flags_path = vault_root
-        .join(&config.generated_dir)
-        .join("flags.json");
+    let flags_path = vault_root.join(&config.generated_dir).join("flags.json");
     let mut flag_store = FlagStore::load(&flags_path).unwrap_or_default();
     flag_store.append_from_report(&report.review_flags, run_id, now);
     flag_store.save(&flags_path)?;
@@ -355,10 +395,18 @@ pub fn run_teardown(
 
     println!("{}", "Session committed.".green().bold());
     let n_ops = report.operations.len();
-    let n_flags = report.review_flags.iter().filter(|f| f.kind.is_actionable()).count();
+    let n_flags = report
+        .review_flags
+        .iter()
+        .filter(|f| f.kind.is_actionable())
+        .count();
     println!("  {} operation{}", n_ops, if n_ops == 1 { "" } else { "s" });
     if relinked > 0 {
-        println!("  {} raw note{} relinked", relinked, if relinked == 1 { "" } else { "s" });
+        println!(
+            "  {} raw note{} relinked",
+            relinked,
+            if relinked == 1 { "" } else { "s" }
+        );
     }
     if n_flags > 0 {
         println!(
@@ -380,12 +428,21 @@ pub fn run_teardown(
 /// Collect the raw-note directories for all active courses (or the flat
 /// vault-root layout when `active_courses` is empty).  Only returns paths
 /// that actually exist on disk.
-fn collect_raw_note_roots(vault_root: &std::path::Path, config: &VaultConfig) -> Vec<std::path::PathBuf> {
+fn collect_raw_note_roots(
+    vault_root: &std::path::Path,
+    config: &VaultConfig,
+) -> Vec<std::path::PathBuf> {
     if config.active_courses.is_empty() {
         let p = vault_root.join(&config.raw_dir);
-        if p.exists() { vec![p] } else { vec![] }
+        if p.exists() {
+            vec![p]
+        } else {
+            vec![]
+        }
     } else {
-        config.active_courses.iter()
+        config
+            .active_courses
+            .iter()
             .map(|course| vault_root.join(course).join(&config.raw_dir))
             .filter(|p| p.exists())
             .collect()
@@ -400,7 +457,9 @@ fn resolve_scope(args: &ProcessArgs, manifest: &Manifest) -> Result<WorkspaceSco
         return Ok(WorkspaceScope::Source { source_ids });
     }
     if let Some(topic) = &args.topic {
-        return Ok(WorkspaceScope::Topic { topic: topic.clone() });
+        return Ok(WorkspaceScope::Topic {
+            topic: topic.clone(),
+        });
     }
 
     let session_id = resolve_session_id(args, manifest)?;
@@ -570,7 +629,9 @@ mod tests {
     use super::*;
     use crate::frontmatter::{NoteKind, ProvenanceDelta};
     use crate::manifest::SourceStatus;
-    use crate::report::{CreateNoteOp, Op, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp};
+    use crate::report::{
+        CreateNoteOp, Op, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp,
+    };
     use chrono::Utc;
 
     fn make_report(ops: Vec<Op>) -> SessionReport {
@@ -732,13 +793,19 @@ mod tests {
     #[test]
     fn resolve_session_full_date_matches() {
         let m = make_manifest_with_sessions(&[("CS101-2026-07-28", "CS101", "2026-07-28")]);
-        assert_eq!(resolve(Some("2026-07-28"), None, &m).unwrap(), "CS101-2026-07-28");
+        assert_eq!(
+            resolve(Some("2026-07-28"), None, &m).unwrap(),
+            "CS101-2026-07-28"
+        );
     }
 
     #[test]
     fn resolve_session_partial_mm_dd_matches() {
         let m = make_manifest_with_sessions(&[("CS101-2026-07-28", "CS101", "2026-07-28")]);
-        assert_eq!(resolve(Some("07-28"), None, &m).unwrap(), "CS101-2026-07-28");
+        assert_eq!(
+            resolve(Some("07-28"), None, &m).unwrap(),
+            "CS101-2026-07-28"
+        );
     }
 
     #[test]
@@ -758,8 +825,8 @@ mod tests {
 
     #[test]
     fn update_source_status_marks_processed() {
-        use crate::manifest::{ManifestConfig, SourceEntry, SourceKind};
         use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+        use crate::manifest::{ManifestConfig, SourceEntry, SourceKind};
 
         let cfg = ManifestConfig {
             raw_dir: "notes".into(),
@@ -789,14 +856,12 @@ mod tests {
             },
         );
 
-        let mut report = make_report(vec![
-            Op::UpdateNote(UpdateNoteOp {
-                path: "_synthetic/algorithms/search.md".to_string(),
-                add_provenance: ProvenanceDelta::default(),
-                sections: vec![],
-                change_summary: "added".to_string(),
-            }),
-        ]);
+        let mut report = make_report(vec![Op::UpdateNote(UpdateNoteOp {
+            path: "_synthetic/algorithms/search.md".to_string(),
+            add_provenance: ProvenanceDelta::default(),
+            sections: vec![],
+            change_summary: "added".to_string(),
+        })]);
         report.scope.sources = vec!["SICP/ch01".to_string()];
 
         update_source_status(&report, &mut manifest, Utc::now(), "_synthetic");
@@ -808,8 +873,8 @@ mod tests {
     }
 
     fn make_manifest_with_sources(sources: &[&str]) -> Manifest {
-        use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
         use crate::config::{AiBackend, SkillVariant, SnapshotMode};
+        use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
         let cfg = ManifestConfig {
             raw_dir: "notes".into(),
             recordings_dir: "recordings".into(),
@@ -824,17 +889,20 @@ mod tests {
         };
         let mut m = Manifest::empty(std::path::PathBuf::from("/tmp"), cfg);
         for &id in sources {
-            m.sources.insert(id.to_string(), SourceEntry {
-                path: format!("sources/{}.md", id),
-                kind: SourceKind::Textbook,
-                status: SourceStatus::Unprocessed,
-                last_processed_at: None,
-                heading_scheme: vec![],
-                topics_updated: vec![],
-                summary: None,
-                tags: vec![],
-                courses: vec![],
-            });
+            m.sources.insert(
+                id.to_string(),
+                SourceEntry {
+                    path: format!("sources/{}.md", id),
+                    kind: SourceKind::Textbook,
+                    status: SourceStatus::Unprocessed,
+                    last_processed_at: None,
+                    heading_scheme: vec![],
+                    topics_updated: vec![],
+                    summary: None,
+                    tags: vec![],
+                    courses: vec![],
+                },
+            );
         }
         m
     }

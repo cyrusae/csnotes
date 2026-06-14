@@ -25,7 +25,10 @@ pub fn safe_join(root: &Path, unsafe_path: &str) -> Result<PathBuf> {
     }
     for component in p.components() {
         if matches!(component, Component::ParentDir) {
-            bail!("'..' component not allowed in report path: {:?}", unsafe_path);
+            bail!(
+                "'..' component not allowed in report path: {:?}",
+                unsafe_path
+            );
         }
     }
     Ok(root.join(p))
@@ -64,7 +67,10 @@ mod tests {
     #[test]
     fn accepts_normal_relative_path() {
         let result = safe_join(root(), "_synthetic/sorting/quicksort.md").unwrap();
-        assert_eq!(result, Path::new("/tmp/vault/_synthetic/sorting/quicksort.md"));
+        assert_eq!(
+            result,
+            Path::new("/tmp/vault/_synthetic/sorting/quicksort.md")
+        );
     }
 
     #[test]

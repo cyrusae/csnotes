@@ -21,9 +21,8 @@ use walkdir::WalkDir;
 /// Matches Obsidian block anchors: `^block-id` at the end of a line.
 /// Block IDs are lowercase, start with a letter or digit, and contain only
 /// letters, digits, and hyphens.
-static BLOCK_ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)\^([a-z0-9][a-z0-9-]*)$").unwrap()
-});
+static BLOCK_ANCHOR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)\^([a-z0-9][a-z0-9-]*)$").unwrap());
 
 /// Matches `[[wikilink]]`, `[[wikilink#section]]`, and `[[wikilink|alias]]`
 /// (but NOT `![[...]]`).
@@ -35,15 +34,12 @@ static BLOCK_ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Using a capturing group instead of a consuming `(?:^|[^!])` prefix
 /// fixes adjacent-wikilink parsing: `[[a]][[b]]` — the old prefix consumed
 /// the `]` after `[[a]]`, making `[[b]]` invisible to the next match.
-static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(!?)\[\[([^\]|]+)(?:\|[^\]]*)?\]\]").unwrap()
-});
+static WIKILINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(!?)\[\[([^\]|]+)(?:\|[^\]]*)?\]\]").unwrap());
 
 /// Matches `![[embed]]` and `![[embed#^block-id]]`.
 /// Captures the full inner content (file name + optional anchor).
-static EMBED_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"!\[\[([^\]]+)\]\]").unwrap()
-});
+static EMBED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[\[([^\]]+)\]\]").unwrap());
 
 // ── Extraction functions ──────────────────────────────────────────────────────
 
@@ -101,14 +97,12 @@ pub struct EmbedTarget {
 impl EmbedTarget {
     /// True if the anchor is a block anchor (starts with `^`).
     pub fn is_block_anchor(&self) -> bool {
-        self.anchor.as_deref().map_or(false, |a| a.starts_with('^'))
+        self.anchor.as_deref().is_some_and(|a| a.starts_with('^'))
     }
 
     /// The block ID without the leading `^` (if this is a block anchor).
     pub fn block_id(&self) -> Option<&str> {
-        self.anchor
-            .as_deref()
-            .and_then(|a| a.strip_prefix('^'))
+        self.anchor.as_deref().and_then(|a| a.strip_prefix('^'))
     }
 }
 
@@ -146,7 +140,7 @@ pub fn collect_all_block_ids(synthetic_root: &Path) -> Result<HashMap<String, St
     for entry in WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
     {
         let content = match crate::frontmatter::read_note(entry.path()) {
             Ok(c) => c,
@@ -178,7 +172,9 @@ pub fn find_collisions<'a>(
             seen.entry(id).or_default().push(path.to_string());
         }
     }
-    seen.into_iter().filter(|(_, paths)| paths.len() > 1).collect()
+    seen.into_iter()
+        .filter(|(_, paths)| paths.len() > 1)
+        .collect()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -326,19 +322,28 @@ mod tests {
 
     #[test]
     fn is_block_anchor_true_for_caret_anchor() {
-        let e = EmbedTarget { file: "note".into(), anchor: Some("^poly-core".into()) };
+        let e = EmbedTarget {
+            file: "note".into(),
+            anchor: Some("^poly-core".into()),
+        };
         assert!(e.is_block_anchor());
     }
 
     #[test]
     fn is_block_anchor_false_for_section_anchor() {
-        let e = EmbedTarget { file: "note".into(), anchor: Some("Introduction".into()) };
+        let e = EmbedTarget {
+            file: "note".into(),
+            anchor: Some("Introduction".into()),
+        };
         assert!(!e.is_block_anchor());
     }
 
     #[test]
     fn is_block_anchor_false_when_no_anchor() {
-        let e = EmbedTarget { file: "note".into(), anchor: None };
+        let e = EmbedTarget {
+            file: "note".into(),
+            anchor: None,
+        };
         assert!(!e.is_block_anchor());
     }
 

@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::config::{VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, VaultConfig};
 use crate::manifest::{Manifest, ManifestLock};
 
 pub struct AuditArgs {

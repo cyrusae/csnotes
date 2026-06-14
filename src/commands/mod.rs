@@ -5,6 +5,6 @@ pub mod extract;
 pub mod flags_cmd;
 pub mod init;
 pub mod process;
-pub mod recover;
 pub mod reconcile;
+pub mod recover;
 pub mod status;

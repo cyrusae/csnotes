@@ -3,7 +3,7 @@ use std::io::{self, BufRead, Write};
 use anyhow::Result;
 
 use crate::backend::make_backend;
-use crate::config::{VaultConfig, find_vault_root};
+use crate::config::{find_vault_root, VaultConfig};
 use crate::error::CsnotesError;
 use crate::manifest::{Manifest, ManifestLock};
 use crate::report::REPORT_FILENAME;
@@ -29,7 +29,10 @@ pub fn run(args: RecoverArgs) -> Result<()> {
 
     println!("Found in-progress session:");
     println!("  run_id:    {}", rec.run_id);
-    println!("  started:   {}", rec.started_at.format("%Y-%m-%d %H:%M UTC"));
+    println!(
+        "  started:   {}",
+        rec.started_at.format("%Y-%m-%d %H:%M UTC")
+    );
     println!("  phase:     {}", rec.phase);
     println!("  workspace: {}", rec.workspace_path.display());
     if let Some(ref err) = rec.error {
@@ -87,7 +90,13 @@ pub fn run(args: RecoverArgs) -> Result<()> {
 
                 let backend_kind = rec.backend.unwrap_or(config.default_backend);
                 let skill_variant = rec.skill_variant.unwrap_or(config.skill_variant);
-                let backend = make_backend(backend_kind, skill_variant, None, config.agy_model.clone(), true);
+                let backend = make_backend(
+                    backend_kind,
+                    skill_variant,
+                    None,
+                    config.agy_model.clone(),
+                    true,
+                );
 
                 if let Err(e) = backend.launch(&rec.workspace_path) {
                     eprintln!("Backend exited with error: {}", e);

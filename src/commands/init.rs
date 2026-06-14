@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::config::{
-    ensure_no_spaces, AiBackend, FilenameFormat, SkillVariant, SnapshotMode, VaultConfig,
-    find_vault_root,
+    ensure_no_spaces, find_vault_root, AiBackend, FilenameFormat, SkillVariant, SnapshotMode,
+    VaultConfig,
 };
 use crate::flags::FlagStore;
 use crate::manifest::{Manifest, ManifestConfig, ManifestLock};
@@ -35,8 +35,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         "Filename format [{course}-{mm}-{dd}]: ",
         "{course}-{mm}-{dd}",
     )?;
-    FilenameFormat::parse(&filename_format)
-        .context("invalid filename format")?;
+    FilenameFormat::parse(&filename_format).context("invalid filename format")?;
 
     // Detect existing course-like folders.  If found, per-course layout is
     // implied and we skip the explicit question.  For a fresh vault with
@@ -159,7 +158,10 @@ fn run_instructions_only() -> Result<()> {
     fs::create_dir_all(&instructions_dir)?;
 
     write_instruction_files(&instructions_dir, &config)?;
-    println!("Instructions written to {}/instructions/", config.csnotes_dir);
+    println!(
+        "Instructions written to {}/instructions/",
+        config.csnotes_dir
+    );
 
     Ok(())
 }
@@ -190,10 +192,12 @@ fn write_instruction_files(dir: &Path, cfg: &VaultConfig) -> Result<()> {
 fn write_if_absent(dir: &Path, filename: &str, content: &str) -> Result<()> {
     let path = dir.join(filename);
     if path.exists() {
-        println!("  Skipped: _csnotes/instructions/{} (already exists)", filename);
+        println!(
+            "  Skipped: _csnotes/instructions/{} (already exists)",
+            filename
+        );
     } else {
-        fs::write(&path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
         println!("  Created: _csnotes/instructions/{}", filename);
     }
     Ok(())
@@ -731,8 +735,7 @@ Add or remove a transclusion link from an index note.
 fn create_dir_if_absent(vault_root: &Path, rel: &str) -> Result<()> {
     let path = vault_root.join(rel);
     if !path.exists() {
-        fs::create_dir_all(&path)
-            .with_context(|| format!("creating {}", path.display()))?;
+        fs::create_dir_all(&path).with_context(|| format!("creating {}", path.display()))?;
         println!("  Created: {}/", rel);
     }
     Ok(())
@@ -781,8 +784,12 @@ pub fn create_vault_dirs(vault_root: &Path, cfg: &VaultConfig) -> Result<()> {
 /// presented to the user as candidates for `active_courses`.
 pub fn scan_course_candidates(vault_root: &Path) -> Vec<String> {
     const EXCLUDE: &[&str] = &[
-        "notes", "recordings", "artifacts", "sources",
-        "target", "node_modules",
+        "notes",
+        "recordings",
+        "artifacts",
+        "sources",
+        "target",
+        "node_modules",
     ];
 
     let Ok(entries) = std::fs::read_dir(vault_root) else {
@@ -835,10 +842,7 @@ fn prompt_courses(candidates: &[String]) -> Result<Vec<String>> {
         )?
     };
 
-    let courses: Vec<String> = raw
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
+    let courses: Vec<String> = raw.split_whitespace().map(|s| s.to_string()).collect();
 
     for c in &courses {
         ensure_no_spaces(c, "course name")?;
@@ -904,7 +908,15 @@ mod tests {
     #[test]
     fn scan_excludes_system_dirs() {
         let tmp = setup(
-            &["CPSC5001", "_synthetic", "_generated", "notes", "recordings", "artifacts", "sources"],
+            &[
+                "CPSC5001",
+                "_synthetic",
+                "_generated",
+                "notes",
+                "recordings",
+                "artifacts",
+                "sources",
+            ],
             &[],
         );
         let got = scan_course_candidates(tmp.path());
@@ -969,7 +981,14 @@ mod tests {
         let cfg = minimal_config(vec![]);
         create_vault_dirs(tmp.path(), &cfg).unwrap();
 
-        for d in &["notes", "recordings", "artifacts", "sources", "_synthetic", "_generated"] {
+        for d in &[
+            "notes",
+            "recordings",
+            "artifacts",
+            "sources",
+            "_synthetic",
+            "_generated",
+        ] {
             assert!(tmp.path().join(d).is_dir(), "expected flat dir: {}", d);
         }
     }
@@ -994,7 +1013,11 @@ mod tests {
 
         // Flat content dirs must NOT exist at root.
         for d in &["notes", "recordings", "artifacts", "sources"] {
-            assert!(!tmp.path().join(d).exists(), "flat {} should not exist when courses set", d);
+            assert!(
+                !tmp.path().join(d).exists(),
+                "flat {} should not exist when courses set",
+                d
+            );
         }
     }
 

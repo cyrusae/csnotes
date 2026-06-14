@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use commands::{
-    audit_cmd, config_cmd, diff, extract, flags_cmd, init, process, recover, reconcile, status,
+    audit_cmd, config_cmd, diff, extract, flags_cmd, init, process, reconcile, recover, status,
 };
 use config::AiBackend;
 
@@ -35,7 +35,10 @@ fn main() {
 
 fn dispatch(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        Command::Init { vault_root, instructions_only } => init::run(vault_root, instructions_only),
+        Command::Init {
+            vault_root,
+            instructions_only,
+        } => init::run(vault_root, instructions_only),
 
         Command::Process {
             session,
@@ -77,9 +80,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             FlagsSubcommand::Resolve { id, follow_up } => {
                 flags_cmd::run(flags_cmd::FlagsSubcommand::Resolve { id, follow_up })
             }
-            FlagsSubcommand::Show { id } => {
-                flags_cmd::run(flags_cmd::FlagsSubcommand::Show { id })
-            }
+            FlagsSubcommand::Show { id } => flags_cmd::run(flags_cmd::FlagsSubcommand::Show { id }),
         },
 
         Command::Extract {
@@ -105,9 +106,15 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             recover::run(recover::RecoverArgs { resume, discard })
         }
 
-        Command::Audit { reindex, fix, apply } => {
-            audit_cmd::run(audit_cmd::AuditArgs { reindex, fix, apply })
-        }
+        Command::Audit {
+            reindex,
+            fix,
+            apply,
+        } => audit_cmd::run(audit_cmd::AuditArgs {
+            reindex,
+            fix,
+            apply,
+        }),
 
         Command::Config {
             set,

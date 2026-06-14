@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use chrono::NaiveDate;
-use std::sync::OnceLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 use crate::error::CsnotesError;
 
@@ -122,40 +122,66 @@ pub struct VaultConfig {
     pub sources_ignore_dirs: Vec<String>,
 }
 
-fn default_raw_dir() -> String { "notes".into() }
-fn default_recordings_dir() -> String { "recordings".into() }
-fn default_artifacts_dir() -> String { "artifacts".into() }
-fn default_sources_dir() -> String { "sources".into() }
-fn default_synthetic_dir() -> String { "_synthetic".into() }
-fn default_generated_dir() -> String { "_generated".into() }
-fn default_csnotes_dir() -> String { "_csnotes".into() }
-fn default_filename_format() -> String { "{course}-{mm}-{dd}".into() }
-fn default_backend() -> AiBackend { AiBackend::Claude }
-fn default_skill_variant() -> SkillVariant { SkillVariant::Claude }
-fn default_snapshot_mode() -> SnapshotMode { SnapshotMode::PreMerge }
-fn default_archive_threshold_weeks() -> u32 { 8 }
+fn default_raw_dir() -> String {
+    "notes".into()
+}
+fn default_recordings_dir() -> String {
+    "recordings".into()
+}
+fn default_artifacts_dir() -> String {
+    "artifacts".into()
+}
+fn default_sources_dir() -> String {
+    "sources".into()
+}
+fn default_synthetic_dir() -> String {
+    "_synthetic".into()
+}
+fn default_generated_dir() -> String {
+    "_generated".into()
+}
+fn default_csnotes_dir() -> String {
+    "_csnotes".into()
+}
+fn default_filename_format() -> String {
+    "{course}-{mm}-{dd}".into()
+}
+fn default_backend() -> AiBackend {
+    AiBackend::Claude
+}
+fn default_skill_variant() -> SkillVariant {
+    SkillVariant::Claude
+}
+fn default_snapshot_mode() -> SnapshotMode {
+    SnapshotMode::PreMerge
+}
+fn default_archive_threshold_weeks() -> u32 {
+    8
+}
 fn default_recording_qualifiers() -> Vec<String> {
     vec!["transcript".into(), "summary".into(), "mindmap".into()]
 }
-fn default_require_recordings() -> bool { true }
-fn default_scan_ai_conversations() -> bool { true }
+fn default_require_recordings() -> bool {
+    true
+}
+fn default_scan_ai_conversations() -> bool {
+    true
+}
 
 impl VaultConfig {
     pub fn load(vault_root: &Path) -> Result<Self> {
         let path = vault_root.join("csnotes.toml");
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let cfg: VaultConfig = toml::from_str(&content)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let cfg: VaultConfig =
+            toml::from_str(&content).with_context(|| format!("parsing {}", path.display()))?;
         Ok(cfg)
     }
 
     pub fn save(&self, vault_root: &Path) -> Result<()> {
         let path = vault_root.join("csnotes.toml");
-        let content = toml::to_string_pretty(self)
-            .context("serializing csnotes.toml")?;
-        std::fs::write(&path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        let content = toml::to_string_pretty(self).context("serializing csnotes.toml")?;
+        std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 
@@ -173,7 +199,10 @@ impl VaultConfig {
     /// Also recognized: anything in `recording_qualifiers`.
     pub fn is_recording_qualifier(&self, qualifier: &str) -> bool {
         if qualifier.len() == 1
-            && qualifier.chars().next().map_or(false, |c| c.is_ascii_lowercase())
+            && qualifier
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_lowercase())
         {
             return true;
         }
@@ -182,8 +211,7 @@ impl VaultConfig {
 
     /// True when recording exports are expected for the given course.
     pub fn recordings_required_for(&self, course: &str) -> bool {
-        self.require_recordings
-            && !self.courses_without_recordings.iter().any(|c| c == course)
+        self.require_recordings && !self.courses_without_recordings.iter().any(|c| c == course)
     }
 
     /// Instruction file path in the vault (to be copied into the workspace).
@@ -192,7 +220,10 @@ impl VaultConfig {
             SkillVariant::Claude => "claude.md",
             SkillVariant::Gemini => "gemini.md",
         };
-        vault_root.join(&self.csnotes_dir).join("instructions").join(filename)
+        vault_root
+            .join(&self.csnotes_dir)
+            .join("instructions")
+            .join(filename)
     }
 
     pub fn synthesis_md_path(&self, vault_root: &Path) -> PathBuf {
@@ -222,11 +253,7 @@ pub fn find_vault_root(start: &Path) -> Result<PathBuf> {
         }
         match current.parent() {
             Some(parent) => current = parent.to_path_buf(),
-            None => {
-                return Err(
-                    CsnotesError::VaultNotFound(start.to_path_buf()).into()
-                )
-            }
+            None => return Err(CsnotesError::VaultNotFound(start.to_path_buf()).into()),
         }
     }
 }
@@ -266,7 +293,9 @@ pub struct FilenameFormat {
 
 impl std::fmt::Debug for FilenameFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FilenameFormat").field("raw", &self.raw).finish()
+        f.debug_struct("FilenameFormat")
+            .field("raw", &self.raw)
+            .finish()
     }
 }
 
@@ -293,7 +322,7 @@ impl FilenameFormat {
         let tokens = tokenise(s)?;
 
         // Must contain {course}
-        if !tokens.iter().any(|t| *t == Token::Course) {
+        if !tokens.contains(&Token::Course) {
             bail!(CsnotesError::InvalidFilenameFormat {
                 format: s.to_string(),
                 reason: "must contain {course}".to_string(),
@@ -301,9 +330,9 @@ impl FilenameFormat {
         }
 
         // Must contain at least one date token
-        let has_date = tokens.iter().any(|t| {
-            matches!(t, Token::Year | Token::Month | Token::Day)
-        });
+        let has_date = tokens
+            .iter()
+            .any(|t| matches!(t, Token::Year | Token::Month | Token::Day));
         if !has_date {
             bail!(CsnotesError::InvalidFilenameFormat {
                 format: s.to_string(),
@@ -316,14 +345,17 @@ impl FilenameFormat {
             if window[0].is_variable_length() && window[1].is_variable_length() {
                 bail!(CsnotesError::InvalidFilenameFormat {
                     format: s.to_string(),
-                    reason: format!(
-                        "two adjacent variable-length tokens would be ambiguous to parse"
-                    ),
+                    reason: "two adjacent variable-length tokens would be ambiguous to parse"
+                        .to_string(),
                 });
             }
         }
 
-        Ok(FilenameFormat { raw: s.to_string(), tokens, parser: OnceLock::new() })
+        Ok(FilenameFormat {
+            raw: s.to_string(),
+            tokens,
+            parser: OnceLock::new(),
+        })
     }
 
     pub fn as_str(&self) -> &str {
@@ -562,7 +594,8 @@ mod tests {
         assert!(!VaultConfig {
             courses_without_recordings: vec!["CPSC5001".into()],
             ..cfg.clone()
-        }.recordings_required_for("CPSC5001"));
+        }
+        .recordings_required_for("CPSC5001"));
     }
 
     // ── VaultConfig defaults ──────────────────────────────────────────────────

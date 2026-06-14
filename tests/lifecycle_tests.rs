@@ -111,7 +111,10 @@ fn happy_path_creates_two_notes() {
     let root = tmp.path();
 
     let status = run_process(root, "default");
-    assert!(status.success(), "process should succeed with default fixture");
+    assert!(
+        status.success(),
+        "process should succeed with default fixture"
+    );
 
     // Both synthetic notes must have been merged into the vault.
     let index_path = root.join("_synthetic/cpsc5001/cpsc5001.md");
@@ -144,8 +147,7 @@ fn happy_path_creates_two_notes() {
     let manifest_raw = fs::read_to_string(root.join("csnotes.json")).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();
     assert_eq!(
-        manifest["sessions"]["CPSC5001-09-03"]["status"],
-        "processed",
+        manifest["sessions"]["CPSC5001-09-03"]["status"], "processed",
         "session should be marked processed"
     );
 
@@ -189,7 +191,11 @@ fn reconcile_registers_session_and_recording() {
 
     // Drop a raw note and a matching recording transcript
     fs::write(root.join("notes/CPSC5001-09-03.md"), "# Lecture 1\n").unwrap();
-    fs::write(root.join("recordings/CPSC5001-09-03-transcript.md"), "Transcript text.\n").unwrap();
+    fs::write(
+        root.join("recordings/CPSC5001-09-03-transcript.md"),
+        "Transcript text.\n",
+    )
+    .unwrap();
 
     let status = Command::new(env!("CARGO_BIN_EXE_csnotes"))
         .arg("reconcile")
@@ -210,9 +216,16 @@ fn reconcile_registers_session_and_recording() {
         "unprocessed"
     );
     let exports = &manifest["sessions"]["CPSC5001-09-03"]["recording_exports"];
-    assert_eq!(exports.as_array().map(|a| a.len()), Some(1), "transcript should be attached");
+    assert_eq!(
+        exports.as_array().map(|a| a.len()),
+        Some(1),
+        "transcript should be attached"
+    );
     assert!(
-        exports[0]["path"].as_str().unwrap_or("").contains("transcript"),
+        exports[0]["path"]
+            .as_str()
+            .unwrap_or("")
+            .contains("transcript"),
         "export path should reference the transcript file"
     );
 }
@@ -356,8 +369,7 @@ fn broken_wikilink_discards_workspace() {
     let manifest_raw = fs::read_to_string(root.join("csnotes.json")).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();
     assert_eq!(
-        manifest["sessions"]["CPSC5001-09-03"]["status"],
-        "unprocessed",
+        manifest["sessions"]["CPSC5001-09-03"]["status"], "unprocessed",
         "session should remain unprocessed after invariant failure"
     );
     assert!(

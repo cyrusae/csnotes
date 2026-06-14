@@ -18,9 +18,7 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 
 use crate::error::CsnotesError;
-use crate::frontmatter::{
-    write_frontmatter, NoteFrontmatter, NoteKind,
-};
+use crate::frontmatter::{write_frontmatter, NoteFrontmatter, NoteKind};
 use crate::pathutil::safe_join;
 use crate::report::{CreateNoteOp, UpdateNoteOp};
 
