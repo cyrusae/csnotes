@@ -2,11 +2,12 @@
   "uuid": "5cb0cf21-e0da-4713-abcf-2dcb6b220834",
   "display_id": null,
   "title": "audit: nudge for AI conversation sources missing .json sidecar (long conversations)",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-14T00:32:02.312382Z",
-  "updated_at": "2026-06-14T00:32:02.460474Z",
+  "updated_at": "2026-06-14T02:00:09.282140Z",
+  "closed_at": "2026-06-14T02:00:09.282140Z",
   "labels": [
     "feature"
   ]
