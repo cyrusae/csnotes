@@ -1,0 +1,10 @@
+{
+  "uuid": "55465eac-9a28-43d4-bdb2-d7777f40b832",
+  "issue_uuid": "5a1feadd-8d59-455a-98f2-c343d521d8f9",
+  "author": "3owj",
+  "content": "Triaged 256 missed mutants from 0613 mutants run. Opened L62-L69 covering actionable gaps. Skipped inherently-untestable misses (backend process launchers, interactive prompt functions, file I/O side effects).",
+  "created_at": "2026-06-14T05:38:51.841716Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA4PXikmbGwYCo7YEx/+j6HKAkot5e4S9+IWKK4EhgyCzZRAjdT+gI8Tc8p1/TbhWRaHRxXm/H+73o2ig2GtX1AQ=="
+}
