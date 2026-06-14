@@ -1,0 +1,10 @@
+{
+  "uuid": "07a76605-ce26-4ddb-bbee-fe4d377b0e90",
+  "issue_uuid": "c1a6b4d6-3719-4184-8f0f-0c0ee5e3182d",
+  "author": "3owj",
+  "content": "L58: added sources_ignore_dirs: Vec<String> to VaultConfig (serde default = []). scan_sources_dir gains ignore_dirs: &[String] param; uses WalkDir::filter_entry to prune matching subdirs by name (depth > 0 check avoids filtering the root). Production call site and all 8 test call sites updated. 2 new reconcile tests: ignore_dirs_skips_matching_subdirectory and ignore_dirs_matches_by_name_not_full_path. L57: AI_CONVERSATION_SIDECAR_WORD_THRESHOLD = 2_000. audit_vault gains manifest: &Manifest param; sidecar check loops over manifest.sources filtering for AiConversation kind, checks for {stem}.json alongside the .md, nudges with soft_warning if word_count >= threshold and no json. Removed early return on missing synthetic dir (downstream checks are already no-op safe). audit_cmd.rs updated to pass manifest. 3 new audit tests: warns_when_long_ai_conversation_has_no_sidecar, no_warn_when_json_present, no_warn_for_short_conversation. All existing tests updated to pass empty manifest. 291 unit tests total, all passing.",
+  "created_at": "2026-06-14T01:57:49.980161Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAH7pJz50n+sOhgkopC6UVigBLKwQyttwZObgW4ZwbNBE0wOHzuylK7RMC7e3ghBOJdEx7+z/+gRfGb25dSItDBg=="
+}
