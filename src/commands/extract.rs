@@ -483,4 +483,197 @@ mod tests {
             assert_eq!(items[0].kind, ExtractKind::Deadline);
         }
     }
+
+    // ── extract_from: filter + line numbers ───────────────────────────────────
+
+    #[test]
+    fn filter_by_deadlines() {
+        // Catches `replace || with && in extract_from` line 131: with &&,
+        // `f == "deadlines" && f == "deadline"` is always false → filter skips deadlines.
+        let items = extract_from("due by monday\n", Some("deadlines"));
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Deadline);
+    }
+
+    #[test]
+    fn filter_by_deadline_singular() {
+        let items = extract_from("assignment due friday\n", Some("deadline"));
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn action_line_number_is_one_indexed() {
+        // Catches `replace + with * in extract_from` on `i + 1`: first line (i=0)
+        // would give line=0 with *, but correct is line=1.
+        let items = extract_from("- [ ] first line task\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].line, 1, "first-line action must report line 1");
+    }
+
+    #[test]
+    fn deadline_line_number_is_one_indexed() {
+        let items = extract_from("assignment due friday\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].line, 1);
+    }
+
+    #[test]
+    fn question_line_number_is_one_indexed() {
+        let items = extract_from("what is recursion?\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].line, 1);
+    }
+
+    // ── is_action: star checkbox ──────────────────────────────────────────────
+
+    #[test]
+    fn is_action_detects_star_checkbox() {
+        // Catches `replace || with && in is_action` at column 62: with &&, the star
+        // checkbox requires also matching the TODO block, which is impossible.
+        let items = extract_from("* [ ] read the paper\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Action);
+        assert_eq!(items[0].text, "read the paper");
+    }
+
+    // ── is_question: individual || branches ──────────────────────────────────
+
+    #[test]
+    fn is_question_q_colon_without_trailing_mark() {
+        // Catches `replace || with && in is_question` at line 234: Q: prefix alone
+        // would fail if `ends_with('?') && starts_with("Q:")` is required.
+        let items = extract_from("Q: what does polymorphism mean\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Question);
+    }
+
+    #[test]
+    fn is_question_double_question_prefix() {
+        // Catches `replace || with && in is_question` at line 235.
+        let items = extract_from("?? is this on the exam\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Question);
+    }
+
+    #[test]
+    fn is_question_question_colon_prefix() {
+        let items = extract_from("QUESTION: explain big-O\n", None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Question);
+    }
+
+    #[test]
+    fn is_question_trims_trailing_space() {
+        // Catches one of the `|| with &&` in trim_end_matches closure (line 230).
+        assert!(is_question("why does this work? "));
+    }
+
+    #[test]
+    fn is_question_trims_trailing_asterisk() {
+        // Catches the other `|| with &&` in trim_end_matches closure (line 230).
+        assert!(is_question("why does this work?*"));
+    }
+
+    // ── clean_question ────────────────────────────────────────────────────────
+
+    #[test]
+    fn clean_question_strips_q_colon() {
+        assert_eq!(clean_question("Q: what is recursion"), "what is recursion");
+    }
+
+    #[test]
+    fn clean_question_strips_question_colon() {
+        assert_eq!(clean_question("QUESTION: explain big-O"), "explain big-O");
+    }
+
+    #[test]
+    fn clean_question_strips_double_question() {
+        assert_eq!(clean_question("?? is this tested"), "is this tested");
+    }
+
+    #[test]
+    fn clean_question_preserves_bare_question() {
+        assert_eq!(clean_question("why does this work?"), "why does this work?");
+    }
+
+    // ── render_extract ────────────────────────────────────────────────────────
+
+    #[test]
+    fn render_extract_groups_by_kind() {
+        // Catches `replace == with != in render_extract`: with !=, each section's
+        // filter would collect items of OTHER kinds, scrambling the output.
+        let items = vec![
+            ExtractedItem {
+                kind: ExtractKind::Action,
+                text: "do thing".into(),
+                line: 1,
+            },
+            ExtractedItem {
+                kind: ExtractKind::Question,
+                text: "why?".into(),
+                line: 2,
+            },
+        ];
+        let out = render_extract("CS101-01-10", "2026-01-10", &items);
+        assert!(
+            out.contains("## Actions\n"),
+            "actions section should appear"
+        );
+        assert!(
+            out.contains("## Questions\n"),
+            "questions section should appear"
+        );
+        assert!(
+            !out.contains("## Deadlines\n"),
+            "empty deadlines section should be omitted"
+        );
+        assert!(
+            out.contains("do thing"),
+            "action text should appear in actions section"
+        );
+    }
+
+    #[test]
+    fn render_extract_includes_header() {
+        let out = render_extract("CS101-01-10", "2026-01-10", &[]);
+        assert!(
+            out.contains("CS101-01-10"),
+            "session id should appear in header"
+        );
+        assert!(out.contains("2026-01-10"), "date should appear in header");
+    }
+
+    // ── capitalise ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn capitalise_uppercases_first_char() {
+        assert_eq!(capitalise("action"), "Action");
+        assert_eq!(capitalise("question"), "Question");
+        assert_eq!(capitalise(""), "");
+    }
+
+    // ── relative_path ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn relative_path_strips_vault_prefix() {
+        let base = std::path::PathBuf::from("/vault");
+        let path = std::path::Path::new("/vault/notes/cs101.md");
+        assert_eq!(relative_path(path, &base), "notes/cs101.md");
+    }
+
+    #[test]
+    fn relative_path_falls_back_to_absolute_when_no_prefix() {
+        let base = std::path::PathBuf::from("/other");
+        let path = std::path::Path::new("/vault/notes/cs101.md");
+        assert_eq!(relative_path(path, &base), "/vault/notes/cs101.md");
+    }
+
+    // ── ExtractKind::label ────────────────────────────────────────────────────
+
+    #[test]
+    fn extract_kind_label() {
+        assert_eq!(ExtractKind::Action.label(), "action");
+        assert_eq!(ExtractKind::Deadline.label(), "deadline");
+        assert_eq!(ExtractKind::Question.label(), "question");
+    }
 }

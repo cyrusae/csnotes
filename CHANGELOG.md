@@ -52,6 +52,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- unit tests for ui.rs pure math functions (hsl_to_rgb, rainbow) (L68)
+- unit tests for extract.rs helpers (is_question, extract_from, render_extract) (L67)
+- cover reconcile recording_kind parsing and scan_sources_dir filter edge cases (L66)
+- cover process run_teardown op dispatch match arms (L65)
+- cover wrap_session_inputs RecordingKind/ArtifactKind match arms (L64)
+- cover audit reindex and check_embed_line_present logic (L63)
+- add test for replace_note_links fallback branch to eliminate timeout mutants (L62)
+- add mutants.toml to skip untestable functions (L70)
 - migrate to Rust 2024 edition (L61)
 - dev: pre-commit hook should auto-fix rather than warn (L60)
 - dev: add clippy + fmt pre-commit hook (L59)

@@ -1188,7 +1188,10 @@ mod tests {
     // ── Source workspace helpers ───────────────────────────────────────────────
 
     use crate::config::{AiBackend, SkillVariant, SnapshotMode};
-    use crate::manifest::{ManifestConfig, SourceEntry, SourceKind, SourceStatus};
+    use crate::manifest::{
+        ArtifactEntry, ArtifactKind, ManifestConfig, RecordingExport, RecordingKind, SessionEntry,
+        SessionStatus, SourceEntry, SourceKind, SourceStatus,
+    };
 
     fn make_source_entry(kind: SourceKind, courses: Vec<String>) -> SourceEntry {
         SourceEntry {
@@ -1699,5 +1702,173 @@ mod tests {
         assert!(md.contains("Scanner"));
         assert!(md.contains("Read line-by-line"));
         assert!(md.contains("chat.md"));
+    }
+
+    // ── wrap_session_inputs ───────────────────────────────────────────────────
+
+    fn make_session_entry() -> SessionEntry {
+        SessionEntry {
+            date: chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap(),
+            course: "CS101".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            raw_note: "notes/raw.md".into(),
+            recording_exports: vec![],
+            artifacts: vec![],
+            recording_missing: false,
+            status: SessionStatus::Processed,
+            processed_at: None,
+            topics_updated: vec![],
+        }
+    }
+
+    fn ws_file(ws: &std::path::Path, input_path: &str) -> std::path::PathBuf {
+        ws.join(format!("input_{}.md", sanitise(input_path)))
+    }
+
+    #[test]
+    fn wrap_session_inputs_transcript_tag() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(
+            vault.path(),
+            "recordings/t.md",
+            "# Transcript\nFull text.\n",
+        );
+        let mut entry = make_session_entry();
+        entry.recording_exports.push(RecordingExport {
+            path: "recordings/t.md".into(),
+            kind: RecordingKind::Transcript,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        let content = std::fs::read_to_string(ws_file(ws.path(), "recordings/t.md")).unwrap();
+        assert!(
+            content.contains("<recording_transcript"),
+            "Transcript kind must produce recording_transcript tag, got: {content}"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_summary_tag() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "recordings/s.md", "# Summary\nKey points.\n");
+        let mut entry = make_session_entry();
+        entry.recording_exports.push(RecordingExport {
+            path: "recordings/s.md".into(),
+            kind: RecordingKind::Summary,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        let content = std::fs::read_to_string(ws_file(ws.path(), "recordings/s.md")).unwrap();
+        assert!(
+            content.contains("<recording_summary"),
+            "Summary kind must produce recording_summary tag, got: {content}"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_mindmap_tag() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "recordings/m.md", "# Mindmap\nNodes.\n");
+        let mut entry = make_session_entry();
+        entry.recording_exports.push(RecordingExport {
+            path: "recordings/m.md".into(),
+            kind: RecordingKind::Mindmap,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        let content = std::fs::read_to_string(ws_file(ws.path(), "recordings/m.md")).unwrap();
+        assert!(
+            content.contains("<recording_mindmap"),
+            "Mindmap kind must produce recording_mindmap tag, got: {content}"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_skips_missing_recording() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        // File is NOT written to vault
+        let mut entry = make_session_entry();
+        entry.recording_exports.push(RecordingExport {
+            path: "recordings/missing.md".into(),
+            kind: RecordingKind::Transcript,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        assert!(
+            !ws_file(ws.path(), "recordings/missing.md").exists(),
+            "missing recording export must be silently skipped"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_code_artifact_tag() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "artifacts/hello.py", "print('hello')\n");
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/hello.py".into(),
+            kind: ArtifactKind::Code,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        let content = std::fs::read_to_string(ws_file(ws.path(), "artifacts/hello.py")).unwrap();
+        assert!(
+            content.contains("<instructor_code_sample"),
+            "Code artifact must produce instructor_code_sample tag, got: {content}"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_skips_missing_artifact() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/ghost.md".into(),
+            kind: ArtifactKind::Slides,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        assert!(
+            !ws_file(ws.path(), "artifacts/ghost.md").exists(),
+            "missing artifact must be silently skipped"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_skips_non_text_artifact() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "artifacts/slides.pdf", "%PDF binary\n");
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/slides.pdf".into(),
+            kind: ArtifactKind::Slides,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        assert!(
+            !ws_file(ws.path(), "artifacts/slides.pdf").exists(),
+            "non-text (pdf) artifact must be silently skipped"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_includes_text_artifact() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(
+            vault.path(),
+            "artifacts/notes.md",
+            "# Lecture Notes\nContent.\n",
+        );
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/notes.md".into(),
+            kind: ArtifactKind::Slides,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        assert!(
+            ws_file(ws.path(), "artifacts/notes.md").exists(),
+            "text artifact (.md) must be included in workspace"
+        );
     }
 }

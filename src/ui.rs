@@ -137,6 +137,28 @@ mod tests {
         assert_eq!(g, 0);
     }
 
+    #[test]
+    fn hsl_high_lightness_exposes_plus_minus_mutations() {
+        // l=0.75, s=1.0: c=(1-|2*0.75-1|)*1=0.5, x=0 (h=0 sector), m=0.75-0.25=0.5
+        // r=(0.5+0.5)*255=255, g=(0+0.5)*255≈128, b=(0+0.5)*255≈128
+        // Catches +→- at the `r1+m`, `g1+m`, `b1+m` additions.
+        let (r, g, b) = hsl_to_rgb(0.0, 1.0, 0.75);
+        assert_eq!(r, 255);
+        assert_eq!(g, 128);
+        assert_eq!(b, 128);
+    }
+
+    #[test]
+    fn hsl_fractional_saturation_exposes_multiply_mutations() {
+        // l=0.5, s=0.5: c=(1-0)*0.5=0.5, x=0 (h=0 sector), m=0.5-0.25=0.25
+        // r=(0.5+0.25)*255≈191, g=(0+0.25)*255≈64, b=(0+0.25)*255≈64
+        // Catches *→/ in the `c*(1-...)` and `c*x` expressions since s≠1.
+        let (r, g, b) = hsl_to_rgb(0.0, 0.5, 0.5);
+        assert_eq!(r, 191);
+        assert_eq!(g, 64);
+        assert_eq!(b, 64);
+    }
+
     // rainbow: in test context stdout is not a tty, so color_supported() → false
     // and rainbow() must return the plain string unchanged.
 

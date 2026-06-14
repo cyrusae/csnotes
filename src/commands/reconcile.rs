@@ -1306,6 +1306,135 @@ mod tests {
         }
     }
 
+    // ── recording_kind ────────────────────────────────────────────────────────
+
+    fn make_vault_config() -> crate::config::VaultConfig {
+        crate::config::VaultConfig {
+            raw_dir: "notes".into(),
+            recordings_dir: "recordings".into(),
+            artifacts_dir: "artifacts".into(),
+            sources_dir: "sources".into(),
+            synthetic_dir: "_synthetic".into(),
+            generated_dir: "_generated".into(),
+            csnotes_dir: ".csnotes".into(),
+            filename_format: "{course}-{mm}-{dd}".into(),
+            active_courses: vec![],
+            default_backend: AiBackend::Mock,
+            skill_variant: SkillVariant::Claude,
+            snapshot_mode: SnapshotMode::PreMerge,
+            archive_threshold_weeks: 8,
+            recording_qualifiers: vec!["transcript".into(), "summary".into(), "mindmap".into()],
+            agy_model: None,
+            require_recordings: true,
+            courses_without_recordings: vec![],
+            scan_ai_conversations: true,
+            sources_ignore_dirs: vec![],
+        }
+    }
+
+    #[test]
+    fn recording_kind_returns_transcript() {
+        let cfg = make_vault_config();
+        assert_eq!(
+            recording_kind("transcript", &cfg),
+            RecordingKind::Transcript
+        );
+    }
+
+    #[test]
+    fn recording_kind_returns_summary() {
+        let cfg = make_vault_config();
+        assert_eq!(recording_kind("summary", &cfg), RecordingKind::Summary);
+    }
+
+    #[test]
+    fn recording_kind_returns_mindmap() {
+        let cfg = make_vault_config();
+        assert_eq!(recording_kind("mindmap", &cfg), RecordingKind::Mindmap);
+    }
+
+    #[test]
+    fn recording_kind_single_lowercase_is_anonymous() {
+        let cfg = make_vault_config();
+        assert_eq!(recording_kind("a", &cfg), RecordingKind::Anonymous);
+        assert_eq!(recording_kind("z", &cfg), RecordingKind::Anonymous);
+    }
+
+    #[test]
+    fn recording_kind_uppercase_single_letter_is_not_anonymous() {
+        // Catches `replace && with ||` in the guard: with `||`, len==1 alone would
+        // be sufficient, so "A" would incorrectly return Anonymous.
+        let cfg = make_vault_config();
+        assert_eq!(recording_kind("A", &cfg), RecordingKind::Custom);
+    }
+
+    #[test]
+    fn recording_kind_multi_char_is_not_anonymous() {
+        // Catches `replace == with !=` and `replace match guard with true`.
+        let cfg = make_vault_config();
+        assert_ne!(recording_kind("ab", &cfg), RecordingKind::Anonymous);
+    }
+
+    #[test]
+    fn recording_kind_unknown_qualifier_is_custom() {
+        let cfg = make_vault_config();
+        assert_eq!(recording_kind("deep-dive", &cfg), RecordingKind::Custom);
+    }
+
+    // ── scan_sources_dir ──────────────────────────────────────────────────────
+
+    #[test]
+    fn scan_sources_dir_registers_top_level_md() {
+        // Catches `delete match arm (_, Some(stem))`: without that arm, top-level
+        // sources (empty parent) fall through to `_ => continue` and are skipped.
+        // Also catches `replace match guard !parent.is_empty() with true`: the
+        // source_id would be "/sicp" instead of "sicp".
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        write_file(&sources_dir, "sicp.md", "# SICP\n");
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(
+            manifest.sources.contains_key("sicp"),
+            "top-level .md should be registered with bare stem as key"
+        );
+    }
+
+    #[test]
+    fn scan_sources_dir_depth_filter_doesnt_exclude_root() {
+        // Catches `replace > with >= in scan_sources_dir` and `replace && with ||`:
+        // with either mutation, if the sources_dir's own name appears in ignore_dirs,
+        // filter_entry would exclude the root, preventing all subdirectory recursion.
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let books_dir = sources_dir.join("Textbooks");
+        write_file(&books_dir, "sicp.md", "# SICP\n");
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &["sources".to_string()],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(
+            !new_sources.is_empty(),
+            "sources should be found even when ignore_dirs contains the root dir name"
+        );
+    }
+
     #[test]
     fn scan_bare_session_id_md_is_slides() {
         let tmp = TempDir::new().unwrap();

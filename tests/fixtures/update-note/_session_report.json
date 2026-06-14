@@ -1,0 +1,25 @@
+{
+  "csnotes_report_schema": 1,
+  "run_id": "PLACEHOLDER",
+  "backend": "mock",
+  "started_at": "2026-09-03T18:00:00Z",
+  "completed_at": "2026-09-03T18:45:00Z",
+  "scope": {
+    "kind": "session",
+    "sessions": ["CPSC5001-09-03"],
+    "sources": []
+  },
+  "operations": [
+    {
+      "op": "update_note",
+      "path": "_synthetic/cs/sorting.md",
+      "add_provenance": {
+        "sessions": [{"course": "CPSC5001", "date": "2026-09-03", "relationship": "extended"}],
+        "sources": []
+      },
+      "sections": [],
+      "change_summary": "Extended sorting coverage."
+    }
+  ],
+  "review_flags": []
+}

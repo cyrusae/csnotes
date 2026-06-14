@@ -728,11 +728,11 @@ mod tests {
     use super::*;
     use crate::config::{AiBackend, SkillVariant, SnapshotMode, VaultConfig};
     use crate::frontmatter::ProvenanceDelta;
-    use crate::manifest::ManifestConfig;
+    use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
     use crate::report::{
         CreateNoteOp, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp,
     };
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use tempfile::TempDir;
 
     fn write(dir: &std::path::Path, name: &str, body: &str) {
@@ -1162,6 +1162,32 @@ mod tests {
     }
 
     #[test]
+    fn invariant_suite_index_note_without_block_id_is_not_flagged() {
+        let tmp = TempDir::new().unwrap();
+        // Index notes never carry block_id.  The block_id check in invariant_suite
+        // must be guarded by `fm.kind == NoteKind::Atomic`, not `!=`.
+        write(
+            tmp.path(),
+            "_synthetic/cs/index.md",
+            "---\ncsnotes_schema: 1\nkind: index\ntopic: cs\ntitle: CS\n\
+             contributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\n# CS\n",
+        );
+        let report = make_report(vec![]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(
+            !result
+                .hard_violations
+                .iter()
+                .any(|v| v.contains("block_id")),
+            "index note must not trigger block_id violation: {:?}",
+            result.hard_violations
+        );
+    }
+
+    #[test]
     fn collect_note_stems_lowercases_mixed_case_files() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "Sorting.md", "# Sorting\n");
@@ -1353,6 +1379,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn precondition_embed_wrong_file_same_block_id_errors() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
+        // Index has the correct block_id but the wrong file stem.
+        // check_embed_line_present uses `file == stem && block_id() == id`;
+        // if `&&` were `||`, the block_id match alone would falsely satisfy it.
+        write(tmp.path(), "index.md", "![[other-note#^my-id]]\n");
+        let report = make_report(vec![Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Atomic,
+            path: "note.md".into(),
+            title: "Test".into(),
+            topic: "test".into(),
+            block_id: Some("my-id".into()),
+            embed_in: vec!["index.md".into()],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "test".into(),
+        })]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("my-id") || err.to_string().contains("note"),
+            "expected embed-line-missing error, got: {err}"
+        );
+    }
+
     // ── collect_fixes / apply_fixes ───────────────────────────────────────────
 
     #[test]
@@ -1469,6 +1520,165 @@ mod tests {
             topic.atomic_notes[0].contains("sorting.md"),
             "{:?}",
             topic.atomic_notes
+        );
+    }
+
+    // ── reindex contributing session deduplication ────────────────────────────
+
+    fn note_with_contrib(block_id: &str, course: &str, date: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+             block_id: {block_id}\n\
+             contributing_sessions:\n- course: {course}\n  date: \"{date}\"\n  relationship: introduced\n\
+             contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
+             last_updated: \"2026-01-01T00:00:00Z\"\n---\nContent.\n\n^{block_id}\n"
+        )
+    }
+
+    #[test]
+    fn reindex_deduplicates_identical_contributing_sessions() {
+        let tmp = TempDir::new().unwrap();
+        // Two notes both carrying the same (course, date) contrib — must appear once.
+        write(
+            tmp.path(),
+            "_synthetic/cs/note-a.md",
+            &note_with_contrib("id-a", "CS101", "2026-01-10"),
+        );
+        write(
+            tmp.path(),
+            "_synthetic/cs/note-b.md",
+            &note_with_contrib("id-b", "CS101", "2026-01-10"),
+        );
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        assert_eq!(
+            topic.contributing_sessions.len(),
+            1,
+            "identical session must appear only once: {:?}",
+            topic.contributing_sessions
+        );
+    }
+
+    #[test]
+    fn reindex_keeps_distinct_contributing_sessions_by_date() {
+        let tmp = TempDir::new().unwrap();
+        // Same course, different dates — both must be kept.
+        // If the dedup predicate used `||` instead of `&&`, the date-only
+        // difference would be ignored and one entry would be dropped.
+        write(
+            tmp.path(),
+            "_synthetic/cs/note-a.md",
+            &note_with_contrib("id-a", "CS101", "2026-01-10"),
+        );
+        write(
+            tmp.path(),
+            "_synthetic/cs/note-b.md",
+            &note_with_contrib("id-b", "CS101", "2026-01-17"),
+        );
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        assert_eq!(
+            topic.contributing_sessions.len(),
+            2,
+            "sessions with same course but different date must both be kept: {:?}",
+            topic.contributing_sessions
+        );
+    }
+
+    // ── reindex pending_sessions ──────────────────────────────────────────────
+
+    fn write_manifest_with_session(
+        vault_root: &Path,
+        session_id: &str,
+        processed_at: Option<DateTime<Utc>>,
+        topics_updated: Vec<String>,
+    ) {
+        let mut m = make_empty_manifest(vault_root);
+        m.sessions.insert(
+            session_id.to_string(),
+            SessionEntry {
+                date: chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap(),
+                course: "CS101".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                raw_note: "notes/cs101-01-10.md".into(),
+                recording_exports: vec![],
+                artifacts: vec![],
+                recording_missing: false,
+                status: SessionStatus::Processed,
+                processed_at,
+                topics_updated,
+            },
+        );
+        m.save(vault_root).unwrap();
+    }
+
+    #[test]
+    fn reindex_pending_sessions_includes_post_topic_session() {
+        let tmp = TempDir::new().unwrap();
+        // Note last_updated Jan 01; session processed Jun 01 (after).  Session
+        // lists "cs" → must appear in pending_sessions.
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &clean_note("sort-01"),
+        );
+        let processed = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        write_manifest_with_session(tmp.path(), "sess-1", Some(processed), vec!["cs".into()]);
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        assert!(
+            topic.pending_sessions.contains(&"sess-1".to_string()),
+            "session processed after last_updated must be pending: {:?}",
+            topic.pending_sessions
+        );
+    }
+
+    #[test]
+    fn reindex_pending_sessions_excludes_pre_topic_session() {
+        let tmp = TempDir::new().unwrap();
+        // Note last_updated Jun 01; session processed Jan 01 (before).
+        // Must NOT be in pending_sessions.
+        let late_note = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Late\n\
+                         block_id: late-01\ncontributing_sessions: []\ncontributing_sources: []\n\
+                         created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-06-01T00:00:00Z\"\n\
+                         ---\nContent.\n\n^late-01\n";
+        write(tmp.path(), "_synthetic/cs/late.md", late_note);
+        let processed = "2026-01-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        write_manifest_with_session(tmp.path(), "old-sess", Some(processed), vec!["cs".into()]);
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        assert!(
+            !topic.pending_sessions.contains(&"old-sess".to_string()),
+            "session processed before last_updated must not be pending: {:?}",
+            topic.pending_sessions
+        );
+    }
+
+    #[test]
+    fn reindex_pending_sessions_excludes_session_not_for_topic() {
+        let tmp = TempDir::new().unwrap();
+        // Session processed after the topic's last_updated, but topics_updated
+        // lists a different topic.  Must NOT appear in cs's pending_sessions.
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &clean_note("sort-01"),
+        );
+        let processed = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        write_manifest_with_session(
+            tmp.path(),
+            "wrong-topic-sess",
+            Some(processed),
+            vec!["other-topic".into()],
+        );
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        assert!(
+            !topic
+                .pending_sessions
+                .contains(&"wrong-topic-sess".to_string()),
+            "session for different topic must not appear in cs pending_sessions: {:?}",
+            topic.pending_sessions
         );
     }
 

@@ -377,3 +377,71 @@ fn broken_wikilink_discards_workspace() {
         "session_in_progress should be cleared even after discard"
     );
 }
+
+/// rename_topic op: the topic folder is renamed and notes updated.
+/// Verifies the Op::RenameTopic dispatch arm in run_teardown.
+#[test]
+fn rename_topic_op_renames_folder_in_vault() {
+    let tmp = setup_vault();
+    let root = tmp.path();
+
+    let status = run_process(root, "rename-topic");
+    assert!(
+        status.success(),
+        "process should succeed with rename-topic fixture"
+    );
+
+    assert!(
+        root.join("_synthetic/algorithms").exists(),
+        "algorithms/ folder should exist after rename"
+    );
+    assert!(
+        !root.join("_synthetic/cpsc5001").exists(),
+        "cpsc5001/ folder should be gone after rename"
+    );
+    let index = fs::read_to_string(root.join("_synthetic/algorithms/cpsc5001.md")).unwrap();
+    assert!(
+        index.contains("topic: algorithms"),
+        "index frontmatter should reflect renamed topic"
+    );
+}
+
+/// set_embed op: embed line is added to the index note.
+/// Verifies the Op::SetEmbed dispatch arm in run_teardown.
+#[test]
+fn set_embed_op_adds_embed_line_to_index() {
+    let tmp = setup_vault();
+    let root = tmp.path();
+
+    let status = run_process(root, "set-embed");
+    assert!(
+        status.success(),
+        "process should succeed with set-embed fixture"
+    );
+
+    let index = fs::read_to_string(root.join("_synthetic/cs/cs.md")).unwrap();
+    assert!(
+        index.contains("![[sorting#^sort-id]]"),
+        "index should contain the embed line after set_embed: {index}"
+    );
+}
+
+/// update_note op: provenance is merged into the note's frontmatter.
+/// Verifies the Op::UpdateNote dispatch arm in run_teardown.
+#[test]
+fn update_note_op_merges_provenance_into_note() {
+    let tmp = setup_vault();
+    let root = tmp.path();
+
+    let status = run_process(root, "update-note");
+    assert!(
+        status.success(),
+        "process should succeed with update-note fixture"
+    );
+
+    let note = fs::read_to_string(root.join("_synthetic/cs/sorting.md")).unwrap();
+    assert!(
+        note.contains("CPSC5001"),
+        "note frontmatter should contain the added contributing session: {note}"
+    );
+}
