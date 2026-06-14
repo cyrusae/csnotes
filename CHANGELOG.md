@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- AI conversation sidecar ingestion: read {stem}.json, render markdown index in workspace (L56)
 - Sources in session workspaces: index, course filtering, multi-source scope (L44)
 - AI conversation source type: AiConversation kind, 3-level path parsing, scan command (L36)
 - process --resume: persist and re-enter AI conversation on recover (L19)
@@ -49,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- AI conversation sidecar index: design integration for >4.5k-word conversations (L53)
 - mutant coverage: command handlers (diff, extract, flags_cmd, status, config_cmd, reconcile, process) (L51)
 - unit tests for check_links_resolve and check_orphan_atomics callers (L35)
 - unit tests for precondition_pass error branches (CreateNote/UpdateNote/RenameTopic) (L34)

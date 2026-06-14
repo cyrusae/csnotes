@@ -14,6 +14,7 @@
 ///     _synthetic/                           ← writable working copy
 ///
 /// The vault is never touched until the brief, snapshot-guarded merge-back.
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -25,6 +26,7 @@ use crate::error::CsnotesError;
 use crate::flags::FlagStore;
 use crate::manifest::{Manifest, SessionEntry, SourceEntry};
 use crate::obsidian::collect_all_block_ids;
+
 
 // ── Workspace paths ───────────────────────────────────────────────────────────
 
@@ -101,8 +103,8 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     }
 
     // 3. Copy sources into sources/ and write _sources_index.md
-    copy_sources_to_workspace(params.vault_root, params.manifest, &params.scope, &workspace_root)?;
-    write_sources_index(params.manifest, &params.scope, &workspace_root)?;
+    let large_sources = copy_sources_to_workspace(params.vault_root, params.manifest, &params.scope, &workspace_root)?;
+    write_sources_index(params.manifest, &params.scope, &workspace_root, &large_sources)?;
 
     // 4. Writable copy of _synthetic/
     let vault_synthetic = params.vault_root.join(&params.config.synthetic_dir);
@@ -262,37 +264,90 @@ fn wrap_session_inputs(
 /// For Session scope: all non-Textbook sources, plus Textbooks that are either
 /// untagged (`courses` empty) or tagged with the session's course.
 /// For Topic scope: all sources (no course filter available).
+// ── Sidecar JSON types ────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct SidecarLineRange {
+    start: usize,
+    end: usize,
+}
+
+#[derive(serde::Deserialize)]
+struct SidecarSummary {
+    user_query: String,
+    assistant_response: String,
+    key_takeaway: String,
+}
+
+#[derive(serde::Deserialize)]
+struct SidecarTurn {
+    turn_index: usize,
+    line_range: SidecarLineRange,
+    prompt_preview: String,
+    summary: SidecarSummary,
+    #[serde(default)]
+    concepts_discussed: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ConversationSidecar {
+    word_count: usize,
+    total_turns: usize,
+    overall_summary: String,
+    #[serde(default)]
+    global_tags: Vec<String>,
+    turns: Vec<SidecarTurn>,
+}
+
+/// Metadata extracted from a `.json` sidecar, threaded to `write_sources_index`.
+struct SidecarMeta {
+    word_count: usize,
+    total_turns: usize,
+    overall_summary: String,
+}
+
+// ── Source file writing ───────────────────────────────────────────────────────
+
 /// For Source scope: only the explicitly listed source IDs.
 fn copy_sources_to_workspace(
     vault_root: &Path,
     manifest: &Manifest,
     scope: &WorkspaceScope,
     workspace_root: &Path,
-) -> Result<()> {
+) -> Result<HashMap<String, SidecarMeta>> {
     let ids: Vec<&str> = sources_for_scope(manifest, scope);
     if ids.is_empty() {
-        return Ok(());
+        return Ok(HashMap::new());
     }
     let sources_dir = workspace_root.join("sources");
     fs::create_dir_all(&sources_dir)?;
+    let mut sidecars: HashMap<String, SidecarMeta> = HashMap::new();
     for source_id in ids {
         if let Some(entry) = manifest.sources.get(source_id) {
-            write_source_file(vault_root, source_id, entry, &sources_dir)?;
+            if let Some(meta) = write_source_file(vault_root, source_id, entry, &sources_dir)? {
+                sidecars.insert(source_id.to_string(), meta);
+            }
         }
     }
-    Ok(())
+    Ok(sidecars)
 }
 
 /// Write one source file into `sources_dir/{source_id}.md`, XML-wrapped.
+///
+/// For `AiConversation` sources that have a companion `{stem}.json` sidecar in
+/// the vault, also renders a markdown index into `sources_dir/{source_id}_index.md`
+/// so the AI agent can navigate the conversation turn-by-turn without loading
+/// the full file. Returns `Some(SidecarMeta)` when a sidecar was written.
 fn write_source_file(
     vault_root: &Path,
     source_id: &str,
     entry: &SourceEntry,
     sources_dir: &Path,
-) -> Result<()> {
+) -> Result<Option<SidecarMeta>> {
+    use crate::manifest::SourceKind;
     let src = vault_root.join(&entry.path);
     if !src.exists() {
-        return Ok(());
+        return Ok(None);
     }
     let content = crate::frontmatter::read_note(&src)?;
     let kind_str = entry.kind.as_str();
@@ -303,14 +358,77 @@ fn write_source_file(
     }
     fs::write(&dest, wrapped)?;
     make_readonly(&dest)?;
-    Ok(())
+
+    if entry.kind == SourceKind::AiConversation {
+        let json_path = src.with_extension("json");
+        if json_path.exists() {
+            let json_bytes = fs::read(&json_path)?;
+            if let Ok(sidecar) = serde_json::from_slice::<ConversationSidecar>(&json_bytes) {
+                let md = render_sidecar_md(source_id, &sidecar);
+                let sidecar_dest = sources_dir.join(format!("{}_index.md", source_id));
+                if let Some(parent) = sidecar_dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&sidecar_dest, md)?;
+                make_readonly(&sidecar_dest)?;
+                return Ok(Some(SidecarMeta {
+                    word_count: sidecar.word_count,
+                    total_turns: sidecar.total_turns,
+                    overall_summary: sidecar.overall_summary,
+                }));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Render a `ConversationSidecar` as a workspace-readable markdown document.
+fn render_sidecar_md(source_id: &str, s: &ConversationSidecar) -> String {
+    let mut out = format!("# Conversation Index: {}\n\n", source_id);
+    out.push_str(&format!(
+        "**Length:** ~{} words · **Turns:** {}  \n",
+        s.word_count, s.total_turns
+    ));
+    out.push_str(&format!("**Summary:** {}  \n", s.overall_summary));
+    if !s.global_tags.is_empty() {
+        out.push_str(&format!("**Tags:** {}  \n", s.global_tags.join(", ")));
+    }
+    out.push_str(&format!("\nFull source: `{}.md`\n", source_id));
+
+    for turn in &s.turns {
+        out.push_str(&format!(
+            "\n## Turn {} (lines {}–{})\n\n",
+            turn.turn_index, turn.line_range.start, turn.line_range.end
+        ));
+        out.push_str(&format!("**Prompt:** {}  \n", turn.prompt_preview));
+        out.push_str(&format!("**Query:** {}  \n", turn.summary.user_query));
+        out.push_str(&format!(
+            "**Response:** {}  \n",
+            turn.summary.assistant_response
+        ));
+        out.push_str(&format!(
+            "**Takeaway:** {}  \n",
+            turn.summary.key_takeaway
+        ));
+        if !turn.concepts_discussed.is_empty() {
+            out.push_str(&format!(
+                "**Concepts:** {}  \n",
+                turn.concepts_discussed.join(", ")
+            ));
+        }
+    }
+    out
 }
 
 /// Write `_sources_index.md` listing every source present in this workspace.
+/// `sidecars` maps source IDs to metadata for AI conversations that have an
+/// ingested `.json` sidecar; their entries are annotated with summary, word
+/// count, and a pointer to the rendered sidecar index.
 fn write_sources_index(
     manifest: &Manifest,
     scope: &WorkspaceScope,
     workspace_root: &Path,
+    sidecars: &HashMap<String, SidecarMeta>,
 ) -> Result<()> {
     let ids: Vec<&str> = sources_for_scope(manifest, scope);
     let mut out = String::from("# Sources Index\n\n");
@@ -328,11 +446,23 @@ fn write_sources_index(
                 if !entry.courses.is_empty() {
                     out.push_str(&format!(" | courses: {}", entry.courses.join(", ")));
                 }
-                if let Some(ref summary) = entry.summary {
-                    out.push_str(&format!(" — {}", summary));
-                }
-                if !entry.tags.is_empty() {
-                    out.push_str(&format!(" [{}]", entry.tags.join(", ")));
+                if let Some(meta) = sidecars.get(*source_id) {
+                    // Prefer the richer summary from the JSON sidecar.
+                    out.push_str(&format!(" — {}", meta.overall_summary));
+                    if !entry.tags.is_empty() {
+                        out.push_str(&format!(" [{}]", entry.tags.join(", ")));
+                    }
+                    out.push_str(&format!(
+                        " _(~{} words, {} turns — see `{}_index.md`)_",
+                        meta.word_count, meta.total_turns, source_id
+                    ));
+                } else {
+                    if let Some(ref summary) = entry.summary {
+                        out.push_str(&format!(" — {}", summary));
+                    }
+                    if !entry.tags.is_empty() {
+                        out.push_str(&format!(" [{}]", entry.tags.join(", ")));
+                    }
                 }
                 out.push('\n');
             }
@@ -1201,7 +1331,7 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/SICP/Ch01".into()],
         };
-        write_sources_index(&manifest, &scope, tmp.path()).unwrap();
+        write_sources_index(&manifest, &scope, tmp.path(), &HashMap::new()).unwrap();
 
         let content = std::fs::read_to_string(tmp.path().join("_sources_index.md")).unwrap();
         assert!(content.contains("Textbooks/SICP/Ch01"));
@@ -1209,5 +1339,187 @@ mod tests {
         assert!(content.contains("CPSC5001"));
         assert!(content.contains("Building abstractions"));
         assert!(content.contains("lisp"));
+    }
+
+    fn make_ai_conversation_source(path: &str) -> SourceEntry {
+        SourceEntry {
+            path: path.to_string(),
+            kind: SourceKind::AiConversation,
+            status: crate::manifest::SourceStatus::Unprocessed,
+            last_processed_at: None,
+            heading_scheme: vec![],
+            topics_updated: vec![],
+            summary: Some("Complexity discussion".into()),
+            tags: vec!["algorithms".into()],
+            courses: vec![],
+        }
+    }
+
+    fn example_sidecar_json() -> &'static str {
+        r#"{
+          "source_file": "Gemini/chat.md",
+          "word_count": 4450,
+          "total_turns": 2,
+          "overall_summary": "Setting up a defensive Java environment",
+          "global_tags": ["java", "java/concepts/defensive-programming"],
+          "turns": [
+            {
+              "turn_index": 1,
+              "line_range": { "start": 12, "end": 167, "prompt_start": 12, "response_start": 14 },
+              "prompt_preview": "> **Cyrus:** I want a rigorous Java setup",
+              "summary": {
+                "user_query": "User wants a defensive Java dev environment.",
+                "assistant_response": "Outlined strict compiler flags and Maven.",
+                "key_takeaway": "Use -Xlint:all and -Werror from day one."
+              },
+              "tags": ["java/concepts/defensive-programming"],
+              "concepts_discussed": ["Maven", "Checkstyle", "Compiler Flags"]
+            },
+            {
+              "turn_index": 2,
+              "line_range": { "start": 168, "end": 293, "prompt_start": 170, "response_start": 172 },
+              "prompt_preview": "> **Cyrus:** Tell me more about the Scanner wrapper",
+              "summary": {
+                "user_query": "User asks about Scanner guardrails.",
+                "assistant_response": "Explained hasNext() validation and nextLine() parsing.",
+                "key_takeaway": "Read line-by-line to avoid buffer management bugs."
+              },
+              "tags": ["java/stdlib/scanner"],
+              "concepts_discussed": ["Scanner", "Input Validation", "Buffer Management"]
+            }
+          ]
+        }"#
+    }
+
+    #[test]
+    fn sidecar_json_ingested_writes_markdown_index() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "sources/AI-Conversations/Gemini/chat.md", "Conversation content.\n");
+        write_file(vault.path(), "sources/AI-Conversations/Gemini/chat.json", example_sidecar_json());
+
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert(
+            "AI-Conversations/Gemini/chat".into(),
+            make_ai_conversation_source("sources/AI-Conversations/Gemini/chat.md"),
+        );
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["AI-Conversations/Gemini/chat".into()],
+        };
+        let sidecars = copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+
+        assert!(sidecars.contains_key("AI-Conversations/Gemini/chat"), "sidecar meta should be returned");
+        let meta = &sidecars["AI-Conversations/Gemini/chat"];
+        assert_eq!(meta.word_count, 4450);
+        assert_eq!(meta.total_turns, 2);
+        assert_eq!(meta.overall_summary, "Setting up a defensive Java environment");
+
+        let index_path = ws.path().join("sources/AI-Conversations/Gemini/chat_index.md");
+        assert!(index_path.exists(), "rendered markdown sidecar should be written");
+        let md = std::fs::read_to_string(&index_path).unwrap();
+        assert!(md.contains("## Turn 1"), "markdown should have turn headers");
+        assert!(md.contains("lines 12–167"), "turn line range should appear");
+        assert!(md.contains("Maven"), "concepts should appear");
+        assert!(md.contains("Read line-by-line"), "takeaway from turn 2 should appear");
+        assert!(md.contains("chat.md"), "pointer to full source should appear");
+    }
+
+    #[test]
+    fn no_sidecar_when_json_absent() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "sources/AI-Conversations/Gemini/chat.md", "Content.\n");
+        // No .json file present.
+
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert(
+            "AI-Conversations/Gemini/chat".into(),
+            make_ai_conversation_source("sources/AI-Conversations/Gemini/chat.md"),
+        );
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["AI-Conversations/Gemini/chat".into()],
+        };
+        let sidecars = copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+
+        assert!(sidecars.is_empty(), "no sidecar meta when json is absent");
+        assert!(
+            !ws.path().join("sources/AI-Conversations/Gemini/chat_index.md").exists(),
+            "no markdown sidecar written when json absent"
+        );
+    }
+
+    #[test]
+    fn no_sidecar_for_textbook_even_with_json() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "sources/Textbooks/SICP/Ch01.md", "Chapter content.\n");
+        write_file(vault.path(), "sources/Textbooks/SICP/Ch01.json", example_sidecar_json());
+
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert(
+            "Textbooks/SICP/Ch01".into(),
+            SourceEntry {
+                path: "sources/Textbooks/SICP/Ch01.md".into(),
+                kind: SourceKind::Textbook,
+                status: crate::manifest::SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: None,
+                tags: vec![],
+                courses: vec![],
+            },
+        );
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["Textbooks/SICP/Ch01".into()],
+        };
+        let sidecars = copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+
+        assert!(sidecars.is_empty(), "json sidecar should only be ingested for AiConversation sources");
+        assert!(
+            !ws.path().join("sources/Textbooks/SICP/Ch01_index.md").exists(),
+        );
+    }
+
+    #[test]
+    fn sources_index_uses_sidecar_summary_and_word_count() {
+        let tmp = TempDir::new().unwrap();
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert(
+            "AI-Conversations/Gemini/chat".into(),
+            make_ai_conversation_source(""),
+        );
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["AI-Conversations/Gemini/chat".into()],
+        };
+        let mut sidecars = HashMap::new();
+        sidecars.insert("AI-Conversations/Gemini/chat".to_string(), SidecarMeta {
+            word_count: 4450,
+            total_turns: 2,
+            overall_summary: "Setting up a defensive Java environment".into(),
+        });
+        write_sources_index(&manifest, &scope, tmp.path(), &sidecars).unwrap();
+
+        let content = std::fs::read_to_string(tmp.path().join("_sources_index.md")).unwrap();
+        assert!(content.contains("Setting up a defensive Java environment"), "overall_summary should appear");
+        assert!(content.contains("~4450 words"), "word count should appear");
+        assert!(content.contains("2 turns"), "turn count should appear");
+        assert!(content.contains("_index.md"), "pointer to sidecar should appear");
+    }
+
+    #[test]
+    fn render_sidecar_md_includes_all_turn_fields() {
+        let sidecar: ConversationSidecar = serde_json::from_str(example_sidecar_json()).unwrap();
+        let md = render_sidecar_md("AI-Conversations/Gemini/chat", &sidecar);
+        assert!(md.contains("## Turn 1"));
+        assert!(md.contains("## Turn 2"));
+        assert!(md.contains("lines 12–167"));
+        assert!(md.contains("Scanner"));
+        assert!(md.contains("Read line-by-line"));
+        assert!(md.contains("chat.md"));
     }
 }
