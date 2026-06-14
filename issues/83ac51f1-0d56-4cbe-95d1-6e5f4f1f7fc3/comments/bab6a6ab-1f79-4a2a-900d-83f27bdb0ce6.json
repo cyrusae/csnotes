@@ -1,0 +1,10 @@
+{
+  "uuid": "bab6a6ab-1f79-4a2a-900d-83f27bdb0ce6",
+  "issue_uuid": "83ac51f1-0d56-4cbe-95d1-6e5f4f1f7fc3",
+  "author": "3owj",
+  "content": "Added 8 tests to workspace.rs covering wrap_session_inputs: RecordingKind::Transcript/Summary/Mindmap tag selection, ArtifactKind::Code tag (instructor_code_sample), skip-missing-recording, skip-missing-artifact, skip-non-text-artifact (pdf), include-text-artifact. All 8 pass.",
+  "created_at": "2026-06-14T15:45:04.619617Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABALo7F61mxn5b7V2AK4H0lvnwwH0xc++gCLZUzhwwfW/iBI9snM5fmIZjrijqrvDaCzGZlz/teYg9jBbdNOkypAQ=="
+}
