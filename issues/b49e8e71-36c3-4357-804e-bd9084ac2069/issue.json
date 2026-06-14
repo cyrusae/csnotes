@@ -2,11 +2,12 @@
   "uuid": "b49e8e71-36c3-4357-804e-bd9084ac2069",
   "display_id": null,
   "title": "cover reconcile recording_kind parsing and scan_sources_dir filter edge cases",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-14T05:38:37.275002Z",
-  "updated_at": "2026-06-14T05:38:37.410611Z",
+  "updated_at": "2026-06-14T16:46:06.559648Z",
+  "closed_at": "2026-06-14T16:46:06.559648Z",
   "labels": [
     "test"
   ]
