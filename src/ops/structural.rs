@@ -1774,4 +1774,181 @@ mod tests {
             "content should be unchanged"
         );
     }
+
+    // ── execute_merge_topics (error paths) ───────────────────────────────────
+
+    #[test]
+    fn merge_topics_fails_with_empty_from_list() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/target")).unwrap();
+
+        let op = MergeTopicsOp {
+            from: vec![],
+            into: "target".to_string(),
+            reason: "test".to_string(),
+        };
+        assert!(execute_merge_topics(&op, tmp.path(), "_synthetic").is_err());
+    }
+
+    #[test]
+    fn merge_topics_fails_if_source_topic_missing() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/target")).unwrap();
+
+        let op = MergeTopicsOp {
+            from: vec!["nonexistent".to_string()],
+            into: "target".to_string(),
+            reason: "test".to_string(),
+        };
+        let err = execute_merge_topics(&op, tmp.path(), "_synthetic").unwrap_err();
+        assert!(
+            err.to_string().contains("nonexistent"),
+            "error should name the missing source: {err}"
+        );
+    }
+
+    // ── relink_raw_notes (remaining op arms) ─────────────────────────────────
+
+    #[test]
+    fn relink_raw_notes_move_atomic_rewrites_raw_notes() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        std::fs::write(
+            raw.join("lecture.md"),
+            "See [[algorithms/sorting]] and ![[algorithms/sorting#^id]].\n",
+        )
+        .unwrap();
+
+        let ops = vec![Op::MoveAtomic(MoveAtomicOp {
+            from_path: "_synthetic/algorithms/sorting.md".to_string(),
+            to_topic: "data-structures".to_string(),
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1);
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(content.contains("[[data-structures/sorting]]"));
+        assert!(content.contains("![[data-structures/sorting#^id]]"));
+        assert!(!content.contains("[[algorithms/sorting"));
+    }
+
+    #[test]
+    fn relink_raw_notes_promote_atomic_rewrites_raw_notes() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        std::fs::write(raw.join("lecture.md"), "See [[algorithms/sorting]].\n").unwrap();
+
+        let ops = vec![Op::PromoteAtomic(PromoteAtomicOp {
+            from_path: "_synthetic/algorithms/sorting.md".to_string(),
+            to_topic: "sorting-algorithms".to_string(),
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1);
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(content.contains("[[sorting-algorithms/sorting]]"));
+        assert!(!content.contains("[[algorithms/sorting"));
+    }
+
+    #[test]
+    fn relink_raw_notes_demote_topic_rewrites_raw_notes() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        std::fs::write(
+            raw.join("lecture.md"),
+            "See [[graphs/bfs]] and ![[graphs/dfs#^dfs-id]].\n",
+        )
+        .unwrap();
+
+        let ops = vec![Op::DemoteTopic(DemoteTopicOp {
+            from_topic: "graphs".to_string(),
+            into_topic: "algorithms".to_string(),
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1);
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(content.contains("[[algorithms/bfs]]"));
+        assert!(content.contains("![[algorithms/dfs#^dfs-id]]"));
+        assert!(!content.contains("[[graphs/"));
+    }
+
+    #[test]
+    fn relink_raw_notes_merge_topics_rewrites_raw_notes_and_skips_into() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        // Links to topic-a (a "from" source) should be rewritten.
+        // Links to algorithms (the "into", also listed in from) must NOT be rewritten.
+        std::fs::write(
+            raw.join("lecture.md"),
+            "See [[topic-a/note]] and [[algorithms/existing]].\n",
+        )
+        .unwrap();
+
+        let ops = vec![Op::MergeTopics(MergeTopicsOp {
+            from: vec!["topic-a".to_string(), "algorithms".to_string()],
+            into: "algorithms".to_string(),
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1, "only topic-a links should be rewritten");
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(
+            content.contains("[[algorithms/note]]"),
+            "topic-a link should be rewritten to algorithms"
+        );
+        assert!(
+            content.contains("[[algorithms/existing]]"),
+            "existing algorithms link must be preserved unchanged"
+        );
+        assert!(!content.contains("[[topic-a/"));
+    }
+
+    #[test]
+    fn relink_raw_notes_split_topic_rewrites_moved_notes_and_skips_remainder() {
+        let tmp = TempDir::new().unwrap();
+        let raw = tmp.path().join("notes");
+        std::fs::create_dir_all(&raw).unwrap();
+        // [[algorithms/sorting]] moves to sorting topic; [[algorithms/searching]] stays.
+        std::fs::write(
+            raw.join("lecture.md"),
+            "See [[algorithms/sorting]] and [[algorithms/searching]].\n",
+        )
+        .unwrap();
+
+        let ops = vec![Op::SplitTopic(SplitTopicOp {
+            from: "algorithms".to_string(),
+            into: vec![
+                crate::report::SplitTarget {
+                    topic: "algorithms".to_string(),
+                    atomics: vec!["searching".to_string()],
+                },
+                crate::report::SplitTarget {
+                    topic: "sorting".to_string(),
+                    atomics: vec!["sorting".to_string()],
+                },
+            ],
+            reason: "test".to_string(),
+        })];
+        let roots = [raw.as_path()];
+        let n = relink_raw_notes(&ops, &roots).unwrap();
+        assert_eq!(n, 1, "only the moved note link should be rewritten");
+        let content = std::fs::read_to_string(raw.join("lecture.md")).unwrap();
+        assert!(
+            content.contains("[[sorting/sorting]]"),
+            "moved note link should be rewritten"
+        );
+        assert!(
+            content.contains("[[algorithms/searching]]"),
+            "remainder link must be preserved unchanged"
+        );
+    }
 }
