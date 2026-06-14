@@ -1,0 +1,10 @@
+{
+  "uuid": "e81b0d57-b28d-4112-ae89-7ea196ca2fa2",
+  "issue_uuid": "5a1feadd-8d59-455a-98f2-c343d521d8f9",
+  "author": "3owj",
+  "content": "Added 7 tests to structural.rs: merge_topics error paths (empty-from, missing-source) and relink_raw_notes coverage for all previously-untested op arms (MoveAtomic, PromoteAtomic, DemoteTopic, MergeTopics with self-skip filter, SplitTopic with remainder filter). All 43 structural tests pass.",
+  "created_at": "2026-06-14T21:39:00.208785Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAEgs6lPjO76MJXmTEfdKsIjrJdgFy8VQbf0ZwLviSDDDxJD3xeeEALN8z1je5z2cLTcVbGokWt7F/NRdLxDPBAA=="
+}
