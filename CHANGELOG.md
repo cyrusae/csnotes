@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- Artifact folder-based session matching: `CPSC5001-09-03/` directory in artifacts attaches all files inside (including nested subfolders like `day1/`) to that session; qualifier derived from path within the session folder (L1)
 - PDF and PPTX lecture slide extraction: text extracted at workspace assembly, boilerplate stripped, near-duplicate slides deduped (L5/#82)
 - Add csnotes check in-workspace validation command (L2)
 - audit: nudge for AI conversation sources missing .json sidecar (long conversations) (L57)
@@ -38,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- PDF and PPTX artifacts were never registered in the manifest (missing from `ACCEPTED_ARTIFACT_EXTENSIONS`), making workspace slide extraction unreachable; now correctly registered as Slides (L1)
 - Question extraction now catches mid-line `?` marks, not just end-of-line (L6/#83)
 - Respect sources_ignore_dirs in vault file index walk (L4)
 - Allow wikilinks from _synthetic/ to any vault file, not just _synthetic/ (L3)
@@ -58,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- README: added command reference table + per-command flag summaries; artifact naming patterns section; folder-based matching example in vault layout (L1)
 - `config --set` help text expanded with per-key descriptions; `-h` shows one-liner, `--help` shows full reference (L7/#84)
 - cover ops/structural execute_merge_topics and relink_raw_notes (#75)
 - unit tests for ui.rs pure math functions (hsl_to_rgb, rainbow) (L68)

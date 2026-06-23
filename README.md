@@ -326,7 +326,13 @@ CPSC5001/
     CPSC5001-09-03-transcript.md   ← recording export (matched by course+date prefix)
     CPSC5001-09-03-summary.md      ← second export for the same session
   artifacts/
-    CPSC5001-09-03-slides.pdf      ← matched by session prefix, classified as Slides
+    CPSC5001-09-03-slides.pdf      ← flat pattern: session prefix → Slides
+    CPSC5001-09-03/                ← folder pattern: directory name = session ID
+      slides-lecture.pdf           ←   Slides (pdf → always Slides)
+      slides-reading.pdf           ←   Slides
+      day1/                        ←   professor's upload subfolder
+        Thing.java                 ←     Code (qualifier: "day1-Thing")
+        Node.java                  ←     Code (qualifier: "day1-Node")
 
 CPSC5002/
   notes/
@@ -352,6 +358,31 @@ If `active_courses` is empty, the fallback is a flat layout with `raw_dir`, `rec
 
 Recording exports are matched to sessions by filename prefix (`{course}-{mm}-{dd}`). Any file whose name starts with a known session prefix and contains one of the `recording_qualifiers` strings (`transcript`, `summary`, `mindmap` by default) is attached to that session.
 
+### Artifact naming patterns
+
+Artifacts in the `artifacts/` directory can follow two naming patterns — both are scanned by `csnotes reconcile`:
+
+**Pattern A — session-prefixed filename:**
+```
+CPSC5001-09-03-slides.pdf        → session CPSC5001-09-03, qualifier "slides"
+CPSC5001-09-03.md                → session CPSC5001-09-03, no qualifier
+```
+
+**Pattern B — session-named directory:**
+```
+CPSC5001-09-03/slides.pdf        → session CPSC5001-09-03, qualifier "slides"
+CPSC5001-09-03/day1/Thing.java   → session CPSC5001-09-03, qualifier "day1-Thing"
+```
+
+The directory pattern is useful when an instructor uploads a folder per class (often named `day1`, `week3`, etc.) that you want to attach to a session. Create a directory named after the session ID, drop the instructor's folder inside, and reconcile.
+
+Kind classification follows this priority:
+1. **`pdf`, `pptx`, `ppt`** → Slides (content extracted at workspace assembly time)
+2. Qualifier contains a slide keyword (`slides`, `deck`, `handout`, …) → Slides
+3. Text format (`md`, `html`, `tex`, `txt`) with no qualifier → Slides
+4. Code extension (`java`, `py`, `rs`, `js`, …) → Code
+5. Anything else → Other
+
 ---
 
 ## AI backends
@@ -375,6 +406,61 @@ Both backends preserve the workspace on failure so you can re-enter without losi
 
 ```sh
 csnotes recover --resume
+```
+
+---
+
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `csnotes init` | Scaffold a new vault (directories, instruction files, `csnotes.toml`). Use `--instructions-only` to refresh just the instruction files. |
+| `csnotes process` | Run an AI synthesis session against pending notes. Auto-reconciles first. |
+| `csnotes reconcile` | Scan all directories and register new sessions, sources, and artifacts in the manifest. |
+| `csnotes status` | Show unprocessed sessions, unprocessed sources, topic health, open flags, and any in-progress warning. |
+| `csnotes diff` | Semantic diff of what the last session created, updated, or restructured. |
+| `csnotes extract` | Pull action items, deadlines, and questions out of raw notes into `_generated/extracts/`. |
+| `csnotes flags list` | List open review flags. `--all` includes threads and changelog flags. |
+| `csnotes flags show <id>` | Full detail for one flag. |
+| `csnotes flags resolve <id>` | Mark a flag resolved. `--follow-up "..."` records a note at resolution. |
+| `csnotes recover` | Resume or discard an in-progress session after a crash. |
+| `csnotes audit` | Read-only invariant check across the full vault. `--reindex` rebuilds `csnotes.json`. `--fix --apply` runs mechanical repairs. |
+| `csnotes check` | Validate wikilinks, block anchors, and block-ID uniqueness from inside an active workspace. Run by the AI before exiting. |
+| `csnotes config` | Read or update vault configuration (see above for options). |
+
+### `csnotes process` flags
+
+```sh
+csnotes process                            # auto-picks the one unprocessed session
+csnotes process --session 09-03           # specific session by date
+csnotes process --session 09-03 --course CPSC5001
+csnotes process --source SICP/ch01        # process a source file instead of a session
+csnotes process --source Textbooks/SICP  # expand prefix → all sources under that path
+csnotes process --topic "sorting-algorithms"  # review session on an existing topic
+csnotes process --backend agy             # override AI backend for this run
+csnotes process --agy-model gemini-2.5-pro
+csnotes process --dry-run                 # show scope without launching
+csnotes process --resume                  # re-enter an interrupted session
+```
+
+### `csnotes reconcile` flags
+
+```sh
+csnotes reconcile                         # scan and register new files
+csnotes reconcile --notify                # desktop notification if anything new is found
+csnotes reconcile --rename-spaces hyphens # rename filenames that contain spaces
+csnotes reconcile --rename-spaces underscores
+```
+
+### `csnotes config` flags
+
+```sh
+csnotes config --show                     # print current config
+csnotes config --set key=value            # set a config key (see config --help for keys)
+csnotes config --add-course CPSC5001      # add a course
+csnotes config --archive CPSC5001         # remove from active courses
+csnotes config --migrate                  # show rename plan for current filename_format
+csnotes config --migrate --apply          # execute the rename plan
 ```
 
 ---

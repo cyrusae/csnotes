@@ -434,8 +434,12 @@ fn recording_kind(qualifier: &str, config: &VaultConfig) -> RecordingKind {
 /// Text-readable file extensions we'll wrap and pass to the AI.
 /// Binary formats (PDF, images, office docs) are skipped — they can't be
 /// read as UTF-8 and the AI can't use them directly.
-const TEXT_ARTIFACT_EXTENSIONS: &[&str] = &[
-    // Markup / documentation
+/// Extensions accepted during artifact scanning.  Includes binary presentation
+/// formats (pdf, pptx, ppt) that are extracted via the slides pipeline at
+/// workspace-assembly time rather than read directly as text.
+const ACCEPTED_ARTIFACT_EXTENSIONS: &[&str] = &[
+    // Binary slide formats (extracted by workspace via pdftotext / PPTX parser)
+    "pdf", "pptx", "ppt", // Markup / documentation
     "md", "txt", "html", "htm", "tex", // Code
     "py", "java", "rs", "js", "ts", "jsx", "tsx", "c", "cpp", "h", "hpp", "cc", "cxx", "go", "rb",
     "swift", "kt", "kts", "cs", "fs", "ml", "mli", "hs", "lhs", "r", "rmd", "sql", "sh", "bash",
@@ -450,18 +454,28 @@ const SLIDE_QUALIFIERS: &[&str] = &[
     "slides", "slide", "deck", "handout", "handouts", "lecture", "notes",
 ];
 
-/// Walk `{course}/{artifacts_dir}/` for text-readable files whose stems start
-/// with a known session ID and attach them as `ArtifactEntry` records.
+/// Walk `{course}/{artifacts_dir}/` for files matching a session and attach
+/// them as `ArtifactEntry` records.
 ///
-/// Matching rule (same spirit as recording scanning):
-///   `{session_id}.{ext}`       → attached, no qualifier
-///   `{session_id}-{rest}.{ext}`→ attached, qualifier = rest
+/// Two matching patterns (tried in order):
+///
+///   Pattern A — flat file with session-prefixed stem:
+///     `{session_id}.{ext}`        → attached, qualifier = ""
+///     `{session_id}-{rest}.{ext}` → attached, qualifier = rest
+///
+///   Pattern B — file inside a session-named directory:
+///     `{session_id}/{file}.{ext}`         → attached, qualifier = stem
+///     `{session_id}/{sub}/{file}.{ext}`   → attached, qualifier = "sub-stem"
+///
+///   Example: `CPSC5001-09-03/day1/Thing.java` → session CPSC5001-09-03,
+///   qualifier "day1-Thing", kind Code.
 ///
 /// Kind classification (in priority order):
-/// 1. If qualifier contains a slide keyword → Slides
-/// 2. If extension is in `SLIDE_EXTENSIONS` and no qualifier (bare session) → Slides
-/// 3. If extension is a code extension → Code
-/// 4. Otherwise → Other
+/// 1. Extension is pdf/pptx/ppt → Slides (extracted by workspace pipeline)
+/// 2. Qualifier contains a slide keyword → Slides
+/// 3. Extension is in `SLIDE_EXTENSIONS` and qualifier is empty → Slides
+/// 4. Extension is a code extension → Code
+/// 5. Otherwise → Other
 fn scan_artifacts_dir(
     artifacts_dir: &Path,
     vault_root: &Path,
@@ -480,7 +494,7 @@ fn scan_artifacts_dir(
             Some(e) => e.to_ascii_lowercase(),
             None => continue,
         };
-        if !TEXT_ARTIFACT_EXTENSIONS.contains(&ext.as_str()) {
+        if !ACCEPTED_ARTIFACT_EXTENSIONS.contains(&ext.as_str()) {
             continue;
         }
 
@@ -489,26 +503,42 @@ fn scan_artifacts_dir(
             None => continue,
         };
 
-        // Try to match stem → (session_id, qualifier).
-        let (session_id, qualifier): (&str, &str) = if manifest.sessions.contains_key(stem) {
-            // Bare `{session_id}.{ext}` — no qualifier.
-            (stem, "")
-        } else if let Some((prefix, suffix)) = stem.split_once('-').and_then(|_| {
-            // We want the longest matching session_id prefix, so we try
-            // `rsplit_once` which gives us the last `-` split.  If the
-            // prefix is a known session, use it.
-            stem.rsplit_once('-')
-        }) {
-            if manifest.sessions.contains_key(prefix) {
-                (prefix, suffix)
-            } else {
-                continue; // prefix not a session — skip
-            }
+        // ── Match the file to a session ───────────────────────────────────────
+        // Pattern A: stem is `{session_id}` or `{session_id}-{rest}`.
+        // Pattern B: first path component under artifacts_dir is a session ID.
+        let (session_id, qualifier): (String, String) = if manifest.sessions.contains_key(stem) {
+            (stem.to_string(), String::new())
+        } else if let Some(sid) = stem
+            .rsplit_once('-')
+            .and_then(|(pre, _)| manifest.sessions.contains_key(pre).then_some(pre))
+        {
+            (sid.to_string(), stem[sid.len() + 1..].to_string())
         } else {
-            continue; // no `-` in stem and not an exact session match
+            // Pattern B: file lives inside a directory named after a session.
+            let rel = match path.strip_prefix(artifacts_dir) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let mut components = rel.components();
+            let first = match components.next().and_then(|c| c.as_os_str().to_str()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            if !manifest.sessions.contains_key(first.as_str()) {
+                continue;
+            }
+            // Qualifier: remaining path components joined by '-', no extension.
+            let rest: std::path::PathBuf = components.collect();
+            let qual = rest
+                .with_extension("")
+                .components()
+                .filter_map(|c| c.as_os_str().to_str())
+                .collect::<Vec<_>>()
+                .join("-");
+            (first, qual)
         };
 
-        let entry_in_manifest = match manifest.sessions.get_mut(session_id) {
+        let entry_in_manifest = match manifest.sessions.get_mut(session_id.as_str()) {
             Some(e) => e,
             None => continue,
         };
@@ -528,8 +558,8 @@ fn scan_artifacts_dir(
             continue;
         }
 
-        let kind = classify_artifact_kind(&ext, qualifier);
-        new_artifacts.push((session_id.to_string(), rel_path.clone()));
+        let kind = classify_artifact_kind(&ext, &qualifier);
+        new_artifacts.push((session_id, rel_path.clone()));
         entry_in_manifest.artifacts.push(ArtifactEntry {
             path: rel_path,
             kind,
@@ -539,6 +569,11 @@ fn scan_artifacts_dir(
 }
 
 fn classify_artifact_kind(ext: &str, qualifier: &str) -> ArtifactKind {
+    // Binary presentation formats are always slides regardless of qualifier.
+    if matches!(ext, "pdf" | "pptx" | "ppt") {
+        return ArtifactKind::Slides;
+    }
+
     let q_lower = qualifier.to_ascii_lowercase();
 
     // Explicit slide qualifier in the filename suffix.
@@ -840,7 +875,9 @@ mod tests {
     }
 
     #[test]
-    fn scan_skips_binary_extensions() {
+    fn scan_registers_pdf_as_slides() {
+        // PDFs are registered (kind: Slides) so the workspace slide-extraction
+        // pipeline can process them; they are NOT skipped at reconcile time.
         let tmp = TempDir::new().unwrap();
         let artifacts_dir = tmp.path().join("artifacts");
         write_file(&artifacts_dir, "CPSC5001-09-03-slides.pdf", "%PDF content");
@@ -855,7 +892,162 @@ mod tests {
         )
         .unwrap();
 
-        assert!(new_artifacts.is_empty(), "PDF should be skipped");
+        assert_eq!(new_artifacts.len(), 1, "PDF must be registered");
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Slides,
+            "PDF must be classified as Slides"
+        );
+    }
+
+    #[test]
+    fn scan_registers_pptx_as_slides() {
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir, "CPSC5001-09-03-deck.pptx", "PK binary");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
+
+        assert_eq!(new_artifacts.len(), 1);
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Slides
+        );
+    }
+
+    #[test]
+    fn scan_folder_flat_file_in_session_dir_is_attached() {
+        // `CPSC5001-09-03/slides.pdf` — first directory component is the session ID.
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(
+            &artifacts_dir.join("CPSC5001-09-03"),
+            "slides.pdf",
+            "%PDF content",
+        );
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
+
+        assert_eq!(
+            new_artifacts.len(),
+            1,
+            "file in session folder must be attached"
+        );
+        assert_eq!(new_artifacts[0].0, "CPSC5001-09-03");
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Slides
+        );
+    }
+
+    #[test]
+    fn scan_folder_nested_code_file_is_attached() {
+        // `CPSC5001-09-03/day1/Thing.java` — subfolder inside the session folder.
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(
+            &artifacts_dir.join("CPSC5001-09-03").join("day1"),
+            "Thing.java",
+            "class Thing {}",
+        );
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
+
+        assert_eq!(new_artifacts.len(), 1, "nested code file must be attached");
+        assert_eq!(new_artifacts[0].0, "CPSC5001-09-03");
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Code,
+            "java file should be classified as Code"
+        );
+    }
+
+    #[test]
+    fn scan_folder_mixed_contents_all_attached() {
+        // Multiple files in different subfolders — all go to the same session.
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        let sess_dir = artifacts_dir.join("CPSC5001-09-03");
+        write_file(&sess_dir, "slides-lecture.pdf", "%PDF lecture");
+        write_file(&sess_dir, "slides-reading.pdf", "%PDF reading");
+        write_file(&sess_dir.join("day1"), "Thing.java", "class Thing {}");
+        write_file(&sess_dir.join("day1"), "Node.java", "class Node {}");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
+
+        assert_eq!(new_artifacts.len(), 4, "all four files must be attached");
+        assert!(new_artifacts.iter().all(|(sid, _)| sid == "CPSC5001-09-03"));
+        let kinds: Vec<_> = manifest.sessions["CPSC5001-09-03"]
+            .artifacts
+            .iter()
+            .map(|a| &a.kind)
+            .collect();
+        assert_eq!(
+            kinds
+                .iter()
+                .filter(|k| **k == &ArtifactKind::Slides)
+                .count(),
+            2
+        );
+        assert_eq!(
+            kinds.iter().filter(|k| **k == &ArtifactKind::Code).count(),
+            2
+        );
+    }
+
+    #[test]
+    fn scan_folder_unmatched_dir_is_skipped() {
+        // A directory whose name is not a session ID — must be ignored.
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(&artifacts_dir.join("day1"), "Thing.java", "class Thing {}");
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
+
+        assert!(
+            new_artifacts.is_empty(),
+            "file in non-session directory must be skipped"
+        );
     }
 
     #[test]
