@@ -1,0 +1,10 @@
+{
+  "uuid": "15495cb5-5ec1-45de-8ea6-6482cd0be51c",
+  "display_id": null,
+  "title": "process --claude-model flag for per-session model override",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-23T07:53:00.686631Z",
+  "updated_at": "2026-06-23T07:53:00.686631Z"
+}
