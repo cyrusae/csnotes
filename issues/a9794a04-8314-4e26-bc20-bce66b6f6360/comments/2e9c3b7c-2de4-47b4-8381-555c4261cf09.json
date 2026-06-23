@@ -1,0 +1,10 @@
+{
+  "uuid": "2e9c3b7c-2de4-47b4-8381-555c4261cf09",
+  "issue_uuid": "a9794a04-8314-4e26-bc20-bce66b6f6360",
+  "author": "3owj",
+  "content": "L7: expanded --set help text via long_help attribute; -h shows one-liner with pointer to --help; --help shows full key reference grouped into Workflow and Directory sections.",
+  "created_at": "2026-06-23T07:02:44.484766Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAUIzQ6BPHkI4EU4RMQptkP7xxSBEtG03/zWtMD4O/M3r7VdNQKDzB6JhxulFHVqLoaXppO6BgvzOTJWxXd8dBCg=="
+}
