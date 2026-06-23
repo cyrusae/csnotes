@@ -2,11 +2,12 @@
   "uuid": "5a1feadd-8d59-455a-98f2-c343d521d8f9",
   "display_id": 75,
   "title": "cover ops/structural execute_merge_topics and relink_raw_notes",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-14T05:38:41.282995Z",
-  "updated_at": "2026-06-14T05:38:41.402426Z",
+  "updated_at": "2026-06-23T06:01:29.816006Z",
+  "closed_at": "2026-06-23T06:01:29.816006Z",
   "labels": [
     "test"
   ]
