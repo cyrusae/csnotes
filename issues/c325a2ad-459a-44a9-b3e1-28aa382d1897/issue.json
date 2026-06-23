@@ -1,6 +1,6 @@
 {
   "uuid": "c325a2ad-459a-44a9-b3e1-28aa382d1897",
-  "display_id": null,
+  "display_id": 80,
   "title": "Allow wikilinks from _synthetic/ to any vault file, not just _synthetic/",
   "status": "closed",
   "priority": "high",

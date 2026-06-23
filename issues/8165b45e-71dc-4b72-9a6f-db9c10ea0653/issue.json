@@ -1,6 +1,6 @@
 {
   "uuid": "8165b45e-71dc-4b72-9a6f-db9c10ea0653",
-  "display_id": null,
+  "display_id": 78,
   "title": "Fix wikilink resolution to handle topic-path links and be truly case-insensitive",
   "status": "closed",
   "priority": "high",

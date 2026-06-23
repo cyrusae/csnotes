@@ -1,6 +1,6 @@
 {
   "uuid": "0becccfa-bf2b-4a42-904d-de6e27fcb093",
-  "display_id": null,
+  "display_id": 82,
   "title": "Extract PDF/PPTX lecture slides into workspace with boilerplate stripping and fuzzy dedup",
   "status": "open",
   "priority": "high",

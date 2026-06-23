@@ -1,6 +1,6 @@
 {
   "uuid": "247ba0c8-10d6-4482-a4e7-608ab52d1fad",
-  "display_id": null,
+  "display_id": 81,
   "title": "Respect sources_ignore_dirs in vault file index walk",
   "status": "closed",
   "priority": "medium",
