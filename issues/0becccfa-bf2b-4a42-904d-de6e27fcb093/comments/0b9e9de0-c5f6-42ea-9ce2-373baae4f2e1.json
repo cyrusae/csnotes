@@ -1,0 +1,10 @@
+{
+  "uuid": "0b9e9de0-c5f6-42ea-9ce2-373baae4f2e1",
+  "issue_uuid": "0becccfa-bf2b-4a42-904d-de6e27fcb093",
+  "author": "3owj",
+  "content": "L5: PDF/PPTX slide extraction implemented. New src/slides.rs module: extract_pdf (pdftotext shell call), extract_pptx (pure Rust, zip+quick-xml), process pipeline (dedup-first then boilerplate strip), to_workspace_markdown. workspace.rs: extract_slides_to_markdown helper, artifact loop now intercepts .pdf/.pptx before text path, soft-warn on failure. Cargo deps: zip, quick-xml. Pipeline order: dedup first so repeated footers increase similarity; boilerplate requires >=2 slides to avoid stripping content when deck deduplicates to 1 slide.",
+  "created_at": "2026-06-23T06:43:48.041497Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAvEBLqLjpQxR+4oileRBtfjbwCb/p7QtTX2oTeU+dyUURuGWLd3o1OLfUlDIcbpwYg6fDOI81vSsuuGoIT4IFAg=="
+}
