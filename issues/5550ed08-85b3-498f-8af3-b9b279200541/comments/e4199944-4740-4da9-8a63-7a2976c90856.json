@@ -1,0 +1,10 @@
+{
+  "uuid": "e4199944-4740-4da9-8a63-7a2976c90856",
+  "issue_uuid": "5550ed08-85b3-498f-8af3-b9b279200541",
+  "author": "3owj",
+  "content": "L1: artifact folder-based session matching. Drop files in CPSC5001-09-03/ (or CPSC5001-09-03/day1/ etc) and they attach to that session. Qualifier derived from path within session dir (joined by -). Also fixed: PDF/PPTX were never registered by reconcile (TEXT_ARTIFACT_EXTENSIONS didn't include them), meaning workspace slide extraction was dead code. Renamed to ACCEPTED_ARTIFACT_EXTENSIONS, added pdf/pptx/ppt. classify_artifact_kind now returns Slides for those first. 6 new tests, scan_skips_binary_extensions flipped to scan_registers_pdf_as_slides.",
+  "created_at": "2026-06-23T07:21:24.528005Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAmHria4hnhJI/5l1NEUHecxuvoHdXSvAPHysuHv/CwYoIIC3umkCCjXVSQt5Bsotc02Jhcaq1t7XneC1xKoiRBA=="
+}
