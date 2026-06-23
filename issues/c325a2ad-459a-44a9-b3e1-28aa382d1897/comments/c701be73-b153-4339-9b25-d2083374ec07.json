@@ -1,0 +1,10 @@
+{
+  "uuid": "c701be73-b153-4339-9b25-d2083374ec07",
+  "issue_uuid": "c325a2ad-459a-44a9-b3e1-28aa382d1897",
+  "author": "3owj",
+  "content": "Implemented: workspace assembler now walks vault_root (excluding _synthetic/, _generated/, _csnotes/, _synthetic_* dirs) and writes _vault_stems.json to the workspace with lowercased stems+paths of all other vault files. render_session_md gets a new '## Other Vault Files' section listing these files grouped by directory so Claude knows what it can link to. audit.rs: check_links_resolve gains extra: &HashSet<String> param; invariant_suite and check_workspace load _vault_stems.json via load_vault_stems(); audit_vault uses collect_vault_stems() directly against vault_root. New public functions: collect_vault_stems, load_vault_stems. 5 new tests. 366 total, 0 failed.",
+  "created_at": "2026-06-23T06:20:16.000850Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAKdYR3L9AU+5jX43DZvTJ99bFhKb7Ktd20CEZG8OcYPI+rRJzPOQbppXlrNWlzIbX6alsQAuhV0mNZALJBVwsBg=="
+}
