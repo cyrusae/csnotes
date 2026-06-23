@@ -1,0 +1,10 @@
+{
+  "uuid": "247ba0c8-10d6-4482-a4e7-608ab52d1fad",
+  "display_id": null,
+  "title": "Respect sources_ignore_dirs in vault file index walk",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-23T06:22:55.782657Z",
+  "updated_at": "2026-06-23T06:22:55.782657Z"
+}
