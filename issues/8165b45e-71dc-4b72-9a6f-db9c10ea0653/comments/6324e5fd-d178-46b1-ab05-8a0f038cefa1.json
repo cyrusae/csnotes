@@ -1,0 +1,10 @@
+{
+  "uuid": "6324e5fd-d178-46b1-ab05-8a0f038cefa1",
+  "issue_uuid": "8165b45e-71dc-4b72-9a6f-db9c10ea0653",
+  "author": "3owj",
+  "content": "Fixed: collect_note_stems now emits both the bare stem and the root-relative path (without .md) for every note, both lowercased. Wikilinks written as [[topic/slug]] now resolve correctly alongside [[slug]] format. Added 4 new tests: collect_note_stems_includes_relative_path, collect_note_stems_rel_path_is_lowercased, check_links_resolve_accepts_topic_prefixed_wikilink, check_links_resolve_accepts_mixed_case_topic_prefixed_wikilink. Also updated CLAUDE.md and gemini.md (both live files and init.rs constants) to clarify [[topic/slug]] is valid.",
+  "created_at": "2026-06-23T06:09:40.055084Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAOvQtBTYbRduWyNCYUPLdUck6Kqvzn1IlY/h0X3RREe46+g8r34vGxNW9uLRUlQlKbrD/DFP/HDJEK6Ds8CXrCA=="
+}
