@@ -1,0 +1,10 @@
+{
+  "uuid": "658d8de5-9c80-4a5d-8e27-6ebac47da8fa",
+  "issue_uuid": "b24ea810-1c00-41b8-844b-85f484eb44c5",
+  "author": "3owj",
+  "content": "L6: is_question now flags any line containing '?', not just end-of-line. Simplified: contains('?') covers ends_with and ?? prefix; kept Q: and QUESTION: for question-markless forms. Two new tests: is_question_mid_line_mark and extract_mid_line_question_is_captured.",
+  "created_at": "2026-06-23T06:57:25.499927Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAJ6qbwSRbFArtblxYWrZOvQSedwO+AX/RUmyv1wQ5Z5/9l0609EGwx1ygeCZ5zA+csX+uZxUb5yeD3Gwt03y9CA=="
+}
