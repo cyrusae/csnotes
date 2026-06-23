@@ -1,0 +1,10 @@
+{
+  "uuid": "849d3995-c2a7-4306-8c82-4bf2b85d6e0c",
+  "issue_uuid": "15495cb5-5ec1-45de-8ea6-6482cd0be51c",
+  "author": "3owj",
+  "content": "L1: init --instructions-only now overwrites existing files (write_instruction_files gains force: bool param; normal init passes false, --instructions-only passes true; output says 'Updated' vs 'Created'). L2: --claude-model per-session flag for Claude backend, mirrors --agy-model. Threaded through ClaudeBackend.model, make_backend signature, ProcessArgs, main.rs dispatch. recover.rs passes None (no model stored in InProgressRecord).",
+  "created_at": "2026-06-23T07:55:26.271987Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABACY7oU8yPL3eRyqRiyKGhyTLuPsIBxRsZvUWzjPFTY/N0VLMONYgkkWK+x72on2WDls5xp+9ktbAf8TpwXOb1Aw=="
+}
