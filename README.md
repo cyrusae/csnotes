@@ -36,6 +36,28 @@ The vault is plain Markdown — no proprietary format. Every note has YAML front
 
 ## Installation
 
+### Runtime dependencies
+
+| Dependency | Required | Purpose |
+|---|---|---|
+| `claude` CLI | for Claude backend | runs the AI session |
+| `agy` CLI | for Agy/Gemini backend | runs the AI session |
+| `pdftotext` | optional | extracts text from PDF lecture slides |
+
+`pdftotext` is part of **poppler-utils**. Install it if you have PDF slides in your artifacts directories:
+
+```sh
+# macOS
+brew install poppler
+
+# Debian/Ubuntu
+sudo apt install poppler-utils
+```
+
+If `pdftotext` is not installed, PDF artifacts are silently skipped during workspace assembly (no crash — the session just won't have slide content). PPTX files are extracted in pure Rust with no external tools.
+
+### Build
+
 Requires Rust (stable). Install from GitHub with `cargo install`:
 
 ```sh
@@ -116,7 +138,11 @@ csnotes config --add-course CPSC5002
 
 ### 3. Drop your files and reconcile
 
-Put raw notes in `notes/`, recording exports in `recordings/`, slides in `artifacts/`, textbook chapters in `sources/`. Then:
+Put raw notes in `notes/`, recording exports in `recordings/`, slides in `artifacts/`, textbook chapters in `sources/`.
+
+**Slide files (PDF and PPTX)** placed in an `artifacts/` directory are extracted automatically when a workspace is assembled. The pipeline strips deck-wide boilerplate (copyright footers, running headers) and deduplicates near-identical slides so the AI sees concise content, not repeated build-up slides. Text extraction requires `pdftotext` for PDF files; PPTX files are handled in pure Rust. If extraction fails (tool absent, corrupt file), a warning is printed and the session continues without that artifact.
+
+Then:
 
 ```sh
 csnotes reconcile
@@ -166,6 +192,9 @@ archive_threshold_weeks = 8
 
 # Agy/Gemini model (optional — omit to use agy's default)
 # agy_model = "gemini-2.5-flash"
+
+# Include AI conversation files in vault audit (default: true)
+scan_ai_conversations = true
 ```
 
 ### Configuring via CLI
@@ -180,7 +209,7 @@ csnotes config --add-course CPSC5005             # add a course
 csnotes config --archive CPSC5001                # remove from active list
 ```
 
-Settable keys: `filename_format`, `raw_dir`, `recordings_dir`, `artifacts_dir`, `sources_dir`, `default_backend`, `require_recordings`, `archive_threshold_weeks`, `agy_model`.
+Settable keys: `filename_format`, `raw_dir`, `recordings_dir`, `artifacts_dir`, `sources_dir`, `default_backend`, `require_recordings`, `archive_threshold_weeks`, `agy_model`, `scan_ai_conversations`. Run `csnotes config --help` for descriptions of each key.
 
 ---
 
@@ -242,6 +271,8 @@ csnotes extract --session 09-03             # extract from a specific session
 csnotes extract --stdout                    # print to stdout instead of file
 ```
 
+Questions are any line containing `?` — including mid-line marks like `"arrays(? or linked lists?) are the default"` — or lines starting with `Q:` / `QUESTION:` even without a trailing `?`.
+
 ### Crash recovery
 
 If the AI session crashes or the process is interrupted:
@@ -252,10 +283,21 @@ csnotes recover --resume  # re-launch AI against the preserved workspace
 csnotes recover --discard # throw away the workspace and clear in-progress state
 ```
 
+### In-workspace validation
+
+The AI is instructed to run this before exiting a session:
+
+```sh
+csnotes check             # validate wikilinks, block anchors, and block-ID uniqueness
+                          # from inside the workspace (no vault access needed)
+```
+
+Prints violations and exits with code 1 if any hard violations are found. Soft warnings (orphan atomics, missing sidecars) are printed but don't fail.
+
 ### Audit and repair
 
 ```sh
-csnotes audit             # read-only invariant check
+csnotes audit             # read-only invariant check across the full vault
 csnotes audit --reindex   # rebuild csnotes.json from frontmatter + filesystem
 csnotes audit --fix       # show mechanical repairs (dry-run)
 csnotes audit --fix --apply  # execute repairs
