@@ -1,0 +1,10 @@
+{
+  "uuid": "a7be1556-00ca-4df0-97c2-a56e6c9be8a6",
+  "issue_uuid": "de6d8d91-a56e-45cd-bd7d-6bed4212e64e",
+  "author": "3owj",
+  "content": "Implemented: new csnotes check command (src/commands/check_cmd.rs) backed by audit::check_workspace(). Runs block-ID uniqueness, block-anchor presence, and link resolution against _synthetic/ without needing a session report. Exits 1 on hard violations with actionable output. Updated both AI instruction files and their init.rs source constants to run csnotes check as the first step in Before you exit.",
+  "created_at": "2026-06-23T06:09:42.245444Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAwEmnrdeCVe4N07LbZdRC4pSy3YUnEvHvNTyGoaVoNtWZSlXJ/PBlIoLHmr8S5uGCm5KtwMBRwfkFZCxlVuJOAg=="
+}
