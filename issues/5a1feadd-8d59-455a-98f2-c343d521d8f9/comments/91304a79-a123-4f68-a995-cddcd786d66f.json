@@ -1,0 +1,10 @@
+{
+  "uuid": "91304a79-a123-4f68-a995-cddcd786d66f",
+  "issue_uuid": "5a1feadd-8d59-455a-98f2-c343d521d8f9",
+  "author": "3owj",
+  "content": "Work completed in session #60: 7 tests added to structural.rs covering all previously-untested op arms (MoveAtomic, PromoteAtomic, DemoteTopic, MergeTopics with self-skip filter, SplitTopic with remainder filter). All 43 structural tests pass.",
+  "created_at": "2026-06-23T06:01:30.081765Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA/WV67mmPCKc8Oh/ePJTehk3CK4L4OGsZ+t9FpQYqTUbELR+jCGzBEFSpGYzcfdGy2dAKEa9NnW9PyAVeoM6zAw=="
+}
