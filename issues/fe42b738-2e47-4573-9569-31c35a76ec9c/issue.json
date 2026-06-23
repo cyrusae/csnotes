@@ -1,6 +1,6 @@
 {
   "uuid": "fe42b738-2e47-4573-9569-31c35a76ec9c",
-  "display_id": null,
+  "display_id": 22,
   "title": "init: detect existing course folders and offer to populate active_courses",
   "status": "closed",
   "priority": "medium",

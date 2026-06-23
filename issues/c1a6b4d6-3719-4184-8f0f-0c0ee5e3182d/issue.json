@@ -1,6 +1,6 @@
 {
   "uuid": "c1a6b4d6-3719-4184-8f0f-0c0ee5e3182d",
-  "display_id": null,
+  "display_id": 64,
   "title": "reconcile: sources_ignore_dirs config — skip specified subdirectories during source scan",
   "status": "closed",
   "priority": "medium",

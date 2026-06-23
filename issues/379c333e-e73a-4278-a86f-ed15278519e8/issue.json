@@ -1,6 +1,6 @@
 {
   "uuid": "379c333e-e73a-4278-a86f-ed15278519e8",
-  "display_id": null,
+  "display_id": 31,
   "title": "Partial date matching broken in resolve_session_id",
   "status": "closed",
   "priority": "medium",

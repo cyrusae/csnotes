@@ -1,6 +1,6 @@
 {
   "uuid": "1aa8f53c-6ca0-48f3-a4ca-15d1bc4cd2d3",
-  "display_id": null,
+  "display_id": 30,
   "title": "synthetic_dir hardcoded in open_for_topic and topic_from_path",
   "status": "closed",
   "priority": "medium",

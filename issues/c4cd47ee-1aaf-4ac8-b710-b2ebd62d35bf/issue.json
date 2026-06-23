@@ -1,6 +1,6 @@
 {
   "uuid": "c4cd47ee-1aaf-4ac8-b710-b2ebd62d35bf",
-  "display_id": null,
+  "display_id": 55,
   "title": "mutant coverage: structural ops (ops/structural.rs)",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "ff62eedb-86e0-4033-a849-13f147b623ec",
-  "display_id": null,
+  "display_id": 76,
   "title": "add mutants.toml to skip untestable functions",
   "status": "closed",
   "priority": "low",

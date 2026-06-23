@@ -1,6 +1,6 @@
 {
   "uuid": "61d24e6e-17ea-474e-a98c-71f529755cb1",
-  "display_id": null,
+  "display_id": 21,
   "title": "relink command: log path-qualified link moves and reconcile raw notes",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "0472b319-44bd-4989-b5ea-34b0b4699531",
-  "display_id": null,
+  "display_id": 37,
   "title": "AppleScript injection risk in notify() if message contains user text (CSN-002)",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "872d9e7a-c151-4699-986a-09864cf73d86",
-  "display_id": null,
+  "display_id": 16,
   "title": "rename .csnotes config file to csnotes.toml",
   "status": "closed",
   "priority": "medium",

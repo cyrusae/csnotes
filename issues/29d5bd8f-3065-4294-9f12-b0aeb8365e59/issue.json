@@ -1,6 +1,6 @@
 {
   "uuid": "29d5bd8f-3065-4294-9f12-b0aeb8365e59",
-  "display_id": null,
+  "display_id": 38,
   "title": "No manifest locking: concurrent csnotes runs can corrupt vault state (CSN-003)",
   "status": "closed",
   "priority": "low",

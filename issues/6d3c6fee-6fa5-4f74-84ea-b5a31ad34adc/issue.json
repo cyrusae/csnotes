@@ -1,6 +1,6 @@
 {
   "uuid": "6d3c6fee-6fa5-4f74-84ea-b5a31ad34adc",
-  "display_id": null,
+  "display_id": 26,
   "title": "SIGINT kills csnotes parent during interactive backend session",
   "status": "closed",
   "priority": "high",

@@ -1,6 +1,6 @@
 {
   "uuid": "8d799eab-af60-45f1-99e1-5a68c5ef02c3",
-  "display_id": null,
+  "display_id": 18,
   "title": "config option to disable recordings expectation (global + per-course)",
   "status": "closed",
   "priority": "medium",

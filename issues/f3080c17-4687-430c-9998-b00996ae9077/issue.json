@@ -1,6 +1,6 @@
 {
   "uuid": "f3080c17-4687-430c-9998-b00996ae9077",
-  "display_id": null,
+  "display_id": 7,
   "title": "safe_path validation for AI-produced paths + regression tests",
   "status": "closed",
   "priority": "high",

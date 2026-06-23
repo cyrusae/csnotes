@@ -1,6 +1,6 @@
 {
   "uuid": "f908fe15-2d32-4fe3-92f4-96a0f1544ba6",
-  "display_id": null,
+  "display_id": 23,
   "title": "init: create per-course content dirs when active_courses is non-empty",
   "status": "closed",
   "priority": "medium",

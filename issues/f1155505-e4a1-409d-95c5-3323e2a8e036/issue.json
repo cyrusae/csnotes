@@ -1,6 +1,6 @@
 {
   "uuid": "f1155505-e4a1-409d-95c5-3323e2a8e036",
-  "display_id": null,
+  "display_id": 65,
   "title": "dev: add clippy + fmt pre-commit hook",
   "status": "closed",
   "priority": "medium",

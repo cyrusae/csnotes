@@ -1,6 +1,6 @@
 {
   "uuid": "5a60c73b-1b43-45b9-a329-700d83f00b4d",
-  "display_id": null,
+  "display_id": 67,
   "title": "migrate to Rust 2024 edition",
   "status": "closed",
   "priority": "low",

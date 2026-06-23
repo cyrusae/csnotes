@@ -1,6 +1,6 @@
 {
   "uuid": "8c343b88-656d-450f-a783-1e257967a29e",
-  "display_id": null,
+  "display_id": 24,
   "title": "init: ask flat-vs-per-course layout question during setup",
   "status": "closed",
   "priority": "low",

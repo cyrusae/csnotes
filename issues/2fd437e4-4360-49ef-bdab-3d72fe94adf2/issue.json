@@ -1,6 +1,6 @@
 {
   "uuid": "2fd437e4-4360-49ef-bdab-3d72fe94adf2",
-  "display_id": null,
+  "display_id": 42,
   "title": "AI conversation source type: AiConversation kind, 3-level path parsing, scan command",
   "status": "closed",
   "priority": "medium",

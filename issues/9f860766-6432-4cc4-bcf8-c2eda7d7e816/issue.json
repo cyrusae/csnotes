@@ -1,6 +1,6 @@
 {
   "uuid": "9f860766-6432-4cc4-bcf8-c2eda7d7e816",
-  "display_id": null,
+  "display_id": 62,
   "title": "AI conversation sidecar ingestion: read {stem}.json, render markdown index in workspace",
   "status": "closed",
   "priority": "medium",

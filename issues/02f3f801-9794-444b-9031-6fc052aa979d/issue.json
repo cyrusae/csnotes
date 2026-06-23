@@ -1,6 +1,6 @@
 {
   "uuid": "02f3f801-9794-444b-9031-6fc052aa979d",
-  "display_id": null,
+  "display_id": 43,
   "title": "AppleScript injection in notify() via unsanitized message",
   "status": "closed",
   "priority": "medium",

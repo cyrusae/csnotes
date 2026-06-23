@@ -1,6 +1,6 @@
 {
   "uuid": "055faefb-776b-4be3-a8ad-0b3cde7cc2df",
-  "display_id": null,
+  "display_id": 29,
   "title": "Obsidian link resolution is case-sensitive (should be case-insensitive)",
   "status": "closed",
   "priority": "medium",

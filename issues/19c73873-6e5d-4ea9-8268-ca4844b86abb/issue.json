@@ -1,6 +1,6 @@
 {
   "uuid": "19c73873-6e5d-4ea9-8268-ca4844b86abb",
-  "display_id": null,
+  "display_id": 58,
   "title": "mutant coverage: ui.rs display functions (rainbow, hsl_to_rgb)",
   "status": "closed",
   "priority": "low",

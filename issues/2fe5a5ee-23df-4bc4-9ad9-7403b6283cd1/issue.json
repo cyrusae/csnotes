@@ -1,6 +1,6 @@
 {
   "uuid": "2fe5a5ee-23df-4bc4-9ad9-7403b6283cd1",
-  "display_id": null,
+  "display_id": 12,
   "title": "remove ShadowGit snapshot mode variant",
   "status": "closed",
   "priority": "medium",

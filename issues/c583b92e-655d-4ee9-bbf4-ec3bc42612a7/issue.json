@@ -1,6 +1,6 @@
 {
   "uuid": "c583b92e-655d-4ee9-bbf4-ec3bc42612a7",
-  "display_id": null,
+  "display_id": 28,
   "title": "Adjacent wikilinks not parsed: regex consumes closing bracket",
   "status": "closed",
   "priority": "medium",

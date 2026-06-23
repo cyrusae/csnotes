@@ -1,6 +1,6 @@
 {
   "uuid": "1297d3e8-9fe2-4d3e-96df-47a55ec59639",
-  "display_id": null,
+  "display_id": 25,
   "title": "process --resume: persist and re-enter AI conversation on recover",
   "status": "closed",
   "priority": "medium",

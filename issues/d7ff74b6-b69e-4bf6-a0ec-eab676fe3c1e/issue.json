@@ -1,6 +1,6 @@
 {
   "uuid": "d7ff74b6-b69e-4bf6-a0ec-eab676fe3c1e",
-  "display_id": null,
+  "display_id": 66,
   "title": "dev: pre-commit hook should auto-fix rather than warn",
   "status": "closed",
   "priority": "low",

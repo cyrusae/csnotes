@@ -1,6 +1,6 @@
 {
   "uuid": "f5737871-2b9b-4add-b742-d4f15f0a11b1",
-  "display_id": null,
+  "display_id": 15,
   "title": "colorize CLI output: rainbow header + semantic colors in status/reconcile/process",
   "status": "closed",
   "priority": "low",

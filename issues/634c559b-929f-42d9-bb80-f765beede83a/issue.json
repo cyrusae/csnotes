@@ -1,6 +1,6 @@
 {
   "uuid": "634c559b-929f-42d9-bb80-f765beede83a",
-  "display_id": null,
+  "display_id": 9,
   "title": "AppleScript argv injection fix",
   "status": "closed",
   "priority": "medium",
