@@ -1,0 +1,10 @@
+{
+  "uuid": "d8bea07d-d60a-4827-91cc-cbf126c08514",
+  "issue_uuid": "4e5f62d0-e17d-4544-89d9-7124df2b7476",
+  "author": "3owj",
+  "content": "L1: updated README (poppler/pdftotext install table, slide extraction description, scan_ai_conversations in TOML ref + settable-keys list, csnotes check section, extract question behavior) and CHANGELOG (L5 slide extraction added, L6 question extraction fixed, L7 config help changed).",
+  "created_at": "2026-06-23T07:08:06.965538Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA1k5x8L7EJ4DegKlnMXE48WYKftFKodaPDOI6IaL14zb9w2lc+BKoWlUjk6I29Kwxe3825a+t8NyBUlvxgSsPAg=="
+}
