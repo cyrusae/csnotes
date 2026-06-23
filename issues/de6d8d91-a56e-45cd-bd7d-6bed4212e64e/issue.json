@@ -2,11 +2,12 @@
   "uuid": "de6d8d91-a56e-45cd-bd7d-6bed4212e64e",
   "display_id": null,
   "title": "Add csnotes check in-workspace validation command",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-06-23T06:02:42.084683Z",
-  "updated_at": "2026-06-23T06:02:42.269573Z",
+  "updated_at": "2026-06-23T06:09:40.238684Z",
+  "closed_at": "2026-06-23T06:09:40.238684Z",
   "labels": [
     "enhancement"
   ]
