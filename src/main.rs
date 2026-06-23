@@ -10,6 +10,7 @@ mod obsidian;
 mod ops;
 mod pathutil;
 mod report;
+mod slides;
 mod ui;
 mod workspace;
 
@@ -19,7 +20,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use commands::{
-    audit_cmd, config_cmd, diff, extract, flags_cmd, init, process, reconcile, recover, status,
+    audit_cmd, check_cmd, config_cmd, diff, extract, flags_cmd, init, process, reconcile, recover,
+    status,
 };
 use config::AiBackend;
 
@@ -115,6 +117,8 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             fix,
             apply,
         }),
+
+        Command::Check { workspace } => check_cmd::run(check_cmd::CheckArgs { workspace }),
 
         Command::Config {
             set,
@@ -264,10 +268,55 @@ enum Command {
         apply: bool,
     },
 
+    /// Check workspace invariants from inside an active AI session.
+    ///
+    /// Run this from the workspace directory before exiting to surface broken
+    /// wikilinks, missing block anchors, and duplicate block IDs — the same
+    /// checks the teardown pipeline runs, but early enough to fix them.
+    /// Exits with code 1 if hard violations are found.
+    Check {
+        /// Workspace root to check (defaults to current directory).
+        #[arg(long)]
+        workspace: Option<std::path::PathBuf>,
+    },
+
     /// Read or update vault configuration.
     Config {
-        /// Set a config value (key=value).
-        #[arg(long)]
+        /// Set a config value (key=value). Run `config --help` to see all keys.
+        #[arg(
+            long,
+            long_help = "\
+Set a config value (key=value).
+
+Workflow settings:
+
+  filename_format=<template>
+      Note filename template. Required token: {course}.
+      Optional: {yyyy}, {mm}, {dd}.  Example: {course}-{mm}-{dd}
+
+  default_backend=claude|agy|mock
+      AI backend used when --backend is not specified.
+
+  require_recordings=true|false
+      Warn when a session has no recording export attached.
+
+  archive_threshold_weeks=<n>
+      Weeks of inactivity before a course is considered archived in status output.
+
+  agy_model=<name>
+      Gemini model for the agy backend (e.g. gemini-2.5-pro).
+      Set to empty string to restore the backend default.
+
+  scan_ai_conversations=true|false
+      Include AI conversation files in vault audit.
+
+Directory settings (no spaces allowed in values):
+
+  raw_dir=<dir>           vault subdir for raw notes
+  recordings_dir=<dir>    vault subdir for recording exports
+  artifacts_dir=<dir>     vault subdir for artifacts
+  sources_dir=<dir>       vault subdir for source files"
+        )]
         set: Option<String>,
         /// Print current configuration.
         #[arg(long)]

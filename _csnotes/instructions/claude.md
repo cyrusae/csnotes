@@ -15,7 +15,7 @@ _sources_index.md    ← available sources with metadata; consult before reading
 synthesis.md         ← read before writing notes
 report_schema.md     ← read before writing the session report
 input_raw_*.md       ← student's raw notes (XML-wrapped, read-only)
-input_plaud_*.md     ← Plaud transcript/summary (XML-wrapped, read-only)
+input_*.md           ← recording exports / artifacts (XML-wrapped, read-only)
 sources/             ← source files (XML-wrapped, read-only); read only relevant ones
 _synthetic/          ← your writable working copy of the vault's synthetic notes
 _session_report.json ← you write this before exiting
@@ -59,9 +59,12 @@ Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphena
 - No frontmatter — the CLI stamps all `---` fences.  Write body only.
 - Every atomic note must end with `^<slug>` on its own line (same as filename
   without `.md`).  Without this anchor the note can't be transcluded.
-- Wikilinks: `[[target-slug]]` or `[[target-slug|display text]]`.  Every
-  target must exist in `_synthetic/` already or be created this session.
-  Broken wikilinks cause the CLI to discard all your work.
+- Wikilinks: `[[slug]]`, `[[topic/slug]]`, or `[[slug|display text]]`.
+  Both bare-slug and topic-prefixed forms resolve correctly.  Targets may be
+  notes in `_synthetic/` (created now or pre-existing) **or** any other vault
+  file listed in the **Other Vault Files** section of `_session.md` (sources,
+  AI-Conversations, etc.).  Every link target must appear in one of those two
+  places — broken wikilinks cause the CLI to discard all your work.
 
 Write notes as the conversation develops — you don't have to finish the
 debrief first.
@@ -75,6 +78,19 @@ Read `report_schema.md` before writing `_session_report.json`.
 ---
 
 ## Before you exit
+
+**Run the invariant check first:**
+
+```sh
+csnotes check
+```
+
+This validates every wikilink, block anchor, and block-ID uniqueness constraint
+against your `_synthetic/` directory and prints any violations.  Fix everything
+it reports before you exit — the teardown pipeline will discard the workspace if
+violations remain, and you'll have to recover from scratch.
+
+Then confirm manually:
 
 - Every atomic note body ends with its block anchor on the last line.
 - Every wikilink target exists in `_synthetic/`.

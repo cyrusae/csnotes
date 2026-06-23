@@ -228,12 +228,100 @@ pub fn invariant_suite(
         }
     }
 
-    // 4. Every [[wikilink]] in _synthetic/ must resolve
+    // 4. Every [[wikilink]] in _synthetic/ must resolve — including links to
+    //    vault files outside _synthetic/ (sources, AI-Conversations, etc.)
+    //    which were indexed during workspace assembly and written to
+    //    _vault_stems.json.
     if synthetic_root.exists() {
-        check_links_resolve(&synthetic_root, &synthetic_root, &mut result)?;
+        let vault_stems = load_vault_stems(workspace_root);
+        check_links_resolve(&synthetic_root, &synthetic_root, &vault_stems, &mut result)?;
     }
 
     // 5. Soft: orphan atomics (not embedded by any index in their topic folder)
+    check_orphan_atomics(&synthetic_root, &mut result)?;
+
+    Ok(result)
+}
+
+// ── In-workspace check (no report required) ───────────────────────────────────
+
+/// Run the structural subset of the invariant suite against a workspace
+/// `_synthetic/` directory **without** needing a session report.
+///
+/// This is the function backing `csnotes check`, which Claude can invoke from
+/// inside the workspace before exiting to surface violations early — before
+/// the CLI teardown would otherwise discard the whole workspace.
+///
+/// Checks performed (all of these can be self-corrected by Claude):
+/// 1. Block-ID uniqueness across all atomic notes.
+/// 2. Every atomic note has a matching `^block-id` anchor in its body.
+/// 3. Every `[[wikilink]]` and `![[embed]]` resolves to a file in `_synthetic/`.
+/// 4. (Soft) Orphan atomics not embedded by any index in their topic folder.
+///
+/// Report-dependent checks (frontmatter validity per declared op) are skipped
+/// because the report may not be fully written yet when `csnotes check` runs.
+pub fn check_workspace(workspace_root: &Path, synthetic_dir: &str) -> Result<AuditResult> {
+    let mut result = AuditResult::default();
+    let synthetic_root = workspace_root.join(synthetic_dir);
+
+    if !synthetic_root.exists() {
+        result.soft_warnings.push(format!(
+            "synthetic directory '{}' not found — nothing to check",
+            synthetic_dir
+        ));
+        return Ok(result);
+    }
+
+    // 1. Block-ID collisions
+    for (id, paths) in block_id_collisions(&synthetic_root)? {
+        result.hard_violations.push(format!(
+            "block ID '^{}' appears in multiple files: {}",
+            id,
+            paths.join(", ")
+        ));
+    }
+
+    // 2. Every atomic note must have block_id in frontmatter AND a matching anchor
+    for entry in walkdir::WalkDir::new(&synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+    {
+        let content = match crate::frontmatter::read_note(entry.path()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if let Ok(fm) = crate::frontmatter::parse_frontmatter(&content, entry.path()) {
+            if fm.kind == crate::frontmatter::NoteKind::Atomic {
+                match &fm.block_id {
+                    None => {
+                        result.hard_violations.push(format!(
+                            "atomic note '{}' has no block_id in frontmatter",
+                            entry.path().display()
+                        ));
+                    }
+                    Some(id) => {
+                        let ids_in_body = crate::obsidian::extract_block_ids(&content);
+                        if !ids_in_body.contains(id) {
+                            result.hard_violations.push(format!(
+                                "atomic note '{}': block_id '{}' declared in frontmatter \
+                                 but anchor '^{}' not found in body",
+                                entry.path().display(),
+                                id,
+                                id
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Link and embed resolution — including cross-vault links
+    let vault_stems = load_vault_stems(workspace_root);
+    check_links_resolve(&synthetic_root, &synthetic_root, &vault_stems, &mut result)?;
+
+    // 4. Orphan atomics (soft)
     check_orphan_atomics(&synthetic_root, &mut result)?;
 
     Ok(result)
@@ -304,8 +392,22 @@ pub fn audit_vault(
         }
     }
 
-    // Link resolution
-    check_links_resolve(&synthetic_root, &synthetic_root, &mut result)?;
+    // Link resolution — accept links to any vault file, not just _synthetic/
+    let ignore_names: Vec<&str> = config
+        .sources_ignore_dirs
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    let vault_stems = collect_vault_stems(
+        vault_root,
+        &[
+            &config.synthetic_dir,
+            &config.generated_dir,
+            &config.csnotes_dir,
+        ],
+        &ignore_names,
+    );
+    check_links_resolve(&synthetic_root, &synthetic_root, &vault_stems, &mut result)?;
 
     // Orphan atomics (soft)
     check_orphan_atomics(&synthetic_root, &mut result)?;
@@ -513,11 +615,15 @@ fn check_embed_line_present(
 fn check_links_resolve(
     synthetic_root: &Path,
     search_root: &Path,
+    extra: &std::collections::HashSet<String>,
     result: &mut AuditResult,
 ) -> Result<()> {
     // Pre-collect all note stems once so each link lookup is O(1) rather than
     // triggering a full WalkDir per link (which would be O(N²) across N notes).
-    let known_stems = collect_note_stems(search_root);
+    // `extra` contains stems/paths from outside _synthetic/ (e.g. vault files,
+    // sources) so that cross-vault wikilinks are not falsely flagged as broken.
+    let mut known_stems = collect_note_stems(search_root);
+    known_stems.extend(extra.iter().cloned());
 
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
@@ -556,19 +662,114 @@ fn check_links_resolve(
     Ok(())
 }
 
-/// Collect the lowercased file stems of all `.md` files under `root`.
-/// Used to build a lookup set for link-resolution checks.
+/// Collect lowercased identifiers for all `.md` files under `root`.
+///
+/// Each file contributes **two** entries to the set so that both
+/// `[[slug]]` and `[[topic/slug]]` wikilink formats resolve correctly:
+///
+/// - The bare file stem (e.g. `java-boxed-primitives`)
+/// - The root-relative path without extension (e.g. `java/java-boxed-primitives`)
+///
+/// Both are lowercased so the lookup is case-insensitive regardless of how
+/// the link or the filename is cased on disk (macOS HFS+/APFS is
+/// case-insensitive, but git and string comparisons are not).
 fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
     walkdir::WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
-        .filter_map(|e| {
-            e.path()
+        .flat_map(|e| {
+            let stem = e
+                .path()
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .map(|s| s.to_lowercase())
+                .map(|s| s.to_lowercase());
+            let rel = e
+                .path()
+                .strip_prefix(root)
+                .ok()
+                .map(|p| p.with_extension(""))
+                .and_then(|p| p.to_str().map(|s| s.to_lowercase()));
+            [stem, rel].into_iter().flatten()
         })
+        .collect()
+}
+
+/// Collect lowercased stem and root-relative-path identifiers for all `.md`
+/// files in `vault_root`, skipping top-level directories whose names appear in
+/// `excluded_dirs`.
+///
+/// Use this to build the set of vault files that may be wikilinked from
+/// `_synthetic/` notes even though those files live outside `_synthetic/`.
+/// Pass the result as `extra` to callers of `check_links_resolve`.
+///
+/// Typical exclusions: `["_synthetic", "_generated", "_csnotes"]` plus any
+/// directories whose names start with `_synthetic_` (snapshot/broken dirs).
+pub fn collect_vault_stems(
+    vault_root: &Path,
+    excluded_dirs: &[&str],
+    ignore_names: &[&str],
+) -> std::collections::HashSet<String> {
+    walkdir::WalkDir::new(vault_root)
+        .min_depth(1)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_dir() {
+                let name = e.file_name().to_str().unwrap_or("");
+                // Top-level: skip internal csnotes dirs and snapshot dirs.
+                if e.depth() == 1
+                    && (excluded_dirs.contains(&name) || name.starts_with("_synthetic_"))
+                {
+                    return false;
+                }
+                // Any depth: skip dirs whose names appear in ignore_names
+                // (mirrors sources_ignore_dirs so generator/tool subdirs are
+                // excluded everywhere, not just inside sources/).
+                if ignore_names.contains(&name) {
+                    return false;
+                }
+            }
+            true
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+        .flat_map(|e| {
+            let stem = e
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_lowercase());
+            let rel = e
+                .path()
+                .strip_prefix(vault_root)
+                .ok()
+                .map(|p| p.with_extension(""))
+                .and_then(|p| p.to_str().map(|s| s.to_lowercase()));
+            [stem, rel].into_iter().flatten()
+        })
+        .collect()
+}
+
+/// Load the vault-wide stem index written to `_vault_stems.json` during
+/// workspace assembly.  Returns an empty set if the file is absent (e.g. when
+/// running against a workspace built by an older version of csnotes).
+///
+/// This is the in-workspace companion to `collect_vault_stems`: the assembler
+/// walks the vault once and serialises the result so that `csnotes check`
+/// (which only sees the workspace, not the vault) can validate cross-vault
+/// wikilinks without a second full walk.
+pub fn load_vault_stems(workspace_root: &Path) -> std::collections::HashSet<String> {
+    let path = workspace_root.join("_vault_stems.json");
+    if !path.exists() {
+        return std::collections::HashSet::new();
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    serde_json::from_str::<Vec<String>>(&content)
+        .unwrap_or_default()
+        .into_iter()
         .collect()
 }
 
@@ -974,7 +1175,7 @@ mod tests {
         write(tmp.path(), "sorting.md", "# Sorting\n");
         write(tmp.path(), "index.md", "See [[Sorting]].\n");
         let mut result = AuditResult::default();
-        check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
         assert!(
             result.hard_violations.is_empty(),
             "{:?}",
@@ -987,7 +1188,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "index.md", "See [[nonexistent]].\n");
         let mut result = AuditResult::default();
-        check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
         assert_eq!(result.hard_violations.len(), 1);
         assert!(result.hard_violations[0].contains("nonexistent"));
     }
@@ -997,7 +1198,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "index.md", "![[ghost-atomic#^id]]\n");
         let mut result = AuditResult::default();
-        check_links_resolve(tmp.path(), tmp.path(), &mut result).unwrap();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
         assert_eq!(result.hard_violations.len(), 1);
         assert!(result.hard_violations[0].contains("ghost-atomic"));
     }
@@ -1792,6 +1993,247 @@ mod tests {
             "2026-06-01",
             "expected max last_updated, got: {}",
             topic.last_updated
+        );
+    }
+
+    // ── collect_note_stems: topic-path and case-insensitive coverage ──────────
+
+    #[test]
+    fn collect_note_stems_includes_relative_path() {
+        // A note nested in a topic subdirectory should appear under BOTH its
+        // bare stem AND its root-relative path (without .md) so that both
+        // [[slug]] and [[topic/slug]] wikilink styles resolve.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "java/java-boxed-primitives.md",
+            "# Java Boxed Primitives\n",
+        );
+        let stems = collect_note_stems(tmp.path());
+        assert!(
+            stems.contains("java-boxed-primitives"),
+            "bare stem must be present; got: {:?}",
+            stems
+        );
+        assert!(
+            stems.contains("java/java-boxed-primitives"),
+            "root-relative path must be present; got: {:?}",
+            stems
+        );
+    }
+
+    #[test]
+    fn collect_note_stems_rel_path_is_lowercased() {
+        // Mixed-case filename: both the stem and the relative path must be
+        // lowercased so lookups are always case-insensitive.
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "Java/Java-Boxed-Primitives.md", "body\n");
+        let stems = collect_note_stems(tmp.path());
+        assert!(
+            stems.contains("java-boxed-primitives"),
+            "stem must be lowercased"
+        );
+        assert!(
+            stems.contains("java/java-boxed-primitives"),
+            "rel-path must be lowercased"
+        );
+        // Original-case forms must NOT appear — the whole point is normalisation.
+        assert!(!stems.contains("Java-Boxed-Primitives"));
+        assert!(!stems.contains("Java/Java-Boxed-Primitives"));
+    }
+
+    #[test]
+    fn check_links_resolve_accepts_topic_prefixed_wikilink() {
+        // A link written as [[topic/slug]] must resolve when the file lives at
+        // <root>/topic/slug.md — this is the format Claude naturally produces
+        // when working inside a topic-organised _synthetic directory.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "java/java-boxed-primitives.md",
+            "# Java Boxed Primitives\n",
+        );
+        write(
+            tmp.path(),
+            "java/index.md",
+            "See [[java/java-boxed-primitives]].\n",
+        );
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "topic-prefixed link should resolve: {:?}",
+            result.hard_violations
+        );
+    }
+
+    #[test]
+    fn check_links_resolve_accepts_mixed_case_topic_prefixed_wikilink() {
+        // [[Java/Java-Boxed-Primitives]] (capitalised) must resolve against
+        // java/java-boxed-primitives.md — case-insensitive on both sides.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "java/java-boxed-primitives.md",
+            "# Java Boxed Primitives\n",
+        );
+        write(
+            tmp.path(),
+            "java/index.md",
+            "See [[Java/Java-Boxed-Primitives]].\n",
+        );
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "mixed-case topic-prefixed link should resolve: {:?}",
+            result.hard_violations
+        );
+    }
+
+    // ── collect_vault_stems / load_vault_stems / cross-vault links ────────────
+
+    #[test]
+    fn collect_vault_stems_excludes_specified_dirs() {
+        let tmp = TempDir::new().unwrap();
+        // File inside excluded dir — must NOT appear in stems.
+        write(tmp.path(), "_synthetic/topic/note.md", "body\n");
+        // File inside _synthetic_broken_* — must NOT appear.
+        write(tmp.path(), "_synthetic_broken_abc/topic/note.md", "body\n");
+        // File outside excluded dirs — MUST appear.
+        write(
+            tmp.path(),
+            "AI-Conversations/Claude/Java-boxed-primitives.md",
+            "body\n",
+        );
+
+        let stems = collect_vault_stems(tmp.path(), &["_synthetic"], &[]);
+
+        // AI-Conversations file must be present in both forms.
+        assert!(
+            stems.contains("java-boxed-primitives"),
+            "bare stem should be present: {:?}",
+            stems
+        );
+        assert!(
+            stems.contains("ai-conversations/claude/java-boxed-primitives"),
+            "rel-path should be present: {:?}",
+            stems
+        );
+
+        // Excluded dir contents must not appear.
+        assert!(
+            !stems.contains("note"),
+            "_synthetic contents must be excluded: {:?}",
+            stems
+        );
+    }
+
+    #[test]
+    fn collect_vault_stems_respects_ignore_names_at_any_depth() {
+        // ignore_names (mirrors sources_ignore_dirs) should prune matching
+        // directory names wherever they appear in the tree, not just at depth 1.
+        let tmp = TempDir::new().unwrap();
+        // A normal file that should appear.
+        write(
+            tmp.path(),
+            "AI-Conversations/Claude/java-notes.md",
+            "body\n",
+        );
+        // Files inside an ignored subdir — at depth 2 and depth 3.
+        write(tmp.path(), "sources/_tools/generator.md", "body\n");
+        write(tmp.path(), "sources/SICP/_exercises/ch01.md", "body\n");
+
+        let stems = collect_vault_stems(tmp.path(), &[], &["_tools", "_exercises"]);
+
+        assert!(stems.contains("java-notes"), "normal file must appear");
+        assert!(
+            !stems.contains("generator"),
+            "_tools contents must be excluded: {:?}",
+            stems
+        );
+        assert!(
+            !stems.contains("ch01"),
+            "_exercises contents must be excluded: {:?}",
+            stems
+        );
+    }
+
+    #[test]
+    fn load_vault_stems_returns_empty_when_file_absent() {
+        let tmp = TempDir::new().unwrap();
+        let stems = load_vault_stems(tmp.path());
+        assert!(stems.is_empty());
+    }
+
+    #[test]
+    fn load_vault_stems_round_trips_json() {
+        let tmp = TempDir::new().unwrap();
+        let data = serde_json::to_string(&vec![
+            "java-boxed-primitives",
+            "ai-conversations/claude/java-boxed-primitives",
+        ])
+        .unwrap();
+        std::fs::write(tmp.path().join("_vault_stems.json"), data).unwrap();
+
+        let stems = load_vault_stems(tmp.path());
+        assert!(stems.contains("java-boxed-primitives"));
+        assert!(stems.contains("ai-conversations/claude/java-boxed-primitives"));
+    }
+
+    #[test]
+    fn check_links_resolve_accepts_cross_vault_link_via_extra_stems() {
+        // Simulates a synthetic note linking to an AI-Conversations file that
+        // lives outside _synthetic/ — the link should resolve when vault stems
+        // are provided as `extra`.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/java/overview.md",
+            "See [[Java-boxed-primitives]] for details.\n",
+        );
+        // The target file lives outside _synthetic/ — only present in extra.
+        let mut extra = std::collections::HashSet::new();
+        extra.insert("java-boxed-primitives".to_string());
+        extra.insert("ai-conversations/claude/java-boxed-primitives".to_string());
+
+        let synthetic_root = tmp.path().join("_synthetic");
+        let mut result = AuditResult::default();
+        check_links_resolve(&synthetic_root, &synthetic_root, &extra, &mut result).unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "cross-vault link should resolve with extra stems: {:?}",
+            result.hard_violations
+        );
+    }
+
+    #[test]
+    fn check_workspace_accepts_cross_vault_link_when_vault_stems_file_present() {
+        // End-to-end: workspace has _vault_stems.json; check_workspace should
+        // not flag a link to a file that lives outside _synthetic/.
+        let tmp = TempDir::new().unwrap();
+
+        // Minimal atomic note with correct frontmatter and anchor.
+        let note = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: java\ntitle: Overview\n\
+                    block_id: java-overview\ncontributing_sessions: []\n\
+                    contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
+                    last_updated: \"2026-01-01T00:00:00Z\"\n---\n\
+                    See [[Java-boxed-primitives]].\n\n^java-overview\n";
+        write(tmp.path(), "_synthetic/java/overview.md", note);
+
+        // Write vault stems file listing the cross-vault target.
+        let stems = serde_json::to_string(&vec![
+            "java-boxed-primitives",
+            "ai-conversations/claude/java-boxed-primitives",
+        ])
+        .unwrap();
+        std::fs::write(tmp.path().join("_vault_stems.json"), stems).unwrap();
+
+        let result = check_workspace(tmp.path(), "_synthetic").unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "cross-vault link must pass when target appears in _vault_stems.json: {:?}",
+            result.hard_violations
         );
     }
 }

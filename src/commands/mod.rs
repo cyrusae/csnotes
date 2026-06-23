@@ -1,4 +1,5 @@
 pub mod audit_cmd;
+pub mod check_cmd;
 pub mod config_cmd;
 pub mod diff;
 pub mod extract;

@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- Add csnotes check in-workspace validation command (L2)
 - audit: nudge for AI conversation sources missing .json sidecar (long conversations) (L57)
 - reconcile: sources_ignore_dirs config — skip specified subdirectories during source scan (L58)
 - AI conversation sidecar ingestion: read {stem}.json, render markdown index in workspace (L56)
@@ -36,6 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- Respect sources_ignore_dirs in vault file index walk (L4)
+- Allow wikilinks from _synthetic/ to any vault file, not just _synthetic/ (L3)
+- Fix wikilink resolution to handle topic-path links and be truly case-insensitive (L1)
 - Deadline keyword extraction misses case variants and word boundaries (L30)
 - deadline extraction: turn-in, full month names, ordinals, relative dates (L55)
 - No manifest locking: concurrent csnotes runs can corrupt vault state (CSN-003) (L32)
@@ -52,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- cover ops/structural execute_merge_topics and relink_raw_notes (#75)
 - unit tests for ui.rs pure math functions (hsl_to_rgb, rainbow) (L68)
 - unit tests for extract.rs helpers (is_question, extract_from, render_extract) (L67)
 - cover reconcile recording_kind parsing and scan_sources_dir filter edge cases (L66)

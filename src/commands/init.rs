@@ -261,9 +261,12 @@ Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphena
 - No frontmatter — the CLI stamps all `---` fences.  Write body only.
 - Every atomic note must end with `^<slug>` on its own line (same as filename
   without `.md`).  Without this anchor the note can't be transcluded.
-- Wikilinks: `[[target-slug]]` or `[[target-slug|display text]]`.  Every
-  target must exist in `_synthetic/` already or be created this session.
-  Broken wikilinks cause the CLI to discard all your work.
+- Wikilinks: `[[slug]]`, `[[topic/slug]]`, or `[[slug|display text]]`.
+  Both bare-slug and topic-prefixed forms resolve correctly.  Targets may be
+  notes in `_synthetic/` (created now or pre-existing) **or** any other vault
+  file listed in the **Other Vault Files** section of `_session.md` (sources,
+  AI-Conversations, etc.).  Every link target must appear in one of those two
+  places — broken wikilinks cause the CLI to discard all your work.
 
 Write notes as the conversation develops — you don't have to finish the
 debrief first.
@@ -277,6 +280,19 @@ Read `report_schema.md` before writing `_session_report.json`.
 ---
 
 ## Before you exit
+
+**Run the invariant check first:**
+
+```sh
+csnotes check
+```
+
+This validates every wikilink, block anchor, and block-ID uniqueness constraint
+against your `_synthetic/` directory and prints any violations.  Fix everything
+it reports before you exit — the teardown pipeline will discard the workspace if
+violations remain, and you'll have to recover from scratch.
+
+Then confirm manually:
 
 - Every atomic note body ends with its block anchor on the last line.
 - Every wikilink target exists in `_synthetic/`.
@@ -347,8 +363,9 @@ Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphena
 - No frontmatter — the CLI stamps all `---` fences.  Write body only.
 - Every atomic note must end with `^<slug>` on its own line (same as the
   filename without `.md`).  Without this anchor the note can't be transcluded.
-- Wikilinks: `[[target-slug]]` or `[[target-slug|display text]]`.  Every
-  target must already exist in `_synthetic/` or be created this session.
+- Wikilinks: `[[slug]]`, `[[topic/slug]]`, or `[[slug|display text]]`.
+  Both bare-slug and topic-prefixed forms resolve correctly.  Every target
+  must already exist in `_synthetic/` or be created this session.
   Broken wikilinks cause the CLI to discard all your work.
 
 Write notes as the conversation develops — you don't have to finish the
@@ -365,6 +382,19 @@ Read `report_schema.md` before writing `_session_report.json`.
 ---
 
 ## Before you exit
+
+**Run the invariant check first:**
+
+```sh
+csnotes check
+```
+
+This validates every wikilink, block anchor, and block-ID uniqueness constraint
+against your `_synthetic/` directory and prints any violations.  Fix everything
+it reports before you exit — the teardown pipeline will discard the workspace if
+violations remain, and you'll have to recover from scratch.
+
+Then confirm manually:
 
 - Every atomic note body ends with its block anchor on the last line.
 - Every wikilink target exists in `_synthetic/`.

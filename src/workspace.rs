@@ -9,9 +9,10 @@
 ///     _sources_index.md                     ← source metadata; consult before reading source files
 ///     _session_report.json                  ← written by AI on exit
 ///     input_raw_*.md                        ← raw notes (XML-wrapped, read-only)
-///     input_plaud_*.md / input_*.md         ← recordings / artifacts (XML-wrapped, read-only)
+///     input_*.md                            ← recordings / artifacts (XML-wrapped, read-only)
 ///     sources/                              ← source files (XML-wrapped, read-only)
 ///     _synthetic/                           ← writable working copy
+///     _vault_stems.json                     ← lowercased stems of all other vault files
 ///
 /// The vault is never touched until the brief, snapshot-guarded merge-back.
 use std::collections::HashMap;
@@ -132,8 +133,12 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
         fs::create_dir_all(&ws_synthetic)?;
     }
 
-    // 5. Render _session.md
-    render_session_md(params, &workspace_root)?;
+    // 5. Index vault files outside _synthetic/ and write _vault_stems.json so
+    //    the invariant checker can validate cross-vault wikilinks.
+    let vault_files = write_vault_stems(params.vault_root, params.config, &workspace_root)?;
+
+    // 6. Render _session.md (includes the vault file index section)
+    render_session_md(params, &workspace_root, &vault_files)?;
 
     Ok(workspace_root)
 }
@@ -231,8 +236,9 @@ fn wrap_session_inputs(
         make_readonly(&dest)?;
     }
 
-    // Artifacts — text-readable formats only; binary files (PDF, images, etc.)
-    // are silently skipped because the AI cannot consume them.
+    // Artifacts — slide formats (PDF/PPTX) are extracted via the slides
+    // pipeline; other text-readable formats are wrapped directly; binary
+    // files (images, etc.) are silently skipped.
     for artifact in &entry.artifacts {
         let src = vault_root.join(&artifact.path);
         if !src.exists() {
@@ -243,6 +249,35 @@ fn wrap_session_inputs(
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
+
+        // ── Slide extraction for binary presentation formats ──────────────
+        if ext == "pdf" || ext == "pptx" {
+            match extract_slides_to_markdown(&src, &ext) {
+                Ok(markdown) => {
+                    let wrapped = xml_wrap(
+                        &markdown,
+                        "lecture_slides",
+                        &[
+                            ("course", course.as_str()),
+                            ("date", date.as_str()),
+                            ("format", ext.as_str()),
+                        ],
+                    );
+                    let dest =
+                        workspace_root.join(format!("input_{}.md", sanitise(&artifact.path)));
+                    fs::write(&dest, wrapped)?;
+                    make_readonly(&dest)?;
+                }
+                Err(e) => {
+                    eprintln!(
+                        "warning: slide extraction skipped for '{}': {}",
+                        artifact.path, e
+                    );
+                }
+            }
+            continue;
+        }
+
         if !is_text_artifact_ext(&ext) {
             continue;
         }
@@ -518,9 +553,101 @@ fn source_visible_for_course(entry: &SourceEntry, course: &str) -> bool {
     entry.courses.is_empty() || entry.courses.iter().any(|c| c == course)
 }
 
+// ── Vault file index ──────────────────────────────────────────────────────────
+
+/// A single vault file that can be wikilinked from synthetic notes.
+pub struct VaultFile {
+    /// Vault-root-relative path without extension, original casing.
+    /// e.g. `"AI-Conversations/Claude/Java-boxed-primitives"`
+    pub rel_path: String,
+    /// Bare filename without extension, original casing.
+    /// e.g. `"Java-boxed-primitives"`
+    pub stem: String,
+}
+
+/// Walk the vault for `.md` files that live outside the internal csnotes
+/// directories (`_synthetic/`, `_generated/`, `_csnotes/`) and are therefore
+/// invisible to the workspace.  Two artefacts are produced:
+///
+/// 1. `_vault_stems.json` in the workspace root — a JSON array of lowercased
+///    stem and path identifiers consumed by `load_vault_stems` in `audit.rs`.
+/// 2. The returned `Vec<VaultFile>` used to build the human-readable section
+///    in `_session.md` so Claude knows what it can link to.
+fn write_vault_stems(
+    vault_root: &Path,
+    config: &VaultConfig,
+    workspace_root: &Path,
+) -> Result<Vec<VaultFile>> {
+    let excluded: &[&str] = &[
+        config.synthetic_dir.as_str(),
+        config.generated_dir.as_str(),
+        config.csnotes_dir.as_str(),
+    ];
+
+    let mut files: Vec<VaultFile> = Vec::new();
+    let mut stems_json: Vec<String> = Vec::new();
+
+    for entry in walkdir::WalkDir::new(vault_root)
+        .min_depth(1)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_dir() {
+                let name = e.file_name().to_str().unwrap_or("");
+                // Top-level: skip internal csnotes dirs and snapshot dirs.
+                if e.depth() == 1 && (excluded.contains(&name) || name.starts_with("_synthetic_")) {
+                    return false;
+                }
+                // Any depth: skip dirs named in sources_ignore_dirs so that
+                // generator scripts / instruction subdirs inside sources/ (or
+                // anywhere else in the vault) don't pollute the link index.
+                if config.sources_ignore_dirs.iter().any(|ig| ig == name) {
+                    return false;
+                }
+            }
+            true
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+    {
+        let rel_path_buf = entry
+            .path()
+            .strip_prefix(vault_root)
+            .unwrap_or(entry.path());
+        let rel_path = rel_path_buf
+            .with_extension("")
+            .to_string_lossy()
+            .to_string();
+        let stem = rel_path_buf
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        // Both forms go into the JSON so the checker accepts either link style.
+        stems_json.push(rel_path.to_lowercase());
+        stems_json.push(stem.to_lowercase());
+
+        files.push(VaultFile { rel_path, stem });
+    }
+
+    // Deduplicate (bare stem duplicates are common when many dirs are present).
+    stems_json.sort_unstable();
+    stems_json.dedup();
+
+    let json = serde_json::to_string(&stems_json)?;
+    fs::write(workspace_root.join("_vault_stems.json"), json)
+        .context("writing _vault_stems.json")?;
+
+    Ok(files)
+}
+
 // ── _session.md rendering ─────────────────────────────────────────────────────
 
-fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Result<()> {
+fn render_session_md(
+    params: &WorkspaceParams<'_>,
+    workspace_root: &Path,
+    vault_files: &[VaultFile],
+) -> Result<()> {
     let mut out = String::new();
 
     // Header
@@ -758,6 +885,37 @@ fn render_session_md(params: &WorkspaceParams<'_>, workspace_root: &Path) -> Res
         }
     }
 
+    // Vault file index — files the AI can wikilink to outside _synthetic/.
+    // Grouped by top-level directory for readability.
+    out.push_str("\n## Other Vault Files\n");
+    out.push_str(
+        "_Files in this vault outside `_synthetic/` that you can wikilink from synthetic notes.\n\
+         Both `[[stem]]` and `[[path/stem]]` forms resolve correctly.\n\
+         Prefer `[[stem]]` for clarity; use the full path when the stem is ambiguous._\n",
+    );
+
+    if vault_files.is_empty() {
+        out.push_str("\n_None._\n");
+    } else {
+        // Group by top-level directory (first path component).
+        let mut by_dir: std::collections::BTreeMap<String, Vec<&VaultFile>> =
+            std::collections::BTreeMap::new();
+        for vf in vault_files {
+            let dir = std::path::Path::new(&vf.rel_path)
+                .parent()
+                .and_then(|p| p.components().next())
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                .unwrap_or_else(|| "(root)".to_string());
+            by_dir.entry(dir).or_default().push(vf);
+        }
+        for (dir, files) in &by_dir {
+            out.push_str(&format!("\n### {}\n", dir));
+            for vf in files {
+                out.push_str(&format!("- `[[{}]]` — `{}`\n", vf.stem, vf.rel_path));
+            }
+        }
+    }
+
     out.push('\n');
 
     fs::write(workspace_root.join("_session.md"), out).context("writing _session.md")?;
@@ -991,6 +1149,21 @@ fn make_readonly(path: &Path) -> Result<()> {
 
 fn sanitise(path: &str) -> String {
     path.replace(['/', '\\', '.', ' '], "_")
+}
+
+/// Run the full slide extraction pipeline for a PDF or PPTX file and return
+/// the rendered Markdown string.  `ext` must be `"pdf"` or `"pptx"`.
+fn extract_slides_to_markdown(
+    path: &Path,
+    ext: &str,
+) -> std::result::Result<String, crate::slides::SlideError> {
+    let raw = if ext == "pdf" {
+        crate::slides::extract_pdf(path)?
+    } else {
+        crate::slides::extract_pptx(path)?
+    };
+    let processed = crate::slides::process(raw);
+    Ok(crate::slides::to_workspace_markdown(&processed))
 }
 
 /// Returns true for file extensions that are safe to read as UTF-8 text and

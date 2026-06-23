@@ -47,6 +47,10 @@ owo-colors = { version = "3", features = ["supports-colors"] }
 # Ordered maps (stable JSON serialization)
 indexmap = { version = "2", features = ["serde"] }
 
+# Slide extraction (PDF/PPTX → text for workspace ingestion)
+zip       = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
+
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"

@@ -6,7 +6,9 @@
 ///   deadlines — lines containing `due`, `deadline`, `overdue`, `submit`,
 ///               `turn in`, `hand in`, `by <date/day/ordinal>`, or
 ///               `by tomorrow`/`by tonight`
-///   questions — lines ending with `?`, starting with `Q:` / `??`
+///   questions — any line containing `?` (including mid-line marks like
+///               "Statement(? inline question?) rest of line"),
+///               or lines starting with `Q:` / `QUESTION:` (no `?` required)
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -227,12 +229,10 @@ fn is_deadline(line: &str) -> bool {
 }
 
 fn is_question(line: &str) -> bool {
-    let trimmed = line.trim_end_matches(|c: char| c.is_whitespace() || c == '*' || c == '_');
+    // Any `?` anywhere in the line — covers end-of-line marks, mid-line inline
+    // questions ("Statement(? part I don't understand?) rest"), and `??` prefixes.
     let up = line.trim().to_ascii_uppercase();
-    trimmed.ends_with('?')
-        || up.starts_with("Q:")
-        || up.starts_with("??")
-        || up.starts_with("QUESTION:")
+    line.contains('?') || up.starts_with("Q:") || up.starts_with("QUESTION:")
 }
 
 fn clean_question(line: &str) -> String {
@@ -563,15 +563,35 @@ mod tests {
     }
 
     #[test]
-    fn is_question_trims_trailing_space() {
-        // Catches one of the `|| with &&` in trim_end_matches closure (line 230).
+    fn is_question_trailing_whitespace_after_mark() {
         assert!(is_question("why does this work? "));
     }
 
     #[test]
-    fn is_question_trims_trailing_asterisk() {
-        // Catches the other `|| with &&` in trim_end_matches closure (line 230).
+    fn is_question_trailing_char_after_mark() {
         assert!(is_question("why does this work?*"));
+    }
+
+    #[test]
+    fn is_question_mid_line_mark() {
+        // Pattern the user writes: inline questions embedded in a statement.
+        // "Statement(? sub-question? sub-question?) continuation" should be flagged.
+        assert!(is_question(
+            "merge sort is O(n log n)? confirm with master theorem? and then we continue"
+        ));
+    }
+
+    #[test]
+    fn extract_mid_line_question_is_captured() {
+        let items = extract_from(
+            "arrays are contiguous(? or can they be sparse?) and zero-indexed\n",
+            None,
+        );
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, ExtractKind::Question);
+        // The full line is preserved so the context isn't lost.
+        assert!(items[0].text.contains("contiguous"));
+        assert!(items[0].text.contains("sparse"));
     }
 
     // ── clean_question ────────────────────────────────────────────────────────
