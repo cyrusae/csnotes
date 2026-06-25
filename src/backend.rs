@@ -76,7 +76,7 @@ fn run_interactive(cmd: &mut Command) -> std::io::Result<std::process::ExitStatu
 
 /// Construct the appropriate backend from the configured/overridden backend.
 ///
-/// `agy_model` is forwarded to `AgyBackend` only; ignored for other backends.
+/// `agy_model` / `claude_model` are forwarded to their respective backends only.
 /// `resume` causes the backend to re-enter the most recent conversation (`-c`)
 /// rather than starting a fresh one.
 pub fn make_backend(
@@ -84,12 +84,14 @@ pub fn make_backend(
     skill_variant: SkillVariant,
     fixture: Option<String>,
     agy_model: Option<String>,
+    claude_model: Option<String>,
     resume: bool,
 ) -> Box<dyn BackendLauncher> {
     match backend {
         AiBackend::Claude => Box::new(ClaudeBackend {
             skill_variant,
             resume,
+            model: claude_model,
         }),
         AiBackend::Agy => Box::new(AgyBackend {
             skill_variant,
@@ -105,6 +107,8 @@ pub fn make_backend(
 pub struct ClaudeBackend {
     pub skill_variant: SkillVariant,
     pub resume: bool,
+    /// Optional model override passed to `claude --model`.
+    pub model: Option<String>,
 }
 
 impl BackendLauncher for ClaudeBackend {
@@ -119,6 +123,9 @@ impl BackendLauncher for ClaudeBackend {
         }
         let mut cmd = Command::new("claude");
         cmd.args(&args).current_dir(workspace);
+        if let Some(ref m) = self.model {
+            cmd.args(["--model", m]);
+        }
         let status = run_interactive(&mut cmd)
             .map_err(|e| CsnotesError::BackendFailed(format!("claude: {e}")))?;
 

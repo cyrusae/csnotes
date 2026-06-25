@@ -60,6 +60,8 @@ pub struct WorkspaceParams<'a> {
     pub manifest: &'a Manifest,
     pub run_id: &'a str,
     pub scope: WorkspaceScope,
+    /// Runtime-derived skill variant (from backend_kind, not config.skill_variant).
+    pub skill_variant: SkillVariant,
     /// If true, print what would happen but don't create anything.
     pub dry_run: bool,
 }
@@ -98,7 +100,12 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     fs::create_dir_all(&workspace_root).context("creating workspace directory")?;
 
     // 1. Copy instruction files
-    copy_instruction_files(params.vault_root, params.config, &workspace_root)?;
+    copy_instruction_files(
+        params.vault_root,
+        params.config,
+        params.skill_variant,
+        &workspace_root,
+    )?;
 
     // 2. Copy and wrap session inputs (raw notes, recordings, artifacts)
     if let WorkspaceScope::Session { session_id } = &params.scope {
@@ -148,13 +155,14 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
 fn copy_instruction_files(
     vault_root: &Path,
     config: &VaultConfig,
+    skill_variant: SkillVariant,
     workspace_root: &Path,
 ) -> Result<()> {
     let instruction_src = config.instruction_source_path(vault_root);
     let synthesis_src = config.synthesis_md_path(vault_root);
     let report_schema_src = config.report_schema_path(vault_root);
 
-    let dest_name = match config.skill_variant {
+    let dest_name = match skill_variant {
         SkillVariant::Claude => "CLAUDE.md",
         SkillVariant::Gemini => "GEMINI.md",
     };

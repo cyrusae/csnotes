@@ -36,20 +36,20 @@ anyhow    = "1"
 thiserror = "2"
 
 # Markdown AST (heading scheme derivation for sources)
-comrak = { version = "0.29", default-features = false }
+comrak = { version = "0.52", default-features = false }
 
 # Regex (Obsidian syntax extraction)
 regex = "1"
 
 # Terminal color output
-owo-colors = { version = "3", features = ["supports-colors"] }
+owo-colors = { version = "4", features = ["supports-colors"] }
 
 # Ordered maps (stable JSON serialization)
 indexmap = { version = "2", features = ["serde"] }
 
 # Slide extraction (PDF/PPTX → text for workspace ingestion)
-zip       = { version = "2", default-features = false, features = ["deflate"] }
-quick-xml = "0.37"
+zip       = { version = "8", default-features = false, features = ["deflate"] }
+quick-xml = "0.40"
 
 [dev-dependencies]
 proptest = "1"

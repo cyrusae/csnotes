@@ -79,9 +79,8 @@ const DEDUP_WINDOW: usize = 5;
 /// Returns `Err(SlideError)` if the tool is not found or extraction fails.
 pub fn extract_pdf(path: &Path) -> Result<Vec<RawSlide>> {
     let output = std::process::Command::new("pdftotext")
-        .arg("-") // output to stdout
-        .arg(path)
-        .arg("-") // path "-" means stdout; needs file path first
+        .arg(path) // PDF-file
+        .arg("-") // text-file: "-" means stdout
         .output();
 
     // pdftotext syntax: pdftotext [options] <PDF-file> [<text-file>]
@@ -295,6 +294,7 @@ fn read_pptx_notes_text(archive: &mut zip::ZipArchive<std::fs::File>, n: usize) 
 /// joins runs with no separator (PowerPoint splits runs on formatting
 /// boundaries, not word boundaries).
 fn extract_xml_text_nodes(xml: &str) -> Vec<String> {
+    use quick_xml::escape::unescape;
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -335,8 +335,11 @@ fn extract_xml_text_nodes(xml: &str) -> Vec<String> {
             Ok(Event::Text(e)) => {
                 if in_text {
                     if let Some(ref mut para) = current_para {
-                        if let Ok(text) = e.unescape() {
-                            para.push_str(&text);
+                        if let Ok(decoded) = e.decode() {
+                            match unescape(&decoded) {
+                                Ok(text) => para.push_str(&text),
+                                Err(_) => para.push_str(&decoded),
+                            }
                         }
                     }
                 }

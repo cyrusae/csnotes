@@ -95,6 +95,7 @@ pub fn run(args: RecoverArgs) -> Result<()> {
                     skill_variant,
                     None,
                     config.agy_model.clone(),
+                    None,
                     true,
                 );
 

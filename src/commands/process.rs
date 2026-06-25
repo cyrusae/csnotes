@@ -31,6 +31,8 @@ pub struct ProcessArgs {
     /// Per-run Gemini model override (`--agy-model`).  Falls back to
     /// `config.agy_model`, then `agy`'s built-in default.
     pub agy_model: Option<String>,
+    /// Per-run Claude model override (`--claude-model`).
+    pub claude_model: Option<String>,
 }
 
 pub fn run(args: ProcessArgs) -> Result<()> {
@@ -106,6 +108,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         manifest: &manifest,
         run_id: &run_id,
         scope,
+        skill_variant,
         dry_run: args.dry_run,
     };
 
@@ -181,7 +184,14 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     // ── Launch AI ─────────────────────────────────────────────────────────
     // Per-run override wins; fall back to config value, then agy's built-in default.
     let agy_model = args.agy_model.or(config.agy_model.clone());
-    let backend = make_backend(backend_kind, skill_variant, args.fixture, agy_model, false);
+    let backend = make_backend(
+        backend_kind,
+        skill_variant,
+        args.fixture,
+        agy_model,
+        args.claude_model,
+        false,
+    );
     let launch_result = backend.launch(&workspace_root);
 
     if let Err(e) = launch_result {
@@ -785,6 +795,7 @@ mod tests {
                 backend: None,
                 fixture: None,
                 agy_model: None,
+                claude_model: None,
             },
             manifest,
         )

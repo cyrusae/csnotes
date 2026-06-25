@@ -126,7 +126,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
     }
 
     // ── Write instruction files ────────────────────────────────────────────────
-    write_instruction_files(&instructions_dir, &cfg)?;
+    write_instruction_files(&instructions_dir, &cfg, false)?;
 
     // ── Done ──────────────────────────────────────────────────────────────────
     println!("\nVault initialised.");
@@ -157,7 +157,7 @@ fn run_instructions_only() -> Result<()> {
     let instructions_dir = vault_root.join(&config.csnotes_dir).join("instructions");
     fs::create_dir_all(&instructions_dir)?;
 
-    write_instruction_files(&instructions_dir, &config)?;
+    write_instruction_files(&instructions_dir, &config, true)?;
     println!(
         "Instructions written to {}/instructions/",
         config.csnotes_dir
@@ -168,37 +168,38 @@ fn run_instructions_only() -> Result<()> {
 
 // ── Instruction file writing ──────────────────────────────────────────────────
 
-fn write_instruction_files(dir: &Path, cfg: &VaultConfig) -> Result<()> {
+fn write_instruction_files(dir: &Path, cfg: &VaultConfig, force: bool) -> Result<()> {
     // claude.md / gemini.md — variant-specific entry point
     let (entry_name, entry_content) = match cfg.skill_variant {
         SkillVariant::Claude => ("claude.md", CLAUDE_MD),
         SkillVariant::Gemini => ("gemini.md", GEMINI_MD),
     };
-    write_if_absent(dir, entry_name, entry_content)?;
+    write_instruction(dir, entry_name, entry_content, force)?;
 
     // Always write the shared files regardless of variant
     if cfg.skill_variant == SkillVariant::Gemini {
-        write_if_absent(dir, "claude.md", CLAUDE_MD)?;
+        write_instruction(dir, "claude.md", CLAUDE_MD, force)?;
     } else {
-        write_if_absent(dir, "gemini.md", GEMINI_MD)?;
+        write_instruction(dir, "gemini.md", GEMINI_MD, force)?;
     }
-    write_if_absent(dir, "synthesis.md", SYNTHESIS_MD)?;
-    write_if_absent(dir, "report_schema.md", REPORT_SCHEMA_MD)?;
+    write_instruction(dir, "synthesis.md", SYNTHESIS_MD, force)?;
+    write_instruction(dir, "report_schema.md", REPORT_SCHEMA_MD, force)?;
 
     let _ = entry_name; // suppress unused warning
     Ok(())
 }
 
-fn write_if_absent(dir: &Path, filename: &str, content: &str) -> Result<()> {
+fn write_instruction(dir: &Path, filename: &str, content: &str, force: bool) -> Result<()> {
     let path = dir.join(filename);
-    if path.exists() {
+    if path.exists() && !force {
         println!(
             "  Skipped: _csnotes/instructions/{} (already exists)",
             filename
         );
     } else {
+        let verb = if path.exists() { "Updated" } else { "Created" };
         fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
-        println!("  Created: _csnotes/instructions/{}", filename);
+        println!("  {}: _csnotes/instructions/{}", verb, filename);
     }
     Ok(())
 }

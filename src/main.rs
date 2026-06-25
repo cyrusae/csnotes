@@ -51,6 +51,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             backend,
             fixture,
             agy_model,
+            claude_model,
             resume,
         } => {
             if resume {
@@ -68,6 +69,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
                 backend,
                 fixture,
                 agy_model,
+                claude_model,
             })
         }
 
@@ -201,6 +203,11 @@ enum Command {
         /// Example: gemini-2.5-flash, gemini-2.5-pro
         #[arg(long)]
         agy_model: Option<String>,
+
+        /// Claude model to use for this session (overrides the claude CLI default).
+        /// Example: claude-opus-4-8, claude-sonnet-4-6
+        #[arg(long)]
+        claude_model: Option<String>,
 
         /// Resume an in-progress session (equivalent to `csnotes recover --resume`).
         #[arg(long)]
