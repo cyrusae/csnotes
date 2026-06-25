@@ -1,0 +1,10 @@
+{
+  "uuid": "2cc25d39-5efd-4cfc-b50c-c2726c6d1e57",
+  "issue_uuid": "8beed0ed-37ab-45ce-b76f-a85081fe1344",
+  "author": "3owj",
+  "content": "Fixed two bugs: (1) pdftotext arg order was reversed — passed '- path -' instead of 'path -', causing extraction to fail silently; (2) WorkspaceParams missing skill_variant field — copy_instruction_files was reading config.skill_variant instead of the runtime-derived variant, so --backend agy with default Claude config would write CLAUDE.md to the workspace instead of GEMINI.md",
+  "created_at": "2026-06-25T19:36:53.583164Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAqjoyn4y4MpUQ0G2hXHxEQVkc0vNVbqzD1Ct/nMH0Is66fwScgLl8M9ZTXufeFB4CpkdU5iSy4q0bqZPaBDExDw=="
+}
