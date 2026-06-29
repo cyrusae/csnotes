@@ -320,8 +320,8 @@ pub fn run_teardown(
     // Step 6: Execute content ops
     for op in &report.operations {
         match op {
-            Op::CreateNote(op) => execute_create_note(op, workspace_root, now)?,
-            Op::UpdateNote(op) => execute_update_note(op, workspace_root, now)?,
+            Op::CreateNote(op) => execute_create_note(op, workspace_root, now, manifest)?,
+            Op::UpdateNote(op) => execute_update_note(op, workspace_root, now, manifest)?,
             _ => {} // structural handled above
         }
     }

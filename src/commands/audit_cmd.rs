@@ -38,7 +38,7 @@ pub fn run(args: AuditArgs) -> Result<()> {
     // ── Fix plan ──────────────────────────────────────────────────────────────
     if args.fix {
         println!();
-        let fixes = crate::audit::collect_fixes(&vault_root, &config)?;
+        let fixes = crate::audit::collect_fixes(&vault_root, &config, &manifest)?;
 
         if fixes.is_empty() {
             println!("No mechanical repairs needed.");

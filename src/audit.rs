@@ -787,15 +787,25 @@ pub struct FixItem {
 pub enum FixAction {
     /// Append a `^block_id` anchor to the end of the note body.
     AppendAnchor { path: PathBuf, block_id: String },
+    /// Add source credits (harvested from body wikilinks) to frontmatter.
+    /// `last_updated` is intentionally preserved — the note body is unchanged.
+    BackfillSources {
+        path: PathBuf,
+        sources: Vec<crate::manifest::SourceContrib>,
+    },
 }
 
 /// Collect all auto-repairable issues in `_synthetic/`.
 ///
-/// Currently detects: atomic notes whose frontmatter declares a `block_id`
-/// but whose body is missing the corresponding `^id` anchor.
+/// Detects:
+/// - Atomic notes whose frontmatter declares a `block_id` but whose body is
+///   missing the corresponding `^id` anchor.
+/// - Notes with `[[wikilinks]]` to registered source files that are not yet
+///   recorded in `contributing_sources`.
 pub fn collect_fixes(
     vault_root: &Path,
     config: &crate::config::VaultConfig,
+    manifest: &Manifest,
 ) -> Result<Vec<FixItem>> {
     let synthetic_root = vault_root.join(&config.synthetic_dir);
     let mut fixes = Vec::new();
@@ -818,6 +828,8 @@ pub fn collect_fixes(
             Ok(fm) => fm,
             Err(_) => continue,
         };
+
+        // ── Missing block anchor ───────────────────────────────────────────
         if fm.kind == NoteKind::Atomic {
             if let Some(id) = &fm.block_id {
                 if !extract_block_ids(&content).contains(id) {
@@ -838,6 +850,40 @@ pub fn collect_fixes(
                     });
                 }
             }
+        }
+
+        // ── Missing source credits ─────────────────────────────────────────
+        // Split content so we only scan the body, not the frontmatter YAML.
+        let body = match crate::frontmatter::split_frontmatter(&content) {
+            Some((_yaml, b)) => b,
+            None => continue,
+        };
+        let harvested = crate::ops::content::harvest_source_contribs(body, manifest);
+        let new_sources: Vec<_> = harvested
+            .into_iter()
+            .filter(|sc| {
+                !fm.contributing_sources
+                    .iter()
+                    .any(|e| e.source_id == sc.source_id)
+            })
+            .collect();
+        if !new_sources.is_empty() {
+            let rel = entry
+                .path()
+                .strip_prefix(vault_root)
+                .unwrap_or(entry.path());
+            let ids: Vec<&str> = new_sources.iter().map(|s| s.source_id.as_str()).collect();
+            fixes.push(FixItem {
+                description: format!(
+                    "'{}': credit source(s) [{}] from body wikilinks",
+                    rel.display(),
+                    ids.join(", ")
+                ),
+                action: FixAction::BackfillSources {
+                    path: entry.path().to_path_buf(),
+                    sources: new_sources,
+                },
+            });
         }
     }
 
@@ -864,6 +910,27 @@ pub fn apply_fixes(fixes: &[FixItem]) -> Result<usize> {
                 let new_content = format!("{}{}\n^{}\n", trimmed, gap, block_id);
                 std::fs::write(path, new_content)
                     .with_context(|| format!("writing {}", path.display()))?;
+                applied += 1;
+            }
+            FixAction::BackfillSources { path, sources } => {
+                let content = crate::frontmatter::read_note(path)
+                    .with_context(|| format!("reading {}", path.display()))?;
+                let (yaml, body) = crate::frontmatter::split_frontmatter(&content)
+                    .ok_or_else(|| anyhow::anyhow!("no frontmatter in '{}'", path.display()))?;
+                let mut fm: crate::frontmatter::NoteFrontmatter = serde_yml::from_str(yaml)
+                    .with_context(|| format!("parsing frontmatter in '{}'", path.display()))?;
+                // Extend directly — do NOT touch last_updated (body unchanged).
+                for sc in sources {
+                    if !fm
+                        .contributing_sources
+                        .iter()
+                        .any(|e| e.source_id == sc.source_id)
+                    {
+                        fm.contributing_sources.push(sc.clone());
+                    }
+                }
+                crate::frontmatter::write_frontmatter(path, &fm, body)
+                    .with_context(|| format!("writing '{}'", path.display()))?;
                 applied += 1;
             }
         }
@@ -1610,7 +1677,8 @@ mod tests {
     #[test]
     fn collect_fixes_returns_empty_when_no_synthetic_dir() {
         let tmp = TempDir::new().unwrap();
-        let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
+        let manifest = make_empty_manifest(tmp.path());
+        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(fixes.is_empty());
     }
 
@@ -1622,7 +1690,8 @@ mod tests {
             "_synthetic/cs/sorting.md",
             &note_missing_anchor("sort-01"),
         );
-        let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
+        let manifest = make_empty_manifest(tmp.path());
+        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert_eq!(
             fixes.len(),
             1,
@@ -1644,7 +1713,8 @@ mod tests {
             "_synthetic/cs/sorting.md",
             &clean_note("sort-01"),
         );
-        let fixes = collect_fixes(tmp.path(), &make_vault_config()).unwrap();
+        let manifest = make_empty_manifest(tmp.path());
+        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(
             fixes.is_empty(),
             "no fix needed for note with anchor present"
@@ -1699,6 +1769,119 @@ mod tests {
         assert_eq!(count, 2);
         assert!(std::fs::read_to_string(&path_a).unwrap().contains("^id-a"));
         assert!(std::fs::read_to_string(&path_b).unwrap().contains("^id-b"));
+    }
+
+    // ── backfill_sources (collect_fixes + apply_fixes) ───────────────────────
+
+    fn note_with_source_link(block_id: &str, link: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+             block_id: {block_id}\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\nSee [[{link}]] for details.\n\n^{block_id}\n"
+        )
+    }
+
+    fn manifest_with_source(vault_root: &Path, source_id: &str) -> Manifest {
+        use crate::manifest::{SourceEntry, SourceKind, SourceStatus};
+        let mut m = make_empty_manifest(vault_root);
+        m.sources.insert(
+            source_id.to_string(),
+            SourceEntry {
+                path: format!("sources/{}.md", source_id),
+                kind: SourceKind::Textbook,
+                status: SourceStatus::Unprocessed,
+                last_processed_at: None,
+                heading_scheme: vec![],
+                topics_updated: vec![],
+                summary: None,
+                tags: vec![],
+                courses: vec![],
+            },
+        );
+        m
+    }
+
+    #[test]
+    fn collect_fixes_detects_missing_source_credit() {
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/cs/sorting.md",
+            &note_with_source_link("sort-01", "Textbooks/SICP/Chapter-05"),
+        );
+        let manifest = manifest_with_source(tmp.path(), "Textbooks/SICP/Chapter-05");
+        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
+        assert_eq!(
+            fixes.len(),
+            1,
+            "expected one backfill fix, got: {:?}",
+            fixes.iter().map(|f| &f.description).collect::<Vec<_>>()
+        );
+        assert!(
+            fixes[0].description.contains("Textbooks/SICP/Chapter-05"),
+            "{}",
+            fixes[0].description
+        );
+    }
+
+    #[test]
+    fn collect_fixes_no_fix_when_source_already_credited() {
+        let tmp = TempDir::new().unwrap();
+        // Note that already has the source in contributing_sources.
+        let content = format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+             block_id: sort-01\ncontributing_sessions: []\n\
+             contributing_sources:\n  - source_id: Textbooks/SICP/Chapter-05\n    relationship: introduced\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\nSee [[Textbooks/SICP/Chapter-05]] for details.\n\n^sort-01\n"
+        );
+        write(tmp.path(), "_synthetic/cs/sorting.md", &content);
+        let manifest = manifest_with_source(tmp.path(), "Textbooks/SICP/Chapter-05");
+        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
+        assert!(
+            fixes.is_empty(),
+            "no fix needed when source already credited: {:?}",
+            fixes.iter().map(|f| &f.description).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn apply_fixes_backfill_adds_source_and_preserves_last_updated() {
+        let tmp = TempDir::new().unwrap();
+        let note_path = tmp.path().join("note.md");
+        std::fs::write(
+            &note_path,
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+             block_id: sort-01\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\nSee [[Textbooks/SICP/Chapter-05]].\n\n^sort-01\n",
+        )
+        .unwrap();
+
+        let fixes = vec![FixItem {
+            description: "backfill test".into(),
+            action: FixAction::BackfillSources {
+                path: note_path.clone(),
+                sources: vec![crate::manifest::SourceContrib {
+                    source_id: "Textbooks/SICP/Chapter-05".into(),
+                    relationship: crate::manifest::Relationship::Introduced,
+                }],
+            },
+        }];
+        let count = apply_fixes(&fixes).unwrap();
+        assert_eq!(count, 1);
+
+        let content = std::fs::read_to_string(&note_path).unwrap();
+        assert!(
+            content.contains("Textbooks/SICP/Chapter-05"),
+            "source not written to frontmatter:\n{content}"
+        );
+        // last_updated must not change (body was not touched).
+        assert!(
+            content.contains("last_updated: \"2026-01-01T00:00:00Z\""),
+            "last_updated should be unchanged:\n{content}"
+        );
     }
 
     // ── reindex ───────────────────────────────────────────────────────────────

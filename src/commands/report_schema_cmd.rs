@@ -125,6 +125,12 @@ One entry for every note file you created.
 | `embed_in` | index notes this atomic should appear in; `[]` if none |
 | `relationship` | {rel_values} |
 
+**`provenance.sources` is auto-harvested.**  The CLI scans the note body for
+`[[wikilinks]]` that resolve to registered source files and adds them to
+`contributing_sources` automatically (relationship: `introduced`).  You only
+need to list a source explicitly if you want a non-`introduced` relationship
+(e.g. `extended`, `nuanced`).  Leave `"sources": []` in all other cases.
+
 ---
 
 ## `update_note` operation
