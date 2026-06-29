@@ -1,0 +1,10 @@
+{
+  "uuid": "261f38d0-57a1-4694-a031-86e6c30b44b3",
+  "display_id": null,
+  "title": "backfill contributing_sources from wikilinks for existing notes via audit --fix",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-06-29T22:59:37.739357Z",
+  "updated_at": "2026-06-29T22:59:37.739357Z"
+}
