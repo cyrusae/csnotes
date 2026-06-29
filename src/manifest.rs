@@ -272,19 +272,7 @@ pub struct SessionContrib {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SourceContrib {
     pub source_id: String,
-    pub location: SourceLocation,
     pub relationship: Relationship,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct SourceLocation {
-    /// Canonical numeric coordinate through the source's heading tree.
-    /// e.g. [1, 1, 2] for section 1.1.2
-    pub path: Vec<serde_json::Value>,
-    /// Resolved heading text (stable across renumbering).
-    pub label: String,
-    /// What the AI wrote (raw string before canonicalisation).
-    pub raw: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

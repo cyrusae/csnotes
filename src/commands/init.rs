@@ -183,7 +183,8 @@ fn write_instruction_files(dir: &Path, cfg: &VaultConfig, force: bool) -> Result
         write_instruction(dir, "gemini.md", GEMINI_MD, force)?;
     }
     write_instruction(dir, "synthesis.md", SYNTHESIS_MD, force)?;
-    write_instruction(dir, "report_schema.md", REPORT_SCHEMA_MD, force)?;
+    let schema_md = crate::commands::report_schema_cmd::generate();
+    write_instruction(dir, "report_schema.md", &schema_md, force)?;
 
     let _ = entry_name; // suppress unused warning
     Ok(())
@@ -276,7 +277,15 @@ debrief first.
 
 ## Phase 4 — Write the session report
 
-Read `report_schema.md` before writing `_session_report.json`.
+Read `report_schema.md` before writing `_session_report.json`.  If you are
+unsure whether the enum values in `report_schema.md` are current, run:
+
+```sh
+csnotes report-schema
+```
+
+This prints the schema derived from the live Rust types — the relationship
+values, op names, flag kinds, and scope kinds it prints are always correct.
 
 ---
 
@@ -376,7 +385,14 @@ debrief before touching `_synthetic/`.
 
 ## Phase 4 — Write the session report
 
-Read `report_schema.md` before writing `_session_report.json`.
+Read `report_schema.md` before writing `_session_report.json`.  If you are
+unsure whether the enum values in `report_schema.md` are current, run:
+
+```sh
+csnotes report-schema
+```
+
+This prints the schema derived from the live Rust types — always correct.
 
 **Important:** the `"backend"` field in your report must be `"gemini"`.
 
@@ -553,212 +569,6 @@ What it should *not* look like: a reformatted version of the lecture outline,
 or a note-per-slide, or anything that mirrors the textbook chapter structure.
 The question to ask is "would this help me in three weeks?" not "does this
 accurately transcribe what happened in class?"
-"##;
-
-const REPORT_SCHEMA_MD: &str = r##"# Session report schema
-
-Write `_session_report.json` using the schema below.  This is a metadata
-manifest — do NOT include note bodies.  The CLI reads the files you wrote
-directly; the report tells it what you did and why.
-
----
-
-## Top-level structure
-
-```json
-{
-  "csnotes_report_schema": 1,
-  "run_id": "<copy from _session.md exactly>",
-  "backend": "<claude | gemini>",
-  "started_at": "<ISO 8601 UTC>",
-  "completed_at": "<ISO 8601 UTC>",
-  "scope": {
-    "kind": "session",
-    "sessions": ["<session-id>"],
-    "sources": []
-  },
-  "operations": [ ... ],
-  "review_flags": [ ... ]
-}
-```
-
-**`run_id`** must be copied verbatim from `_session.md`.  A mismatch causes
-the CLI to discard the workspace.
-
-**`backend`** — use `"claude"` for Claude Code sessions, `"gemini"` for
-Gemini/Agy sessions.
-
----
-
-## `create_note` operation
-
-One entry for every note file you created.
-
-```json
-{
-  "op": "create_note",
-  "kind": "atomic",
-  "path": "_synthetic/algorithm-analysis/red-black-trees.md",
-  "title": "Red-Black Trees",
-  "topic": "algorithm-analysis",
-  "block_id": "red-black-trees",
-  "embed_in": ["_synthetic/algorithm-analysis/algorithm-analysis.md"],
-  "provenance": {
-    "sessions": [
-      {
-        "course": "CPSC5001",
-        "date": "YYYY-MM-DD",
-        "relationship": "introduced"
-      }
-    ],
-    "sources": []
-  },
-  "change_summary": "One sentence: what this note captures."
-}
-```
-
-| Field | Notes |
-|---|---|
-| `kind` | `"atomic"` or `"index"` |
-| `path` | workspace-relative; matches the file you wrote |
-| `block_id` | required for atomic; omit for index |
-| `embed_in` | index notes this atomic should appear in; `[]` if none |
-| `relationship` | `"introduced"` / `"expanded"` / `"revised"` / `"applied"` |
-
----
-
-## `update_note` operation
-
-One entry for every existing note you edited.
-
-```json
-{
-  "op": "update_note",
-  "path": "_synthetic/algorithm-analysis/sorting.md",
-  "add_provenance": {
-    "sessions": [
-      {
-        "course": "CPSC5001",
-        "date": "YYYY-MM-DD",
-        "relationship": "expanded"
-      }
-    ],
-    "sources": []
-  },
-  "sections": ["Comparison with heapsort"],
-  "change_summary": "One sentence: what changed and why."
-}
-```
-
-`sections` is an informal list of headings or concepts you touched — used by
-`csnotes diff`, informational only.
-
----
-
-## Review flags
-
-```json
-{
-  "kind": "possible_misread",
-  "path": "_synthetic/algorithm-analysis/red-black-trees.md",
-  "message": "Raw notes say 'n log n' but rotation analysis is O(log n) — kept O(log n), please confirm."
-}
-```
-
-| Kind | Behaviour |
-|---|---|
-| `"possible_misread"` | Persists; shown in `csnotes status` until resolved |
-| `"needs_confirmation"` | Persists; shown in `csnotes status` until resolved |
-| `"unresolved_question"` | Surfaces in future session briefings; doesn't nag |
-| `"ambiguity"` | Logged only; auto-resolved |
-
-Flags do not block the commit.
-
----
-
-## Structural ops
-
-These ops mutate the vault's topic/note layout.  Include them in `operations`
-alongside `create_note` / `update_note`.  The CLI executes structural ops first
-(before writing note bodies), so new folders from `promote_atomic` or
-`split_topic` are available when content ops run.
-
-### `rename_topic`
-
-```json
-{ "op": "rename_topic", "from": "old-topic", "to": "new-topic",
-  "reason": "clearer name" }
-```
-
-### `move_atomic`
-
-Move a note into an **existing** topic folder.
-
-```json
-{ "op": "move_atomic",
-  "from_path": "_synthetic/algorithms/sorting.md",
-  "to_topic": "data-structures",
-  "reason": "better conceptual fit" }
-```
-
-### `promote_atomic`
-
-Move a note into a **new** topic folder (you must also `create_note` the index).
-
-```json
-{ "op": "promote_atomic",
-  "from_path": "_synthetic/algorithms/red-black-trees.md",
-  "to_topic": "balanced-trees",
-  "reason": "topic large enough to stand alone" }
-```
-
-### `demote_topic`
-
-Fold all notes from one topic into an **existing** target topic.
-
-```json
-{ "op": "demote_topic", "from_topic": "graphs",
-  "into_topic": "algorithms", "reason": "too small to stand alone" }
-```
-
-### `merge_topics`
-
-Fold multiple source topics into one target (created if absent).  `into` may be
-one of the `from` entries (keep it, absorb the others).
-
-```json
-{ "op": "merge_topics",
-  "from": ["red-black-trees", "avl-trees"],
-  "into": "balanced-trees",
-  "reason": "unified concept" }
-```
-
-### `split_topic`
-
-Distribute atomics from one topic into several targets.  Notes not listed in
-any target remain in `from`.  New topic folders are created automatically.
-
-```json
-{ "op": "split_topic", "from": "algorithms",
-  "into": [
-    { "topic": "sorting",   "atomics": ["quicksort", "mergesort"] },
-    { "topic": "searching", "atomics": ["binary-search"] }
-  ],
-  "reason": "topic grew too broad" }
-```
-
-### `set_embed`
-
-Add or remove a transclusion link from an index note.
-
-```json
-{ "op": "set_embed",
-  "atomic_path": "_synthetic/algorithms/mergesort.md",
-  "index_path":  "_synthetic/algorithms/algorithms.md",
-  "present": true }
-```
-
-`present: false` removes the embed.  Both operations are idempotent.
 "##;
 
 // ── Directory helpers ─────────────────────────────────────────────────────────

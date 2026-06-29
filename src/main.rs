@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use commands::{
     audit_cmd, check_cmd, config_cmd, diff, extract, flags_cmd, init, process, reconcile, recover,
-    status,
+    report_schema_cmd, status,
 };
 use config::AiBackend;
 
@@ -121,6 +121,8 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
         }),
 
         Command::Check { workspace } => check_cmd::run(check_cmd::CheckArgs { workspace }),
+
+        Command::ReportSchema => report_schema_cmd::run(),
 
         Command::Config {
             set,
@@ -274,6 +276,13 @@ enum Command {
         #[arg(long)]
         apply: bool,
     },
+
+    /// Print the authoritative `_session_report.json` schema as Markdown.
+    ///
+    /// The output is generated from the live Rust types — enum values are
+    /// serialized directly so they can never go stale.  Run this from inside
+    /// a workspace to get a schema reference without leaving the session.
+    ReportSchema,
 
     /// Check workspace invariants from inside an active AI session.
     ///

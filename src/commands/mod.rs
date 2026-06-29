@@ -8,4 +8,5 @@ pub mod init;
 pub mod process;
 pub mod reconcile;
 pub mod recover;
+pub mod report_schema_cmd;
 pub mod status;
