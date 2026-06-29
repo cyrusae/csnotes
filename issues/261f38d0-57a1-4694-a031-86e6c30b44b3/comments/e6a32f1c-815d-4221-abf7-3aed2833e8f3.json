@@ -1,0 +1,10 @@
+{
+  "uuid": "e6a32f1c-815d-4221-abf7-3aed2833e8f3",
+  "issue_uuid": "261f38d0-57a1-4694-a031-86e6c30b44b3",
+  "author": "3owj",
+  "content": "Added BackfillSources FixAction to audit.rs. collect_fixes now takes &Manifest and detects notes with source wikilinks not in contributing_sources. apply_fixes handles BackfillSources by patching frontmatter without touching last_updated. 3 new tests. audit_cmd.rs call site updated. All 408 tests pass.",
+  "created_at": "2026-06-29T23:02:30.180387Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAwedI5eRfp4KgEkUIuspgPKpePzr8/B3A/sN3LAfob6C8q6zXbSre0QXh0cSTHuexwrwemlKQSpuVkyNAHLABBg=="
+}
