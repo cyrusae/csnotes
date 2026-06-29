@@ -622,6 +622,21 @@ fn scan_sources_dir(
     ignore_dirs: &[String],
     new_sources: &mut Vec<String>,
 ) -> Result<()> {
+    // Evict any already-registered sources whose ID path passes through an
+    // ignored directory.  This handles the case where a directory was added to
+    // `sources_ignore_dirs` after the source was first registered.
+    if !ignore_dirs.is_empty() {
+        manifest.sources.retain(|id, _| {
+            !std::path::Path::new(id)
+                .parent()
+                .map(|p| {
+                    p.components()
+                        .any(|c| ignore_dirs.iter().any(|d| c.as_os_str() == d.as_str()))
+                })
+                .unwrap_or(false)
+        });
+    }
+
     for entry in walkdir::WalkDir::new(sources_dir)
         .into_iter()
         .filter_entry(|e| {
@@ -1555,6 +1570,63 @@ mod tests {
         assert!(!manifest
             .sources
             .contains_key("AI-Conversations/_tools/prompt-template"));
+    }
+
+    #[test]
+    fn scan_sources_ignore_dirs_evicts_previously_registered_entry() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        write_file(
+            &sources_dir.join("Textbooks").join("SICP"),
+            "Chapter-01.md",
+            "# Chapter 1\n",
+        );
+        write_file(
+            &sources_dir.join("Textbooks").join("_tools"),
+            "tagging-workflow.md",
+            "# Workflow\n",
+        );
+
+        // First scan with no ignore list — both files get registered.
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert_eq!(new_sources.len(), 2);
+        assert!(manifest
+            .sources
+            .contains_key("Textbooks/_tools/tagging-workflow"));
+
+        // Second scan with _tools ignored — stale entry must be evicted.
+        let ignore = vec!["_tools".to_string()];
+        let mut new_sources2 = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &ignore,
+            &mut new_sources2,
+        )
+        .unwrap();
+        assert!(new_sources2.is_empty(), "no new sources");
+        assert!(
+            !manifest
+                .sources
+                .contains_key("Textbooks/_tools/tagging-workflow"),
+            "stale ignored entry must be evicted"
+        );
+        assert!(
+            manifest.sources.contains_key("Textbooks/SICP/Chapter-01"),
+            "real source preserved"
+        );
     }
 
     #[test]
