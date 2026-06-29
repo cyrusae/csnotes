@@ -6,5 +6,8 @@
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-06-29T22:59:37.739357Z",
-  "updated_at": "2026-06-29T22:59:37.739357Z"
+  "updated_at": "2026-06-29T22:59:37.913913Z",
+  "labels": [
+    "feature"
+  ]
 }
