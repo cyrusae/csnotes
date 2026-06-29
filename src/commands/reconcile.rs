@@ -670,10 +670,6 @@ fn scan_sources_dir(
             _ => continue,
         };
 
-        if manifest.sources.contains_key(&source_id) {
-            continue; // already registered
-        }
-
         let rel_path = path
             .strip_prefix(vault_root)
             .unwrap_or(path)
@@ -702,6 +698,17 @@ fn scan_sources_dir(
         } else {
             derive_heading_scheme(&parse_headings(&content))
         };
+
+        if let Some(entry) = manifest.sources.get_mut(&source_id) {
+            // Already registered: refresh all informational metadata from the current
+            // file while preserving operational state (status, last_processed_at,
+            // topics_updated).
+            entry.summary = summary;
+            entry.tags = tags;
+            entry.courses = courses;
+            entry.heading_scheme = heading_scheme;
+            continue;
+        }
 
         manifest.sources.insert(
             source_id.clone(),
@@ -1394,6 +1401,80 @@ mod tests {
         let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
         assert_eq!(entry.summary.as_deref(), Some("Procedures and processes"));
         assert_eq!(entry.tags, vec!["lisp", "recursion"]);
+    }
+
+    #[test]
+    fn scan_sources_refreshes_metadata_for_existing_entry() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let chapter_dir = sources_dir.join("Textbooks").join("SICP");
+
+        // First scan: no frontmatter.
+        write_file(&chapter_dir, "Chapter-01.md", "# Chapter 1\n\nContent.\n");
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert_eq!(new_sources.len(), 1);
+
+        // Simulate a processed session having touched this source.
+        {
+            let entry = manifest
+                .sources
+                .get_mut("Textbooks/SICP/Chapter-01")
+                .unwrap();
+            entry.status = SourceStatus::Processed;
+            entry.last_processed_at = Some(chrono::Utc::now());
+            entry.topics_updated = vec!["lambda-calculus".into()];
+        }
+
+        // Second scan: file now has frontmatter with courses and tags.
+        write_file(
+            &chapter_dir,
+            "Chapter-01.md",
+            "---\nsummary: Building Abstractions\ntags: [lisp]\ncourses: [CPSC5001]\n---\n\n# Chapter 1\n",
+        );
+        let mut new_sources2 = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut new_sources2,
+        )
+        .unwrap();
+
+        assert!(
+            new_sources2.is_empty(),
+            "no new sources should be registered"
+        );
+        let entry = &manifest.sources["Textbooks/SICP/Chapter-01"];
+        assert_eq!(
+            entry.summary.as_deref(),
+            Some("Building Abstractions"),
+            "summary updated"
+        );
+        assert_eq!(entry.tags, vec!["lisp"], "tags updated");
+        assert_eq!(entry.courses, vec!["CPSC5001"], "courses updated");
+        // Operational state must be preserved.
+        assert_eq!(entry.status, SourceStatus::Processed, "status preserved");
+        assert!(
+            entry.last_processed_at.is_some(),
+            "last_processed_at preserved"
+        );
+        assert_eq!(
+            entry.topics_updated,
+            vec!["lambda-calculus"],
+            "topics_updated preserved"
+        );
     }
 
     #[test]
