@@ -1,0 +1,10 @@
+{
+  "uuid": "3c0ebd06-8016-41ec-8fba-967e9aa9877e",
+  "issue_uuid": "572c6fe7-96da-44d1-b897-f31d0d9f565a",
+  "author": "3owj",
+  "content": "Implemented step 3: harvest_source_contribs() in ops/content.rs scans note body wikilinks at teardown and auto-populates contributing_sources. Updated execute_create_note/execute_update_note to take &Manifest. 9 new tests all pass. Updated report_schema_cmd.rs doc and regenerated vault report_schema.md.",
+  "created_at": "2026-06-29T22:55:14.443997Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA1/JACrZVtcGTCqGShnX7oPkvpLwCVEutPxpnGlNEVzl7s/tN50dGZaTIh3fpJ3zOAuZ9sLEF8YHFxV7/NVufAQ=="
+}
