@@ -73,8 +73,25 @@ pub fn run(args: RecoverArgs) -> Result<()> {
         Choice::Resume => {
             let report_path = rec.workspace_path.join(REPORT_FILENAME);
 
-            if report_path.exists() {
-                // Report already written — skip re-entry, just run teardown.
+            // Check whether a parseable report already exists.  A file that
+            // exists but fails to parse is treated as absent: re-enter the
+            // session so the AI can fix it, rather than looping on teardown
+            // failures forever.
+            let report_ready = if report_path.exists() {
+                match crate::report::SessionReport::load(&rec.workspace_path) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        eprintln!("Session report exists but is malformed: {}", e);
+                        eprintln!("Re-entering session to fix the report.\n");
+                        false
+                    }
+                }
+            } else {
+                false
+            };
+
+            if report_ready {
+                // Report already written and valid — skip re-entry, just run teardown.
                 println!("Session report found. Running teardown...");
                 crate::commands::process::run_teardown(
                     &vault_root,
@@ -84,8 +101,10 @@ pub fn run(args: RecoverArgs) -> Result<()> {
                     &mut manifest,
                 )
             } else {
-                // No report yet — re-enter the AI session, then tear down.
-                println!("No session report found. Re-entering AI session...");
+                // No report yet (or malformed) — re-enter the AI session, then tear down.
+                if !report_path.exists() {
+                    println!("No session report found. Re-entering AI session...");
+                }
                 println!("Write `_session_report.json` before exiting.\n");
 
                 let backend_kind = rec.backend.unwrap_or(config.default_backend);

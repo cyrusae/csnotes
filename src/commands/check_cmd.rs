@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::audit::check_workspace;
+use crate::report::{SessionReport, REPORT_FILENAME};
 
 pub struct CheckArgs {
     /// Workspace root to check (defaults to current directory).
@@ -32,21 +33,35 @@ pub fn run(args: CheckArgs) -> Result<()> {
         );
     }
 
-    let result = check_workspace(&workspace_root, "_synthetic")?;
-
-    if result.hard_violations.is_empty() && result.soft_warnings.is_empty() {
-        println!("check: clean — no violations found");
-        return Ok(());
+    // If the session report already exists, validate it now so the AI can fix
+    // any problems before exiting rather than hitting teardown failures.
+    let report_path = workspace_root.join(REPORT_FILENAME);
+    let mut report_errors: Vec<String> = vec![];
+    if report_path.exists() {
+        match SessionReport::load(&workspace_root) {
+            Ok(_) => println!("check: session report OK"),
+            Err(e) => report_errors.push(format!("session report invalid: {}", e)),
+        }
     }
 
-    let n_hard = result.hard_violations.len();
+    let result = check_workspace(&workspace_root, "_synthetic")?;
+
+    let n_hard = result.hard_violations.len() + report_errors.len();
     let n_soft = result.soft_warnings.len();
 
+    for e in &report_errors {
+        eprintln!("ERROR: {}", e);
+    }
     for v in &result.hard_violations {
         eprintln!("ERROR: {}", v);
     }
     for w in &result.soft_warnings {
         println!("WARN:  {}", w);
+    }
+
+    if n_hard == 0 && n_soft == 0 {
+        println!("check: clean — no violations found");
+        return Ok(());
     }
 
     if n_hard > 0 {
