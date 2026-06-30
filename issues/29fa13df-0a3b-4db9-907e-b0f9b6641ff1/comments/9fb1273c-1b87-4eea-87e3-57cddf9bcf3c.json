@@ -1,0 +1,10 @@
+{
+  "uuid": "9fb1273c-1b87-4eea-87e3-57cddf9bcf3c",
+  "issue_uuid": "29fa13df-0a3b-4db9-907e-b0f9b6641ff1",
+  "author": "3owj",
+  "content": "Fix L7: (1) check_cmd now calls precondition_pass when report exists, so embed_in mismatches surface during the session before exit. (2) process.rs precondition failure path no longer calls cleanup — workspace is preserved and user is directed to csnotes recover --resume. All 408 tests pass, no clippy warnings.",
+  "created_at": "2026-06-30T06:35:30.814416Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAgO0Pl4H82if6fSulX06HkdkJPReZntMHL/krignxwQt9PNJ4S19tF5K0Yff0hp+JzpdBzUztQyUMzGEW8rbdAQ=="
+}
