@@ -1,0 +1,10 @@
+{
+  "uuid": "29fa13df-0a3b-4db9-907e-b0f9b6641ff1",
+  "display_id": null,
+  "title": "check must run precondition_pass; precondition failure must not discard workspace",
+  "status": "open",
+  "priority": "high",
+  "created_by": "3owj",
+  "created_at": "2026-06-30T06:34:16.950701Z",
+  "updated_at": "2026-06-30T06:34:16.950701Z"
+}
