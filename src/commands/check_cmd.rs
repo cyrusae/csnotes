@@ -39,7 +39,14 @@ pub fn run(args: CheckArgs) -> Result<()> {
     let mut report_errors: Vec<String> = vec![];
     if report_path.exists() {
         match SessionReport::load(&workspace_root) {
-            Ok(_) => println!("check: session report OK"),
+            Ok(report) => {
+                println!("check: session report OK");
+                // Validate report preconditions against the workspace so the AI
+                // can catch embed_in / path mismatches before exiting.
+                if let Err(e) = crate::audit::precondition_pass(&report, &workspace_root) {
+                    report_errors.push(format!("precondition failure: {}", e));
+                }
+            }
             Err(e) => report_errors.push(format!("session report invalid: {}", e)),
         }
     }

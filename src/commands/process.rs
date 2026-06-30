@@ -257,12 +257,12 @@ pub fn run_teardown(
     if let Err(e) = precondition_pass(&report, workspace_root) {
         eprintln!(
             "{}",
-            "Precondition failure — discarding workspace.".red().bold()
+            "Precondition failure — workspace preserved.".red().bold()
         );
         eprintln!("  {}", e);
-        cleanup(workspace_root, vault_root, run_id)?;
-        manifest.session_in_progress = None;
-        manifest.save(vault_root)?;
+        eprintln!();
+        eprintln!("Your work is safe. Re-enter the workspace, fix the error, and exit again:");
+        eprintln!("  {}", "csnotes recover --resume".bold());
         return Err(e);
     }
 
