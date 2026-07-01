@@ -2,11 +2,12 @@
   "uuid": "34da73ef-3c0f-47d9-9c03-32adce6cf79d",
   "display_id": null,
   "title": "csnotes commit: in-session progressive pipeline execution",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-01T17:42:03.710982Z",
-  "updated_at": "2026-07-01T17:42:03.845988Z",
+  "updated_at": "2026-07-01T18:09:42.063081Z",
+  "closed_at": "2026-07-01T18:09:42.063081Z",
   "labels": [
     "feature"
   ]
