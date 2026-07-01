@@ -54,6 +54,23 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
                  Finish or discard it with `csnotes recover` before resetting."
             );
         }
+        // Preserve processed state for sessions: re-scanning fixes stale paths
+        // but must not forget which sessions have already been processed.
+        type SavedState = (
+            SessionStatus,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Vec<String>,
+        );
+        let saved_session_state: std::collections::HashMap<String, SavedState> = manifest
+            .sessions
+            .iter()
+            .map(|(id, e)| {
+                (
+                    id.clone(),
+                    (e.status, e.processed_at, e.topics_updated.clone()),
+                )
+            })
+            .collect();
         let n_sessions = manifest.sessions.len();
         let n_sources = manifest.sources.len();
         manifest.sessions.clear();
@@ -65,10 +82,37 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
             n_sessions,
             n_sources,
         );
+        // After the scan below, restore preserved state for re-discovered sessions.
+        // We do this by running the scan, then patching the inserted entries.
+        let fmt = FilenameFormat::parse(&config.filename_format)?;
+        let result = run_scan(vault_root, config, &args, &mut manifest, &fmt);
+        // Restore processed status regardless of scan success.
+        for (id, (status, processed_at, topics_updated)) in &saved_session_state {
+            if let Some(entry) = manifest.sessions.get_mut(id) {
+                entry.status = *status;
+                entry.processed_at = *processed_at;
+                entry.topics_updated = topics_updated.clone();
+            }
+        }
+        manifest.save(vault_root)?;
+        return result;
     }
 
     let fmt = FilenameFormat::parse(&config.filename_format)?;
+    run_scan(vault_root, config, &args, &mut manifest, &fmt)?;
+    manifest.save(vault_root)?;
+    Ok(())
+}
 
+/// Inner scan: populate `manifest` with newly discovered sessions, recordings,
+/// artifacts, and sources.  Does not save the manifest — callers do that.
+fn run_scan(
+    vault_root: &Path,
+    config: &VaultConfig,
+    args: &ReconcileArgs,
+    manifest: &mut Manifest,
+    fmt: &FilenameFormat,
+) -> Result<()> {
     let mut new_sessions: Vec<String> = Vec::new();
     let mut new_recordings: Vec<(String, String)> = Vec::new(); // (session_id, path)
     let mut new_sources: Vec<String> = Vec::new(); // source IDs
@@ -100,9 +144,9 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
                 &raw_dir,
                 vault_root,
                 config,
-                &fmt,
-                &args,
-                &mut manifest,
+                fmt,
+                args,
+                manifest,
                 &mut new_sessions,
                 &mut space_warnings,
             )?;
@@ -124,9 +168,9 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
                 &recordings_dir,
                 vault_root,
                 config,
-                &fmt,
-                &args,
-                &mut manifest,
+                fmt,
+                args,
+                manifest,
                 &mut new_recordings,
                 &mut space_warnings,
             )?;
@@ -137,12 +181,7 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
     for course_root in &course_roots {
         let artifacts_dir = course_root.join(&config.artifacts_dir);
         if artifacts_dir.exists() {
-            scan_artifacts_dir(
-                &artifacts_dir,
-                vault_root,
-                &mut manifest,
-                &mut new_artifacts,
-            )?;
+            scan_artifacts_dir(&artifacts_dir, vault_root, manifest, &mut new_artifacts)?;
         }
     }
 
@@ -152,7 +191,7 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
         scan_sources_dir(
             &sources_dir,
             vault_root,
-            &mut manifest,
+            manifest,
             config.scan_ai_conversations,
             &config.sources_ignore_dirs,
             &mut new_sources,
@@ -166,9 +205,6 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
             path.display()
         );
     }
-
-    // ── Save + report ─────────────────────────────────────────────────────────
-    manifest.save(vault_root)?;
 
     let nothing_new = new_sessions.is_empty()
         && new_recordings.is_empty()
@@ -2193,6 +2229,75 @@ mod tests {
         assert!(
             reloaded.sessions.contains_key("CPSC5001-09-03"),
             "real session on disk must be re-discovered"
+        );
+    }
+
+    #[test]
+    fn reset_preserves_processed_status_for_rediscovered_sessions() {
+        let tmp = TempDir::new().unwrap();
+        let config = make_vault_config();
+
+        // Write the raw note so the session is re-discovered after reset.
+        write_file(
+            &tmp.path().join("notes"),
+            "CPSC5001-09-03.md",
+            "# Lecture\n",
+        );
+
+        // Seed a manifest with the same session already marked Processed.
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let processed_at = chrono::Utc::now();
+        if let Some(e) = manifest.sessions.get_mut("CPSC5001-09-03") {
+            e.status = SessionStatus::Processed;
+            e.processed_at = Some(processed_at);
+            e.topics_updated = vec!["algorithms".into()];
+        }
+        manifest.save(tmp.path()).unwrap();
+
+        run_for_vault(tmp.path(), &config, reset_args()).unwrap();
+
+        let reloaded = Manifest::load(tmp.path()).unwrap();
+        let entry = reloaded
+            .sessions
+            .get("CPSC5001-09-03")
+            .expect("session must be re-discovered");
+        assert_eq!(
+            entry.status,
+            SessionStatus::Processed,
+            "processed status must survive --reset"
+        );
+        assert_eq!(
+            entry.processed_at.map(|t| t.timestamp()),
+            Some(processed_at.timestamp()),
+            "processed_at must survive --reset"
+        );
+        assert_eq!(
+            entry.topics_updated,
+            vec!["algorithms"],
+            "topics_updated must survive --reset"
+        );
+    }
+
+    #[test]
+    fn reset_does_not_preserve_status_for_sessions_no_longer_on_disk() {
+        // A session that was processed but whose raw file was deleted should
+        // simply disappear after --reset (no ghost entries).
+        let tmp = TempDir::new().unwrap();
+        let config = make_vault_config();
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        if let Some(e) = manifest.sessions.get_mut("CPSC5001-09-03") {
+            e.status = SessionStatus::Processed;
+        }
+        manifest.save(tmp.path()).unwrap();
+
+        // No file on disk — re-scan finds nothing.
+        run_for_vault(tmp.path(), &config, reset_args()).unwrap();
+
+        let reloaded = Manifest::load(tmp.path()).unwrap();
+        assert!(
+            !reloaded.sessions.contains_key("CPSC5001-09-03"),
+            "deleted session must not be re-inserted by status restore"
         );
     }
 
