@@ -1,0 +1,10 @@
+{
+  "uuid": "5b145f2e-72ff-4cce-a768-8bc2aaec0353",
+  "display_id": null,
+  "title": "csnotes recover --reset: rebuild _synthetic from vault state in-place, clear report and committed_ops",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-07-01T19:53:29.634454Z",
+  "updated_at": "2026-07-01T19:53:29.634454Z"
+}
