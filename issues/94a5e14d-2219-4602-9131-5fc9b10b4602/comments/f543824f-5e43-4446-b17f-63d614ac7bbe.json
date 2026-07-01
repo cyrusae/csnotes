@@ -1,0 +1,10 @@
+{
+  "uuid": "f543824f-5e43-4446-b17f-63d614ac7bbe",
+  "issue_uuid": "94a5e14d-2219-4602-9131-5fc9b10b4602",
+  "author": "3owj",
+  "content": "Fix A complete (L8): all three teardown discard-on-failure paths now preserve workspace and redirect to recover --resume instead. Paths fixed: precondition failure (prev session), structural op failure, invariant suite failure. Updated lifecycle test broken_wikilink_discards_workspace → broken_wikilink_preserves_workspace to assert session_in_progress remains set. 408 tests pass.",
+  "created_at": "2026-07-01T16:20:38.330734Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAnsjQHIMHRcJbGrTZj9/qX2NpLuD5wwjgkWwmO7GzrseBwdDX+nzuFeoTri62N6tAI4e3jeALr1UkFfjSBf8zBQ=="
+}
