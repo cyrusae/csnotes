@@ -2,11 +2,12 @@
   "uuid": "3d736c7b-c42f-4049-be49-42143ff0f8d2",
   "display_id": null,
   "title": "fix clippy: extract_source_meta return type too complex",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-01T17:37:55.337382Z",
-  "updated_at": "2026-07-01T17:37:55.496465Z",
+  "updated_at": "2026-07-01T17:41:57.535879Z",
+  "closed_at": "2026-07-01T17:41:57.535879Z",
   "labels": [
     "bug"
   ]
