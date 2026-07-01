@@ -346,10 +346,10 @@ Good content. ^good-note-id
 }
 
 /// Violation path: mock AI creates a note with a broken wikilink.
-/// The invariant suite should catch it, discard the workspace, and leave
-/// the vault untouched.
+/// The invariant suite should catch it, preserve the workspace (so the user
+/// can recover --resume and fix it), and leave the vault untouched.
 #[test]
-fn broken_wikilink_discards_workspace() {
+fn broken_wikilink_preserves_workspace() {
     let tmp = setup_vault();
     let root = tmp.path();
 
@@ -365,16 +365,17 @@ fn broken_wikilink_discards_workspace() {
         "bad note should not be present in vault after invariant failure"
     );
 
-    // Manifest must show no committed session and no in-progress record.
+    // Session should remain unprocessed.
     let manifest_raw = fs::read_to_string(root.join("csnotes.json")).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();
     assert_eq!(
         manifest["sessions"]["CPSC5001-09-03"]["status"], "unprocessed",
         "session should remain unprocessed after invariant failure"
     );
+    // Workspace is preserved so the user can recover --resume and fix the violation.
     assert!(
-        manifest["session_in_progress"].is_null(),
-        "session_in_progress should be cleared even after discard"
+        !manifest["session_in_progress"].is_null(),
+        "session_in_progress should remain set so recover --resume works"
     );
 }
 

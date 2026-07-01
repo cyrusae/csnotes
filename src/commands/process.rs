@@ -309,10 +309,11 @@ pub fn run_teardown(
             _ => continue, // content ops handled in step 6
         };
         if let Err(e) = result {
-            eprintln!("{} failed: {}", op.kind_str(), e);
-            cleanup(workspace_root, vault_root, run_id)?;
-            manifest.session_in_progress = None;
-            manifest.save(vault_root)?;
+            eprintln!("{}", format!("{} failed:", op.kind_str()).red().bold());
+            eprintln!("  {}", e);
+            eprintln!();
+            eprintln!("Your work is safe. Re-enter the workspace, fix the error, and exit again:");
+            eprintln!("  {}", "csnotes recover --resume".bold());
             return Err(e);
         }
     }
@@ -348,12 +349,12 @@ pub fn run_teardown(
     if !audit.is_clean() {
         eprintln!(
             "{}",
-            "Invariant violations — discarding workspace.".red().bold()
+            "Invariant violations — workspace preserved.".red().bold()
         );
         audit.print();
-        cleanup(workspace_root, vault_root, run_id)?;
-        manifest.session_in_progress = None;
-        manifest.save(vault_root)?;
+        eprintln!();
+        eprintln!("Your work is safe. Re-enter the workspace, fix the violations, and exit again:");
+        eprintln!("  {}", "csnotes recover --resume".bold());
         bail!("invariant suite failed");
     }
 

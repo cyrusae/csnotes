@@ -704,8 +704,11 @@ fn scan_sources_dir(
             continue;
         }
 
-        // Extract summary, tags, and courses from frontmatter when present.
-        let (summary, tags, courses) = extract_source_meta(&content);
+        // Extract summary, tags, courses, and optional hints from frontmatter.
+        let meta = extract_source_meta(&content);
+
+        // source_type frontmatter overrides the directory-inferred kind.
+        let kind = meta.kind_hint.unwrap_or(kind);
 
         // Heading scheme: meaningful only for structured documents (not conversations).
         let heading_scheme = if kind == SourceKind::AiConversation {
@@ -715,28 +718,43 @@ fn scan_sources_dir(
         };
 
         if let Some(entry) = manifest.sources.get_mut(&source_id) {
-            // Already registered: refresh all informational metadata from the current
-            // file while preserving operational state (status, last_processed_at,
-            // topics_updated).
-            entry.summary = summary;
-            entry.tags = tags;
-            entry.courses = courses;
+            // Already registered: refresh informational metadata while preserving
+            // operational state (status, last_processed_at, topics_updated).
+            // kind is refreshed from frontmatter so adding source_type later takes effect.
+            // Exception: promote to Staged when frontmatter says so and the source
+            // hasn't been worked on yet — don't downgrade InProgress or Processed.
+            entry.summary = meta.summary;
+            entry.tags = meta.tags;
+            entry.courses = meta.courses;
             entry.heading_scheme = heading_scheme;
+            entry.kind = kind;
+            if meta.status_hint == Some(SourceStatus::Staged)
+                && entry.status == SourceStatus::Unprocessed
+            {
+                entry.status = SourceStatus::Staged;
+            }
             continue;
         }
+
+        // New source: use frontmatter status hint if Staged, otherwise Unprocessed.
+        let initial_status = if meta.status_hint == Some(SourceStatus::Staged) {
+            SourceStatus::Staged
+        } else {
+            SourceStatus::Unprocessed
+        };
 
         manifest.sources.insert(
             source_id.clone(),
             SourceEntry {
                 path: rel_path,
                 kind,
-                status: SourceStatus::Unprocessed,
+                status: initial_status,
                 last_processed_at: None,
                 heading_scheme,
                 topics_updated: vec![],
-                summary,
-                tags,
-                courses,
+                summary: meta.summary,
+                tags: meta.tags,
+                courses: meta.courses,
             },
         );
         new_sources.push(source_id);
@@ -744,11 +762,25 @@ fn scan_sources_dir(
     Ok(())
 }
 
-/// Extract `summary`, `tags`, and `courses` from a source file's YAML frontmatter.
-/// Returns `(None, vec![], vec![])` when there is no frontmatter or the fields are absent.
-fn extract_source_meta(content: &str) -> (Option<String>, Vec<String>, Vec<String>) {
+struct SourceMeta {
+    summary: Option<String>,
+    tags: Vec<String>,
+    courses: Vec<String>,
+    status_hint: Option<SourceStatus>,
+    kind_hint: Option<SourceKind>,
+}
+
+/// Extract metadata from a source file's YAML frontmatter.
+/// Returns defaults when there is no frontmatter or fields are absent.
+fn extract_source_meta(content: &str) -> SourceMeta {
     let Some((yaml, _)) = crate::frontmatter::split_frontmatter(content) else {
-        return (None, vec![], vec![]);
+        return SourceMeta {
+            summary: None,
+            tags: vec![],
+            courses: vec![],
+            status_hint: None,
+            kind_hint: None,
+        };
     };
     #[derive(serde::Deserialize, Default)]
     struct SourceFrontmatter {
@@ -757,9 +789,26 @@ fn extract_source_meta(content: &str) -> (Option<String>, Vec<String>, Vec<Strin
         tags: Vec<String>,
         #[serde(default)]
         courses: Vec<String>,
+        status: Option<SourceStatus>,
+        source_type: Option<String>,
     }
     let meta: SourceFrontmatter = serde_yml::from_str(yaml).unwrap_or_default();
-    (meta.summary, meta.tags, meta.courses)
+    SourceMeta {
+        summary: meta.summary,
+        tags: meta.tags,
+        courses: meta.courses,
+        status_hint: meta.status,
+        kind_hint: meta.source_type.as_deref().and_then(kind_from_source_type),
+    }
+}
+
+/// Map a `source_type` frontmatter string to a `SourceKind` refinement.
+/// Returns `None` for unrecognised values (directory-inferred kind is kept).
+fn kind_from_source_type(s: &str) -> Option<SourceKind> {
+    match s {
+        "highlights" | "notes" => Some(SourceKind::PersonalNotes),
+        _ => None,
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1489,6 +1538,260 @@ mod tests {
             entry.topics_updated,
             vec!["lambda-calculus"],
             "topics_updated preserved"
+        );
+    }
+
+    #[test]
+    fn scan_sources_source_type_highlights_sets_personal_notes() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+        write_file(
+            &dir,
+            "Chapter-03-notes.md",
+            "---\nsource_type: highlights\n---\n\n# My notes on ch3\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+
+        let entry = &manifest.sources["Textbooks/Gaddis/Chapter-03-notes"];
+        assert_eq!(
+            entry.kind,
+            crate::manifest::SourceKind::PersonalNotes,
+            "source_type: highlights should set PersonalNotes"
+        );
+    }
+
+    #[test]
+    fn scan_sources_source_type_notes_sets_personal_notes() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+        write_file(
+            &dir,
+            "Chapter-03-notes.md",
+            "---\nsource_type: notes\n---\n\n# My notes on ch3\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/Chapter-03-notes"].kind,
+            crate::manifest::SourceKind::PersonalNotes,
+        );
+    }
+
+    #[test]
+    fn scan_sources_no_source_type_keeps_directory_inferred_kind() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+        write_file(&dir, "Chapter-03.md", "# Chapter 3\n\nVerbatim content.\n");
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/Chapter-03"].kind,
+            crate::manifest::SourceKind::Textbook,
+            "no source_type should keep directory-inferred Textbook kind"
+        );
+    }
+
+    #[test]
+    fn scan_sources_source_type_updates_kind_on_existing_entry() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+
+        // First scan: no source_type → Textbook.
+        write_file(&dir, "Chapter-03.md", "# Chapter 3\n");
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/Chapter-03"].kind,
+            crate::manifest::SourceKind::Textbook
+        );
+
+        // User adds source_type: highlights → kind updates to PersonalNotes.
+        write_file(
+            &dir,
+            "Chapter-03.md",
+            "---\nsource_type: highlights\n---\n\n# Chapter 3\n",
+        );
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/Chapter-03"].kind,
+            crate::manifest::SourceKind::PersonalNotes,
+            "adding source_type to existing entry should update kind"
+        );
+    }
+
+    #[test]
+    fn scan_sources_staged_from_frontmatter_on_new_source() {
+        // "incomplete", "unread", and "staged" all deserialize to Staged.
+        for status_str in &["incomplete", "unread", "staged"] {
+            let tmp = TempDir::new().unwrap();
+            let sources_dir = tmp.path().join("sources");
+            let chapter_dir = sources_dir.join("Textbooks").join("Zybooks");
+            write_file(
+                &chapter_dir,
+                "Chapter-07.md",
+                &format!("---\nstatus: {}\n---\n\n# Chapter 7\n", status_str),
+            );
+
+            let mut manifest = make_empty_manifest_for_sources(tmp.path());
+            let mut new_sources = vec![];
+            scan_sources_dir(
+                &sources_dir,
+                tmp.path(),
+                &mut manifest,
+                true,
+                &[],
+                &mut new_sources,
+            )
+            .unwrap();
+
+            let entry = &manifest.sources["Textbooks/Zybooks/Chapter-07"];
+            assert_eq!(
+                entry.status,
+                SourceStatus::Staged,
+                "status '{}' should register as Staged",
+                status_str
+            );
+        }
+    }
+
+    #[test]
+    fn scan_sources_staged_frontmatter_upgrades_unprocessed_existing() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let chapter_dir = sources_dir.join("Textbooks").join("Zybooks");
+
+        // First scan: no status in frontmatter → Unprocessed.
+        write_file(&chapter_dir, "Chapter-07.md", "# Chapter 7\n");
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Zybooks/Chapter-07"].status,
+            SourceStatus::Unprocessed
+        );
+
+        // User adds `status: incomplete` to the file.
+        write_file(
+            &chapter_dir,
+            "Chapter-07.md",
+            "---\nstatus: incomplete\n---\n\n# Chapter 7\n",
+        );
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Zybooks/Chapter-07"].status,
+            SourceStatus::Staged,
+            "Unprocessed should be promoted to Staged when frontmatter says incomplete"
+        );
+    }
+
+    #[test]
+    fn scan_sources_staged_frontmatter_does_not_downgrade_processed() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let chapter_dir = sources_dir.join("Textbooks").join("Zybooks");
+
+        write_file(
+            &chapter_dir,
+            "Chapter-07.md",
+            "---\nstatus: incomplete\n---\n\n# Chapter 7\n",
+        );
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+
+        // Simulate prior processing.
+        manifest
+            .sources
+            .get_mut("Textbooks/Zybooks/Chapter-07")
+            .unwrap()
+            .status = SourceStatus::Processed;
+
+        // Re-scan with same frontmatter — Processed must not be downgraded.
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Zybooks/Chapter-07"].status,
+            SourceStatus::Processed,
+            "Processed should not be downgraded to Staged by frontmatter"
         );
     }
 

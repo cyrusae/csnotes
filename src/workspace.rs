@@ -531,8 +531,19 @@ fn write_sources_index(
 
 /// Returns the source IDs that belong in a workspace for the given scope.
 fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> Vec<&'a str> {
+    use crate::manifest::SourceStatus;
     match scope {
-        WorkspaceScope::Source { source_ids } => source_ids.iter().map(|s| s.as_str()).collect(),
+        WorkspaceScope::Source { source_ids } => source_ids
+            .iter()
+            .filter(|id| {
+                manifest
+                    .sources
+                    .get(id.as_str())
+                    .map(|e| e.status != SourceStatus::Staged)
+                    .unwrap_or(true)
+            })
+            .map(|s| s.as_str())
+            .collect(),
         WorkspaceScope::Session { session_id } => {
             let session_course = manifest
                 .sessions
@@ -542,11 +553,18 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
             manifest
                 .sources
                 .iter()
-                .filter(|(_, e)| source_visible_for_course(e, session_course))
+                .filter(|(_, e)| {
+                    e.status != SourceStatus::Staged && source_visible_for_course(e, session_course)
+                })
                 .map(|(id, _)| id.as_str())
                 .collect()
         }
-        WorkspaceScope::Topic { .. } => manifest.sources.keys().map(|s| s.as_str()).collect(),
+        WorkspaceScope::Topic { .. } => manifest
+            .sources
+            .iter()
+            .filter(|(_, e)| e.status != SourceStatus::Staged)
+            .map(|(id, _)| id.as_str())
+            .collect(),
     }
 }
 
@@ -1521,6 +1539,92 @@ mod tests {
         };
         let ids = sources_for_scope(&manifest, &scope);
         assert_eq!(ids, vec!["Textbooks/SICP/Ch01", "Textbooks/SICP/Ch02"]);
+    }
+
+    #[test]
+    fn staged_source_excluded_from_session_scope() {
+        let mut manifest = make_manifest_for_sources();
+        use crate::manifest::{SessionEntry, SessionStatus};
+        manifest.sessions.insert(
+            "CPSC5001-01-01".into(),
+            SessionEntry {
+                course: "CPSC5001".into(),
+                date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+                raw_note: "notes/CPSC5001-01-01.md".into(),
+                recording_exports: vec![],
+                artifacts: vec![],
+                status: SessionStatus::Unprocessed,
+                recording_missing: false,
+                filename_format: "{course}-{mm}-{dd}".into(),
+                processed_at: None,
+                topics_updated: vec![],
+            },
+        );
+        let mut staged = make_source_entry(SourceKind::Textbook, vec![]);
+        staged.status = SourceStatus::Staged;
+        manifest
+            .sources
+            .insert("Textbooks/Zybooks/Ch07".into(), staged);
+        manifest.sources.insert(
+            "Textbooks/Zybooks/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec![]),
+        );
+
+        let scope = WorkspaceScope::Session {
+            session_id: "CPSC5001-01-01".into(),
+        };
+        let ids = sources_for_scope(&manifest, &scope);
+        assert!(
+            !ids.contains(&"Textbooks/Zybooks/Ch07"),
+            "staged source must be excluded"
+        );
+        assert!(
+            ids.contains(&"Textbooks/Zybooks/Ch01"),
+            "unprocessed source must be included"
+        );
+    }
+
+    #[test]
+    fn staged_source_excluded_from_topic_scope() {
+        let mut manifest = make_manifest_for_sources();
+        let mut staged = make_source_entry(SourceKind::Textbook, vec![]);
+        staged.status = SourceStatus::Staged;
+        manifest
+            .sources
+            .insert("Textbooks/Zybooks/Ch07".into(), staged);
+        manifest.sources.insert(
+            "Textbooks/Zybooks/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec![]),
+        );
+
+        let scope = WorkspaceScope::Topic {
+            topic: "algorithms".into(),
+        };
+        let ids = sources_for_scope(&manifest, &scope);
+        assert!(
+            !ids.contains(&"Textbooks/Zybooks/Ch07"),
+            "staged source must be excluded"
+        );
+        assert!(ids.contains(&"Textbooks/Zybooks/Ch01"));
+    }
+
+    #[test]
+    fn staged_source_excluded_from_explicit_source_scope() {
+        let mut manifest = make_manifest_for_sources();
+        let mut staged = make_source_entry(SourceKind::Textbook, vec![]);
+        staged.status = SourceStatus::Staged;
+        manifest
+            .sources
+            .insert("Textbooks/Zybooks/Ch07".into(), staged);
+
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["Textbooks/Zybooks/Ch07".into()],
+        };
+        let ids = sources_for_scope(&manifest, &scope);
+        assert!(
+            ids.is_empty(),
+            "staged source must be excluded even when explicitly listed"
+        );
     }
 
     // ── copy_sources_to_workspace / write_source_file ────────────────────────

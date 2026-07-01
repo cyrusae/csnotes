@@ -217,7 +217,12 @@ pub struct SourceEntry {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
+    /// Verbatim third-party text (Zybooks, ripped textbook chapters, slides).
+    /// Treat as reference material; key off the student's stated understanding.
     Textbook,
+    /// Student's own notes on a paper textbook or reading.
+    /// Treat as primary input alongside lecture notes.
+    PersonalNotes,
     AiConversation,
     Paper,
     AssignmentFeedback,
@@ -228,6 +233,7 @@ impl SourceKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Textbook => "textbook",
+            Self::PersonalNotes => "personal_notes",
             Self::AiConversation => "ai_conversation",
             Self::Paper => "paper",
             Self::AssignmentFeedback => "assignment_feedback",
@@ -239,6 +245,10 @@ impl SourceKind {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceStatus {
+    /// Registered but not yet read — excluded from workspace assembly.
+    /// Accepts "staged", "incomplete", or "unread" in YAML.
+    #[serde(alias = "incomplete", alias = "unread")]
+    Staged,
     Unprocessed,
     InProgress,
     Processed,
