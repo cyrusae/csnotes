@@ -1,0 +1,10 @@
+{
+  "uuid": "94480977-cf65-4555-a69f-8da446e054dd",
+  "display_id": null,
+  "title": "defensive commit: save committed_ops to workspace meta, protect against report rewrites",
+  "status": "open",
+  "priority": "high",
+  "created_by": "3owj",
+  "created_at": "2026-07-01T19:42:42.860089Z",
+  "updated_at": "2026-07-01T19:42:42.860089Z"
+}
