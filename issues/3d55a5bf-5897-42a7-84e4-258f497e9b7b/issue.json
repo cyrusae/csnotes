@@ -1,0 +1,10 @@
+{
+  "uuid": "3d55a5bf-5897-42a7-84e4-258f497e9b7b",
+  "display_id": null,
+  "title": "csnotes check validates structural op preconditions (rename_topic, move_atomic, etc)",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-07-01T17:42:09.409202Z",
+  "updated_at": "2026-07-01T17:42:09.409202Z"
+}
