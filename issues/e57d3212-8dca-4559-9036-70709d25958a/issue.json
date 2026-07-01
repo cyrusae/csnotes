@@ -2,11 +2,12 @@
   "uuid": "e57d3212-8dca-4559-9036-70709d25958a",
   "display_id": null,
   "title": "regenerate report_schema.md to include structural ops section",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-01T22:31:30.263668Z",
-  "updated_at": "2026-07-01T22:31:30.400575Z",
+  "updated_at": "2026-07-01T22:36:20.511896Z",
+  "closed_at": "2026-07-01T22:36:20.511896Z",
   "labels": [
     "docs"
   ]
