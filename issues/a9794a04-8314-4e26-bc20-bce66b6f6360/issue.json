@@ -2,11 +2,12 @@
   "uuid": "a9794a04-8314-4e26-bc20-bce66b6f6360",
   "display_id": 84,
   "title": "add settable-keys reference to csnotes config --help",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-06-23T06:59:48.412370Z",
-  "updated_at": "2026-06-23T06:59:48.561748Z",
+  "updated_at": "2026-07-01T20:31:21.188794Z",
+  "closed_at": "2026-07-01T20:31:21.188794Z",
   "labels": [
     "enhancement"
   ]
