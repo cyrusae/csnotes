@@ -2,11 +2,12 @@
   "uuid": "94a5e14d-2219-4602-9131-5fc9b10b4602",
   "display_id": null,
   "title": "stop discarding workspace on teardown op failures",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-01T16:19:21.549896Z",
-  "updated_at": "2026-07-01T16:19:21.706136Z",
+  "updated_at": "2026-07-01T17:41:57.057033Z",
+  "closed_at": "2026-07-01T17:41:57.057033Z",
   "labels": [
     "bug"
   ]
