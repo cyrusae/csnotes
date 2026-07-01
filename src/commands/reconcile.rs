@@ -28,6 +28,10 @@ pub struct ReconcileArgs {
     /// When true, suppress the "nothing new" message (used by auto-reconcile
     /// inside `csnotes process`).
     pub quiet: bool,
+    /// When true, wipe all registered sessions and sources before re-scanning.
+    /// Useful when files have been moved or renamed outside of csnotes.
+    /// Bails if a session is in progress.
+    pub reset: bool,
 }
 
 /// Entry point for `csnotes reconcile` (CLI invocation).
@@ -42,6 +46,26 @@ pub fn run(args: ReconcileArgs) -> Result<()> {
 /// (auto-reconcile before launching the AI).
 pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArgs) -> Result<()> {
     let mut manifest = Manifest::load_or_create(vault_root, config)?;
+
+    if args.reset {
+        if manifest.session_in_progress.is_some() {
+            anyhow::bail!(
+                "A session is currently in progress. \
+                 Finish or discard it with `csnotes recover` before resetting."
+            );
+        }
+        let n_sessions = manifest.sessions.len();
+        let n_sources = manifest.sources.len();
+        manifest.sessions.clear();
+        manifest.sources.clear();
+        use owo_colors::OwoColorize;
+        println!(
+            "{}  cleared {} session(s) and {} source(s) — re-scanning from scratch.",
+            "reconcile --reset:".yellow().bold(),
+            n_sessions,
+            n_sources,
+        );
+    }
 
     let fmt = FilenameFormat::parse(&config.filename_format)?;
 
@@ -2104,6 +2128,95 @@ mod tests {
         assert_eq!(
             manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
             ArtifactKind::Slides
+        );
+    }
+
+    // ── reconcile --reset ─────────────────────────────────────────────────────
+
+    fn reset_args() -> ReconcileArgs {
+        ReconcileArgs {
+            notify: false,
+            rename_spaces: None,
+            quiet: true,
+            reset: true,
+        }
+    }
+
+    #[test]
+    fn reset_clears_phantom_sessions_and_sources() {
+        // Manifest has a session with no corresponding file on disk.
+        // After --reset, that phantom entry must be gone.
+        let tmp = TempDir::new().unwrap();
+        let config = make_vault_config();
+
+        // Seed a manifest with a phantom session and save it.
+        make_manifest_with_session(tmp.path(), "CPSC5001-09-03")
+            .save(tmp.path())
+            .unwrap();
+
+        // No raw note file exists on disk — reconcile without reset would leave
+        // the phantom intact; with reset it must be wiped.
+        run_for_vault(tmp.path(), &config, reset_args()).unwrap();
+
+        let reloaded = Manifest::load(tmp.path()).unwrap();
+        assert!(
+            reloaded.sessions.is_empty(),
+            "phantom session must be cleared by --reset"
+        );
+    }
+
+    #[test]
+    fn reset_rediscovers_sessions_from_filesystem() {
+        // After wiping, the re-scan must find files that are actually present.
+        let tmp = TempDir::new().unwrap();
+        let config = make_vault_config();
+
+        // Write a raw note that matches the filename format.
+        write_file(
+            &tmp.path().join("notes"),
+            "CPSC5001-09-03.md",
+            "# Lecture 1\n",
+        );
+
+        // Seed a manifest with a *different* phantom session (no file), save.
+        make_manifest_with_session(tmp.path(), "CPSC5001-08-27")
+            .save(tmp.path())
+            .unwrap();
+
+        run_for_vault(tmp.path(), &config, reset_args()).unwrap();
+
+        let reloaded = Manifest::load(tmp.path()).unwrap();
+        assert!(
+            !reloaded.sessions.contains_key("CPSC5001-08-27"),
+            "phantom session must be gone"
+        );
+        assert!(
+            reloaded.sessions.contains_key("CPSC5001-09-03"),
+            "real session on disk must be re-discovered"
+        );
+    }
+
+    #[test]
+    fn reset_bails_when_session_in_progress() {
+        let tmp = TempDir::new().unwrap();
+        let config = make_vault_config();
+
+        let mut manifest = Manifest::load_or_create(tmp.path(), &config).unwrap();
+        manifest.session_in_progress = Some(crate::manifest::InProgressRecord {
+            run_id: "test-run".into(),
+            started_at: chrono::Utc::now(),
+            workspace_path: tmp.path().join("ws"),
+            phase: "synthesizing".into(),
+            error: None,
+            backend: None,
+            skill_variant: None,
+        });
+        manifest.save(tmp.path()).unwrap();
+
+        let err = run_for_vault(tmp.path(), &config, reset_args()).unwrap_err();
+        assert!(
+            err.to_string().contains("in progress"),
+            "must bail when session_in_progress is set: {err}"
         );
     }
 }

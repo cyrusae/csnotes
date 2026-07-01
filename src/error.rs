@@ -79,6 +79,60 @@ pub enum CsnotesError {
     #[error("rename_topic precondition failed: destination topic '{0}' already exists")]
     RenameTopicDestExists(String),
 
+    #[error("rename_atomic precondition failed: source note '{0}' not found in workspace")]
+    RenameAtomicSourceMissing(String),
+
+    #[error("rename_atomic precondition failed: '{slug}' already exists in topic '{topic}'")]
+    RenameAtomicDestExists { slug: String, topic: String },
+
+    #[error("move_atomic precondition failed: source note '{0}' not found in workspace")]
+    MoveAtomicSourceMissing(String),
+
+    #[error("move_atomic precondition failed: target topic '{0}' does not exist (use promote_atomic for new topics)")]
+    MoveAtomicTargetMissing(String),
+
+    #[error("move_atomic precondition failed: '{slug}' already exists in target topic '{topic}'")]
+    MoveAtomicDestExists { slug: String, topic: String },
+
+    #[error("promote_atomic precondition failed: source note '{0}' not found in workspace")]
+    PromoteAtomicSourceMissing(String),
+
+    #[error("promote_atomic precondition failed: target topic '{0}' already exists (use move_atomic for existing topics)")]
+    PromoteAtomicTargetExists(String),
+
+    #[error("demote_topic precondition failed: source topic '{0}' does not exist")]
+    DemoteTopicSourceMissing(String),
+
+    #[error("demote_topic precondition failed: target topic '{0}' does not exist")]
+    DemoteTopicTargetMissing(String),
+
+    #[error("demote_topic precondition failed: source and target are the same topic '{0}'")]
+    DemoteTopicSameTarget(String),
+
+    #[error("merge_topics precondition failed: source topic '{0}' does not exist")]
+    MergeTopicsSourceMissing(String),
+
+    #[error("merge_topics precondition failed: filename conflict — '{0}' would collide in the merge target")]
+    MergeTopicsFileConflict(String),
+
+    #[error("split_topic precondition failed: source topic '{0}' does not exist")]
+    SplitTopicSourceMissing(String),
+
+    #[error("split_topic precondition failed: '{slug}' not found in source topic '{topic}'")]
+    SplitTopicAtomicMissing { slug: String, topic: String },
+
+    #[error("split_topic precondition failed: '{slug}' already exists in target topic '{topic}'")]
+    SplitTopicDestExists { slug: String, topic: String },
+
+    #[error("set_embed precondition failed: index note '{0}' not found in workspace")]
+    SetEmbedIndexMissing(String),
+
+    #[error("set_embed precondition failed: atomic note '{0}' not found in workspace")]
+    SetEmbedAtomicMissing(String),
+
+    #[error("set_embed precondition failed: atomic '{0}' has no block_id in frontmatter")]
+    SetEmbedAtomicNoBlockId(String),
+
     // ── Invariant violations ──────────────────────────────────────────────────
     #[error("block ID '^{id}' is not vault-unique; also defined in '{other}'")]
     BlockIdCollision { id: String, other: String },

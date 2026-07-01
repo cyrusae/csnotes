@@ -59,6 +59,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
                 return recover::run(recover::RecoverArgs {
                     resume: true,
                     discard: false,
+                    reset: false,
                 });
             }
             process::run(process::ProcessArgs {
@@ -102,15 +103,23 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Reconcile {
             notify,
             rename_spaces,
+            reset,
         } => reconcile::run(reconcile::ReconcileArgs {
             notify,
             rename_spaces,
             quiet: false,
+            reset,
         }),
 
-        Command::Recover { resume, discard } => {
-            recover::run(recover::RecoverArgs { resume, discard })
-        }
+        Command::Recover {
+            resume,
+            discard,
+            reset,
+        } => recover::run(recover::RecoverArgs {
+            resume,
+            discard,
+            reset,
+        }),
 
         Command::Audit {
             reindex,
@@ -262,6 +271,11 @@ enum Command {
         /// Without this flag, spaces are flagged but not renamed.
         #[arg(long, value_name = "STYLE")]
         rename_spaces: Option<String>,
+        /// Wipe all registered sessions and sources, then re-scan from scratch.
+        /// Use this when files have been moved or renamed outside of csnotes.
+        /// Bails if a session is currently in progress.
+        #[arg(long)]
+        reset: bool,
     },
 
     /// Resume or discard an in-progress session after a crash.
@@ -272,6 +286,10 @@ enum Command {
         /// Discard the workspace without resuming.
         #[arg(long)]
         discard: bool,
+        /// Rebuild _synthetic/ from vault state and clear the session report.
+        /// The workspace structure (raw notes, _session.md, sources) is preserved.
+        #[arg(long)]
+        reset: bool,
     },
 
     /// Run vault invariant checks; optionally rebuild the manifest.

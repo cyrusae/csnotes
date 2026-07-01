@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- add settable-keys reference to csnotes config --help (#84)
+- csnotes recover --reset: rebuild _synthetic from vault state in-place, clear report and committed_ops (L22)
+- csnotes reconcile --reset: wipe sessions+sources and re-reconcile from scratch (L16)
+- csnotes check validates structural op preconditions (rename_topic, move_atomic, etc) (L15)
+- artifact folder-based session matching (CPSC5001-06-22/ folder containing day1/ subfolders) (#86)
+- Extract PDF/PPTX lecture slides into workspace with boilerplate stripping and fuzzy dedup (#82)
+- extend is_question to flag any line containing a question mark (#83)
 - csnotes process --next: auto-select oldest pending session for backlog catch-up (L21)
 - rewrite claude.md and synthesis.md: structural ops contract, source priority, debrief reframe (L13)
 - defensive commit: save committed_ops to workspace meta, protect against report rewrites (L19)
@@ -24,9 +31,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - backfill contributing_sources from wikilinks for existing notes via audit --fix (L6)
 - auto-harvest contributing_sources from body wikilinks at teardown (L5)
 - add csnotes report-schema command; generate schema doc from Rust types (L4)
-- Artifact folder-based session matching: `CPSC5001-09-03/` directory in artifacts attaches all files inside (including nested subfolders like `day1/`) to that session; qualifier derived from path within the session folder (L1)
-- PDF and PPTX lecture slide extraction: text extracted at workspace assembly, boilerplate stripped, near-duplicate slides deduped (L5/#82)
-- Add csnotes check in-workspace validation command (L2)
 - audit: nudge for AI conversation sources missing .json sidecar (long conversations) (L57)
 - reconcile: sources_ignore_dirs config — skip specified subdirectories during source scan (L58)
 - AI conversation sidecar ingestion: read {stem}.json, render markdown index in workspace (L56)
@@ -49,6 +53,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- init --instructions-only should overwrite existing instruction files (L1)
+- fix pdftotext arg order and skill_variant propagation to workspace (L3)
 - fix clippy: extract_source_meta return type too complex (L11)
 - stop discarding workspace on teardown op failures (L8)
 - check must run precondition_pass; precondition failure must not discard workspace (L7)
@@ -73,6 +79,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- update README and CHANGELOG for slides extraction, is_question, config --help (#85)
+- research: Gemini/Antigravity equivalent of Claude Code PreToolUse hooks for workspace protection (L18)
+- research: Claude Code hook config resolution (global vs project-scoped, workspace temp dir behavior) (L17)
 - update CLAUDE.md/GEMINI.md commit section: append-only rule, CLI owns committed history (L20)
 - README: added command reference table + per-command flag summaries; artifact naming patterns section; folder-based matching example in vault layout (L1)
 - `config --set` help text expanded with per-key descriptions; `-h` shows one-liner, `--help` shows full reference (L7/#84)

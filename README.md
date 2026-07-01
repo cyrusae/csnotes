@@ -195,6 +195,11 @@ archive_threshold_weeks = 8
 
 # Include AI conversation files in vault audit (default: true)
 scan_ai_conversations = true
+
+# Subdirectories of sources_dir to skip during source scanning.
+# Useful for tool/template folders that live inside sources/ but shouldn't
+# be treated as source material.  Edit csnotes.toml directly to manage this list.
+sources_ignore_dirs = []
 ```
 
 ### Configuring via CLI
@@ -211,6 +216,8 @@ csnotes config --archive CPSC5001                # remove from active list
 
 Settable keys: `filename_format`, `raw_dir`, `recordings_dir`, `artifacts_dir`, `sources_dir`, `default_backend`, `require_recordings`, `archive_threshold_weeks`, `agy_model`, `scan_ai_conversations`. Run `csnotes config --help` for descriptions of each key.
 
+`sources_ignore_dirs` is not settable via `--set` — edit `csnotes.toml` directly.
+
 ---
 
 ## Usage guide
@@ -223,6 +230,7 @@ csnotes status            # see what's pending
 
 # 2. Run a session (auto-reconciles first)
 csnotes process           # auto-picks the one unprocessed session
+csnotes process --next               # oldest pending session (backlog catch-up)
 csnotes process --session 09-03              # by date (unique across courses)
 csnotes process --session 09-03 --course CPSC5001  # explicit course+date
 csnotes process --backend agy               # override backend for this run
@@ -273,6 +281,18 @@ csnotes extract --stdout                    # print to stdout instead of file
 
 Questions are any line containing `?` — including mid-line marks like `"arrays(? or linked lists?) are the default"` — or lines starting with `Q:` / `QUESTION:` even without a trailing `?`.
 
+### Progressive commit (mid-session checkpointing)
+
+The AI can call `csnotes commit` from inside the workspace to execute the current batch of ops and merge them to the vault without ending the session. The workspace stays alive and work continues.
+
+```sh
+# From inside an active AI workspace:
+csnotes commit           # execute current ops, merge to vault, keep session open
+csnotes commit --dry-run # preview what would run without executing anything
+```
+
+This is useful for structural reorganisation: the AI declares rename/move ops, commits them so the CLI executes the file moves, then continues writing notes that reference the new paths. Between commits the AI can freely rewrite `_session_report.json` — the CLI tracks committed ops independently in `_workspace_meta.json`.
+
 ### Crash recovery
 
 If the AI session crashes or the process is interrupted:
@@ -281,6 +301,9 @@ If the AI session crashes or the process is interrupted:
 csnotes recover           # prompts to resume or discard
 csnotes recover --resume  # re-launch AI against the preserved workspace
 csnotes recover --discard # throw away the workspace and clear in-progress state
+csnotes recover --reset   # rebuild _synthetic/ from vault state; clear report + committed_ops
+                          # use this when the AI has made a mess of _synthetic/ and you want
+                          # a clean slate without tearing down the whole workspace
 ```
 
 ### In-workspace validation
@@ -423,15 +446,17 @@ csnotes recover --resume
 | `csnotes flags list` | List open review flags. `--all` includes threads and changelog flags. |
 | `csnotes flags show <id>` | Full detail for one flag. |
 | `csnotes flags resolve <id>` | Mark a flag resolved. `--follow-up "..."` records a note at resolution. |
-| `csnotes recover` | Resume or discard an in-progress session after a crash. |
+| `csnotes commit` | Progressive mid-session commit: execute the current batch of ops and merge to vault without ending the session. `--dry-run` previews without executing. |
+| `csnotes recover` | Resume or discard an in-progress session after a crash. `--reset` rebuilds `_synthetic/` from vault state without tearing down the workspace. |
 | `csnotes audit` | Read-only invariant check across the full vault. `--reindex` rebuilds `csnotes.json`. `--fix --apply` runs mechanical repairs. |
-| `csnotes check` | Validate wikilinks, block anchors, and block-ID uniqueness from inside an active workspace. Run by the AI before exiting. |
+| `csnotes check` | Validate wikilinks, block anchors, block-ID uniqueness, and structural op preconditions from inside an active workspace. Run by the AI before exiting. |
 | `csnotes config` | Read or update vault configuration (see above for options). |
 
 ### `csnotes process` flags
 
 ```sh
 csnotes process                            # auto-picks the one unprocessed session
+csnotes process --next                     # oldest pending session (backlog catch-up)
 csnotes process --session 09-03           # specific session by date
 csnotes process --session 09-03 --course CPSC5001
 csnotes process --source SICP/ch01        # process a source file instead of a session
@@ -443,6 +468,13 @@ csnotes process --dry-run                 # show scope without launching
 csnotes process --resume                  # re-enter an interrupted session
 ```
 
+### `csnotes commit` flags
+
+```sh
+csnotes commit           # execute current batch of ops and merge to vault (from inside workspace)
+csnotes commit --dry-run # preview ops and precondition status without executing
+```
+
 ### `csnotes reconcile` flags
 
 ```sh
@@ -450,6 +482,7 @@ csnotes reconcile                         # scan and register new files
 csnotes reconcile --notify                # desktop notification if anything new is found
 csnotes reconcile --rename-spaces hyphens # rename filenames that contain spaces
 csnotes reconcile --rename-spaces underscores
+csnotes reconcile --reset                 # wipe all sessions+sources and re-scan from scratch
 ```
 
 ### `csnotes config` flags
@@ -470,5 +503,8 @@ csnotes config --migrate --apply          # execute the rename plan
 - **`csnotes status`** is your daily dashboard: unprocessed sessions, unprocessed sources, topic health, open flags, and any in-progress warning.
 - **`csnotes diff`** after every session shows exactly what was created, updated, and restructured — useful for reviewing what the AI did before opening Obsidian.
 - **Instruction files** live in `_csnotes/instructions/` and are read by the AI during the session. You can edit them to tune the AI's behaviour. Run `csnotes init --instructions-only` to restore the defaults without touching anything else.
+- **`csnotes commit`** inside a workspace runs a mid-session checkpoint: structural ops execute (rename/move/merge topics), the result merges to vault, and the session continues. Use it after declaring structural ops so the AI can then write notes that reference the new paths. The CLI tracks committed ops independently of the report, so the AI can rewrite `_session_report.json` freely between commits.
+- **`csnotes recover --reset`** rebuilds `_synthetic/` from the vault's current state and clears the session report, giving the AI a clean slate without tearing down the workspace. Use it when the AI has made a structural mess mid-session.
 - **Never manually edit `_synthetic/`** while a session is in progress — the manifest won't reflect your changes until the next `audit --reindex`.
 - **`csnotes.json`** is the source of truth for session/source/topic state. If it ever gets out of sync, `csnotes audit --reindex` rebuilds it from frontmatter.
+- **Backlog catch-up**: use `csnotes process --next` to automatically pick up the oldest unprocessed session when you have multiple pending. Re-run it after each session completes to work through the queue.

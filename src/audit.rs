@@ -129,8 +129,182 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
                 }
             }
 
-            // Phase 4 structural ops — no precondition checks yet.
-            _ => {}
+            Op::RenameAtomic(op) => {
+                let from_abs = safe_join(workspace_root, &op.path)?;
+                if !from_abs.exists() {
+                    return Err(CsnotesError::RenameAtomicSourceMissing(op.path.clone()).into());
+                }
+                let from_p = std::path::Path::new(&op.path);
+                let topic = from_p
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                let synthetic = workspace_root.join("_synthetic");
+                let to_abs = safe_join(&synthetic, topic)?.join(format!("{}.md", op.new_slug));
+                if to_abs.exists() {
+                    return Err(CsnotesError::RenameAtomicDestExists {
+                        slug: op.new_slug.clone(),
+                        topic: topic.to_string(),
+                    }
+                    .into());
+                }
+            }
+
+            Op::MoveAtomic(op) => {
+                let from_abs = safe_join(workspace_root, &op.from_path)?;
+                if !from_abs.exists() {
+                    return Err(CsnotesError::MoveAtomicSourceMissing(op.from_path.clone()).into());
+                }
+                let synthetic = workspace_root.join("_synthetic");
+                let to_dir = safe_join(&synthetic, &op.to_topic)?;
+                if !to_dir.exists() {
+                    return Err(CsnotesError::MoveAtomicTargetMissing(op.to_topic.clone()).into());
+                }
+                let slug = std::path::Path::new(&op.from_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                let to_abs = to_dir.join(format!("{}.md", slug));
+                if to_abs.exists() {
+                    return Err(CsnotesError::MoveAtomicDestExists {
+                        slug: slug.to_string(),
+                        topic: op.to_topic.clone(),
+                    }
+                    .into());
+                }
+            }
+
+            Op::PromoteAtomic(op) => {
+                let from_abs = safe_join(workspace_root, &op.from_path)?;
+                if !from_abs.exists() {
+                    return Err(
+                        CsnotesError::PromoteAtomicSourceMissing(op.from_path.clone()).into(),
+                    );
+                }
+                let synthetic = workspace_root.join("_synthetic");
+                let to_dir = safe_join(&synthetic, &op.to_topic)?;
+                if to_dir.exists() {
+                    return Err(CsnotesError::PromoteAtomicTargetExists(op.to_topic.clone()).into());
+                }
+            }
+
+            Op::DemoteTopic(op) => {
+                if op.from_topic == op.into_topic {
+                    return Err(CsnotesError::DemoteTopicSameTarget(op.from_topic.clone()).into());
+                }
+                let synthetic = workspace_root.join("_synthetic");
+                let from_dir = safe_join(&synthetic, &op.from_topic)?;
+                if !from_dir.exists() {
+                    return Err(
+                        CsnotesError::DemoteTopicSourceMissing(op.from_topic.clone()).into(),
+                    );
+                }
+                let into_dir = safe_join(&synthetic, &op.into_topic)?;
+                if !into_dir.exists() {
+                    return Err(
+                        CsnotesError::DemoteTopicTargetMissing(op.into_topic.clone()).into(),
+                    );
+                }
+            }
+
+            Op::MergeTopics(op) => {
+                let synthetic = workspace_root.join("_synthetic");
+                let into_dir = safe_join(&synthetic, &op.into)?;
+
+                // Collect filenames already in the target (if it exists).
+                let mut landing: std::collections::HashSet<String> = if into_dir.exists() {
+                    std::fs::read_dir(&into_dir)
+                        .map(|rd| {
+                            rd.filter_map(|e| e.ok())
+                                .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+                                .map(|e| e.file_name().to_string_lossy().to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    std::collections::HashSet::new()
+                };
+
+                for from_topic in &op.from {
+                    if from_topic == &op.into {
+                        continue;
+                    }
+                    let from_dir = safe_join(&synthetic, from_topic)?;
+                    if !from_dir.exists() {
+                        return Err(
+                            CsnotesError::MergeTopicsSourceMissing(from_topic.clone()).into()
+                        );
+                    }
+                    for entry in std::fs::read_dir(&from_dir)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+                    {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if !landing.insert(name.clone()) {
+                            return Err(CsnotesError::MergeTopicsFileConflict(name).into());
+                        }
+                    }
+                }
+            }
+
+            Op::SplitTopic(op) => {
+                let synthetic = workspace_root.join("_synthetic");
+                let from_dir = safe_join(&synthetic, &op.from)?;
+                if !from_dir.exists() {
+                    return Err(CsnotesError::SplitTopicSourceMissing(op.from.clone()).into());
+                }
+                for target in &op.into {
+                    if target.topic == op.from {
+                        continue;
+                    }
+                    let target_dir = safe_join(&synthetic, &target.topic)?;
+                    for slug in &target.atomics {
+                        let from_note = from_dir.join(format!("{}.md", slug));
+                        if !from_note.exists() {
+                            return Err(CsnotesError::SplitTopicAtomicMissing {
+                                slug: slug.clone(),
+                                topic: op.from.clone(),
+                            }
+                            .into());
+                        }
+                        if target_dir.exists() {
+                            let to_note = target_dir.join(format!("{}.md", slug));
+                            if to_note.exists() {
+                                return Err(CsnotesError::SplitTopicDestExists {
+                                    slug: slug.clone(),
+                                    topic: target.topic.clone(),
+                                }
+                                .into());
+                            }
+                        }
+                    }
+                }
+            }
+
+            Op::SetEmbed(op) => {
+                let index_abs = safe_join(workspace_root, &op.index_path)?;
+                if !index_abs.exists() {
+                    return Err(CsnotesError::SetEmbedIndexMissing(op.index_path.clone()).into());
+                }
+                let atomic_abs = safe_join(workspace_root, &op.atomic_path)?;
+                if !atomic_abs.exists() {
+                    return Err(CsnotesError::SetEmbedAtomicMissing(op.atomic_path.clone()).into());
+                }
+                // Verify atomic has a block_id — set_embed can't run without one.
+                let raw = std::fs::read_to_string(&atomic_abs)?;
+                if let Some((yaml, _)) = crate::frontmatter::split_frontmatter(&raw) {
+                    let fm: Result<crate::frontmatter::NoteFrontmatter, _> =
+                        serde_yml::from_str(yaml);
+                    if fm.map(|f| f.block_id.is_none()).unwrap_or(false) {
+                        return Err(
+                            CsnotesError::SetEmbedAtomicNoBlockId(op.atomic_path.clone()).into(),
+                        );
+                    }
+                }
+            }
         }
     }
     Ok(())
@@ -1004,7 +1178,9 @@ mod tests {
     use crate::frontmatter::ProvenanceDelta;
     use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
     use crate::report::{
-        CreateNoteOp, RenameTopicOp, ReportScope, ScopeKind, SessionReport, UpdateNoteOp,
+        CreateNoteOp, DemoteTopicOp, MergeTopicsOp, MoveAtomicOp, PromoteAtomicOp, RenameAtomicOp,
+        RenameTopicOp, ReportScope, ScopeKind, SessionReport, SetEmbedOp, SplitTarget,
+        SplitTopicOp, UpdateNoteOp,
     };
     use chrono::{DateTime, Utc};
     use tempfile::TempDir;
@@ -1091,6 +1267,76 @@ mod tests {
             to: to.into(),
             reason: "test".into(),
         })
+    }
+
+    fn rename_atomic_op(path: &str, new_slug: &str) -> Op {
+        Op::RenameAtomic(RenameAtomicOp {
+            path: path.into(),
+            new_slug: new_slug.into(),
+            new_title: "New Title".into(),
+            reason: "test".into(),
+        })
+    }
+
+    fn move_atomic_op(from_path: &str, to_topic: &str) -> Op {
+        Op::MoveAtomic(MoveAtomicOp {
+            from_path: from_path.into(),
+            to_topic: to_topic.into(),
+            reason: "test".into(),
+        })
+    }
+
+    fn promote_atomic_op(from_path: &str, to_topic: &str) -> Op {
+        Op::PromoteAtomic(PromoteAtomicOp {
+            from_path: from_path.into(),
+            to_topic: to_topic.into(),
+            reason: "test".into(),
+        })
+    }
+
+    fn demote_topic_op(from: &str, into: &str) -> Op {
+        Op::DemoteTopic(DemoteTopicOp {
+            from_topic: from.into(),
+            into_topic: into.into(),
+            reason: "test".into(),
+        })
+    }
+
+    fn merge_topics_op(from: Vec<&str>, into: &str) -> Op {
+        Op::MergeTopics(MergeTopicsOp {
+            from: from.into_iter().map(String::from).collect(),
+            into: into.into(),
+            reason: "test".into(),
+        })
+    }
+
+    fn split_topic_op(from: &str, targets: Vec<(&str, Vec<&str>)>) -> Op {
+        Op::SplitTopic(SplitTopicOp {
+            from: from.into(),
+            into: targets
+                .into_iter()
+                .map(|(topic, atomics)| SplitTarget {
+                    topic: topic.into(),
+                    atomics: atomics.into_iter().map(String::from).collect(),
+                })
+                .collect(),
+            reason: "test".into(),
+        })
+    }
+
+    fn set_embed_op(atomic_path: &str, index_path: &str, present: bool) -> Op {
+        Op::SetEmbed(SetEmbedOp {
+            atomic_path: atomic_path.into(),
+            index_path: index_path.into(),
+            present,
+        })
+    }
+
+    fn index_note() -> &'static str {
+        "---\ncsnotes_schema: 1\nkind: index\ntopic: test\ntitle: Test Index\n\
+         contributing_sessions: []\ncontributing_sources: []\n\
+         created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+         ---\nIndex content.\n"
     }
 
     // ── precondition_pass tests ───────────────────────────────────────────────
@@ -1206,6 +1452,306 @@ mod tests {
         let err = precondition_pass(&report, tmp.path()).unwrap_err();
         assert!(err.to_string().contains("algorithms"), "{err}");
         assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    // ── rename_atomic preconditions ───────────────────────────────────────────
+
+    #[test]
+    fn precondition_rename_atomic_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![rename_atomic_op("_synthetic/cs/old.md", "new")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("old.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_rename_atomic_dest_exists_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/old.md", csnotes_note());
+        write(tmp.path(), "_synthetic/cs/new.md", csnotes_note());
+        let report = make_report(vec![rename_atomic_op("_synthetic/cs/old.md", "new")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("new"), "{err}");
+        assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    #[test]
+    fn precondition_rename_atomic_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/old.md", csnotes_note());
+        let report = make_report(vec![rename_atomic_op("_synthetic/cs/old.md", "new")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    // ── move_atomic preconditions ─────────────────────────────────────────────
+
+    #[test]
+    fn precondition_move_atomic_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        let report = make_report(vec![move_atomic_op("_synthetic/cs/bfs.md", "graphs")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_move_atomic_target_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        let report = make_report(vec![move_atomic_op("_synthetic/cs/bfs.md", "graphs")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("graphs"), "{err}");
+        assert!(err.to_string().contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn precondition_move_atomic_dest_conflict_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        write(tmp.path(), "_synthetic/graphs/bfs.md", csnotes_note());
+        let report = make_report(vec![move_atomic_op("_synthetic/cs/bfs.md", "graphs")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs"), "{err}");
+        assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    #[test]
+    fn precondition_move_atomic_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        let report = make_report(vec![move_atomic_op("_synthetic/cs/bfs.md", "graphs")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    // ── promote_atomic preconditions ──────────────────────────────────────────
+
+    #[test]
+    fn precondition_promote_atomic_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![promote_atomic_op("_synthetic/cs/bfs.md", "new-topic")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_promote_atomic_target_exists_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/new-topic")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        let report = make_report(vec![promote_atomic_op("_synthetic/cs/bfs.md", "new-topic")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("new-topic"), "{err}");
+        assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    #[test]
+    fn precondition_promote_atomic_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        let report = make_report(vec![promote_atomic_op("_synthetic/cs/bfs.md", "new-topic")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    // ── demote_topic preconditions ────────────────────────────────────────────
+
+    #[test]
+    fn precondition_demote_topic_same_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        let report = make_report(vec![demote_topic_op("cs", "cs")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("same topic"), "{err}");
+    }
+
+    #[test]
+    fn precondition_demote_topic_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/algorithms")).unwrap();
+        let report = make_report(vec![demote_topic_op("cs", "algorithms")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("cs"), "{err}");
+        assert!(err.to_string().contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn precondition_demote_topic_target_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        let report = make_report(vec![demote_topic_op("cs", "algorithms")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("algorithms"), "{err}");
+        assert!(err.to_string().contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn precondition_demote_topic_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/algorithms")).unwrap();
+        let report = make_report(vec![demote_topic_op("cs", "algorithms")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    // ── merge_topics preconditions ────────────────────────────────────────────
+
+    #[test]
+    fn precondition_merge_topics_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        let report = make_report(vec![merge_topics_op(vec!["cs", "graphs"], "algorithms")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("cs"), "{err}");
+        assert!(err.to_string().contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn precondition_merge_topics_filename_conflict_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        write(tmp.path(), "_synthetic/graphs/bfs.md", csnotes_note());
+        let report = make_report(vec![merge_topics_op(vec!["cs", "graphs"], "algorithms")]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs.md"), "{err}");
+        assert!(err.to_string().contains("conflict"), "{err}");
+    }
+
+    #[test]
+    fn precondition_merge_topics_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/dfs.md", csnotes_note());
+        write(tmp.path(), "_synthetic/graphs/bfs.md", csnotes_note());
+        let report = make_report(vec![merge_topics_op(vec!["cs", "graphs"], "algorithms")]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    // ── split_topic preconditions ─────────────────────────────────────────────
+
+    #[test]
+    fn precondition_split_topic_source_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        let report = make_report(vec![split_topic_op("cs", vec![("graphs", vec!["bfs"])])]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("cs"), "{err}");
+        assert!(err.to_string().contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn precondition_split_topic_atomic_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        let report = make_report(vec![split_topic_op("cs", vec![("graphs", vec!["bfs"])])]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_split_topic_dest_conflict_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/graphs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        write(tmp.path(), "_synthetic/graphs/bfs.md", csnotes_note());
+        let report = make_report(vec![split_topic_op("cs", vec![("graphs", vec!["bfs"])])]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs"), "{err}");
+        assert!(err.to_string().contains("already exists"), "{err}");
+    }
+
+    #[test]
+    fn precondition_split_topic_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        write(tmp.path(), "_synthetic/cs/dfs.md", csnotes_note());
+        let report = make_report(vec![split_topic_op(
+            "cs",
+            vec![("graphs", vec!["bfs"]), ("search", vec!["dfs"])],
+        )]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
+    }
+
+    // ── set_embed preconditions ───────────────────────────────────────────────
+
+    #[test]
+    fn precondition_set_embed_index_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        let report = make_report(vec![set_embed_op(
+            "_synthetic/cs/bfs.md",
+            "_synthetic/cs/index.md",
+            true,
+        )]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("index.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_set_embed_atomic_missing_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/index.md", index_note());
+        let report = make_report(vec![set_embed_op(
+            "_synthetic/cs/bfs.md",
+            "_synthetic/cs/index.md",
+            true,
+        )]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs.md"), "{err}");
+        assert!(err.to_string().contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn precondition_set_embed_no_block_id_errors() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/index.md", index_note());
+        // Atomic without block_id
+        let no_block_id = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: BFS\n\
+             contributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
+             ---\nContent.\n";
+        write(tmp.path(), "_synthetic/cs/bfs.md", no_block_id);
+        let report = make_report(vec![set_embed_op(
+            "_synthetic/cs/bfs.md",
+            "_synthetic/cs/index.md",
+            true,
+        )]);
+        let err = precondition_pass(&report, tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("bfs.md"), "{err}");
+        assert!(err.to_string().contains("no block_id"), "{err}");
+    }
+
+    #[test]
+    fn precondition_set_embed_passes() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
+        write(tmp.path(), "_synthetic/cs/index.md", index_note());
+        write(tmp.path(), "_synthetic/cs/bfs.md", csnotes_note());
+        let report = make_report(vec![set_embed_op(
+            "_synthetic/cs/bfs.md",
+            "_synthetic/cs/index.md",
+            true,
+        )]);
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
     #[test]

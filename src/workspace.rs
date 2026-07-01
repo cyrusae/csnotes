@@ -1364,7 +1364,7 @@ pub fn cleanup(workspace_root: &Path, vault_root: &Path, run_id: &str) -> Result
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
+pub(crate) fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
     for entry in walkdir::WalkDir::new(src)
         .into_iter()
         .filter_map(|e| e.ok())

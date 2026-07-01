@@ -54,6 +54,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
             notify: false,
             rename_spaces: None,
             quiet: true,
+            reset: false,
         },
     )?;
 
