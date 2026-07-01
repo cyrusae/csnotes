@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use chrono::Utc;
 use owo_colors::OwoColorize;
 
-use crate::audit::{invariant_suite, precondition_pass};
+use crate::audit::{invariant_suite, precondition_pass_ops};
 use crate::backend::make_backend;
 use crate::commands::reconcile;
 use crate::config::{find_vault_root, AiBackend, VaultConfig};
@@ -14,7 +14,8 @@ use crate::manifest::{InProgressRecord, Manifest, ManifestLock, SessionStatus};
 use crate::ops::content::{execute_create_note, execute_update_note};
 use crate::report::{Op, SessionReport, REPORT_FILENAME};
 use crate::workspace::{
-    assemble, cleanup, merge_back, new_run_id, take_snapshot, WorkspaceParams, WorkspaceScope,
+    assemble, cleanup, merge_back, new_run_id, take_snapshot, WorkspaceMeta, WorkspaceParams,
+    WorkspaceScope,
 };
 
 /// `csnotes process` arguments (set by main.rs from clap).
@@ -33,6 +34,8 @@ pub struct ProcessArgs {
     pub agy_model: Option<String>,
     /// Per-run Claude model override (`--claude-model`).
     pub claude_model: Option<String>,
+    /// Auto-select the oldest pending session instead of erroring on ambiguity.
+    pub next: bool,
 }
 
 pub fn run(args: ProcessArgs) -> Result<()> {
@@ -253,81 +256,46 @@ pub fn run_teardown(
         });
     }
 
-    // Step 4: Precondition pass
-    if let Err(e) = precondition_pass(&report, workspace_root) {
-        eprintln!(
-            "{}",
-            "Precondition failure — workspace preserved.".red().bold()
-        );
-        eprintln!("  {}", e);
-        eprintln!();
-        eprintln!("Your work is safe. Re-enter the workspace, fix the error, and exit again:");
-        eprintln!("  {}", "csnotes recover --resume".bold());
-        return Err(e);
-    }
+    // Check how many ops were already committed by `csnotes commit`.
+    // When committed_through == total ops we can skip execution entirely.
+    let committed_through = WorkspaceMeta::load(workspace_root)
+        .map(|m| m.committed_ops.len())
+        .unwrap_or(0);
+    let all_committed = committed_through >= report.operations.len();
+    let remaining = &report.operations[committed_through.min(report.operations.len())..];
 
-    // Step 5: Structural ops.  All ops run against the workspace copy before
-    // any content ops so the directory layout is stable for step 6.
-    for op in &report.operations {
-        let result = match op {
-            Op::RenameTopic(o) => crate::ops::structural::execute_rename_topic(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::RenameAtomic(o) => crate::ops::structural::execute_rename_atomic(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::MoveAtomic(o) => crate::ops::structural::execute_move_atomic(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::PromoteAtomic(o) => crate::ops::structural::execute_promote_atomic(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::DemoteTopic(o) => crate::ops::structural::execute_demote_topic(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::MergeTopics(o) => crate::ops::structural::execute_merge_topics(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::SplitTopic(o) => crate::ops::structural::execute_split_topic(
-                o,
-                workspace_root,
-                &config.synthetic_dir,
-            ),
-            Op::SetEmbed(o) => crate::ops::structural::execute_set_embed(o, workspace_root),
-            _ => continue, // content ops handled in step 6
-        };
-        if let Err(e) = result {
-            eprintln!("{}", format!("{} failed:", op.kind_str()).red().bold());
+    if !all_committed {
+        // Step 4: Precondition pass (only for uncommitted ops)
+        if let Err(e) = precondition_pass_ops(remaining, workspace_root) {
+            eprintln!(
+                "{}",
+                "Precondition failure — workspace preserved.".red().bold()
+            );
             eprintln!("  {}", e);
             eprintln!();
             eprintln!("Your work is safe. Re-enter the workspace, fix the error, and exit again:");
             eprintln!("  {}", "csnotes recover --resume".bold());
             return Err(e);
         }
-    }
 
-    // Step 6: Execute content ops
-    for op in &report.operations {
-        match op {
-            Op::CreateNote(op) => execute_create_note(op, workspace_root, now, manifest)?,
-            Op::UpdateNote(op) => execute_update_note(op, workspace_root, now, manifest)?,
-            _ => {} // structural handled above
+        // Step 5: Structural ops against workspace _synthetic/ copy.
+        if let Err(e) = execute_structural_ops_slice(remaining, workspace_root, config) {
+            eprintln!(
+                "{}",
+                "Structural op failed — workspace preserved.".red().bold()
+            );
+            eprintln!("  {}", e);
+            eprintln!();
+            eprintln!("Your work is safe. Re-enter the workspace, fix the error, and exit again:");
+            eprintln!("  {}", "csnotes recover --resume".bold());
+            return Err(e);
         }
+
+        // Step 6: Content ops
+        execute_content_ops_slice(remaining, workspace_root, now, manifest)?;
     }
 
-    // Step 7: Build updated manifest
+    // Step 7: Build updated manifest (always — topics must reflect current state)
     let updated_manifest = crate::audit::reindex(workspace_root, config)?;
     // Preserve sessions and sources from the existing manifest (reindex only
     // touches topics)
@@ -338,40 +306,45 @@ pub fn run_teardown(
     update_session_status(&report, &mut new_manifest, now, &config.synthetic_dir);
     update_source_status(&report, &mut new_manifest, now, &config.synthetic_dir);
 
-    // Step 8: Invariant suite
-    let audit = invariant_suite(
-        workspace_root,
-        &config.synthetic_dir,
-        &report,
-        &new_manifest,
-    )?;
+    if !all_committed {
+        // Step 8: Invariant suite
+        let audit = invariant_suite(
+            workspace_root,
+            &config.synthetic_dir,
+            &report,
+            &new_manifest,
+        )?;
 
-    if !audit.is_clean() {
-        eprintln!(
-            "{}",
-            "Invariant violations — workspace preserved.".red().bold()
-        );
-        audit.print();
-        eprintln!();
-        eprintln!("Your work is safe. Re-enter the workspace, fix the violations, and exit again:");
-        eprintln!("  {}", "csnotes recover --resume".bold());
-        bail!("invariant suite failed");
+        if !audit.is_clean() {
+            eprintln!(
+                "{}",
+                "Invariant violations — workspace preserved.".red().bold()
+            );
+            audit.print();
+            eprintln!();
+            eprintln!(
+                "Your work is safe. Re-enter the workspace, fix the violations, and exit again:"
+            );
+            eprintln!("  {}", "csnotes recover --resume".bold());
+            bail!("invariant suite failed");
+        }
+
+        audit.print(); // Print any soft warnings
+
+        // Step 9: Pre-merge snapshot
+        if let Some(r) = manifest.session_in_progress.as_mut() {
+            r.phase = "merging".to_string();
+        }
+        manifest.save(vault_root)?;
+        let _snapshot = take_snapshot(vault_root, &config.synthetic_dir, run_id)?;
+
+        // Step 10: Merge-back
+        merge_back(workspace_root, vault_root, &config.synthetic_dir)?;
     }
 
-    audit.print(); // Print any soft warnings
-
-    // Step 9: Pre-merge snapshot
-    if let Some(r) = manifest.session_in_progress.as_mut() {
-        r.phase = "merging".to_string();
-    }
-    manifest.save(vault_root)?;
-    let _snapshot = take_snapshot(vault_root, &config.synthetic_dir, run_id)?;
-
-    // Step 10: Merge-back
-    merge_back(workspace_root, vault_root, &config.synthetic_dir)?;
-
-    // Step 10.5: Relink raw notes — propagate the same path changes that were
-    // applied to _synthetic/ into user-authored raw notes.
+    // Step 10.5: Relink raw notes — propagate path changes from structural ops
+    // into user-authored raw notes.  Runs once at final teardown regardless of
+    // whether ops were committed progressively.
     let raw_roots = collect_raw_note_roots(vault_root, config);
     let raw_root_refs: Vec<&std::path::Path> = raw_roots.iter().map(|p| p.as_path()).collect();
     let relinked =
@@ -431,6 +404,80 @@ pub fn run_teardown(
         );
     }
 
+    Ok(())
+}
+
+// ── Shared op execution helpers ───────────────────────────────────────────────
+
+/// Run structural ops from `ops` against the workspace `_synthetic/` copy.
+/// Skips content ops (`CreateNote`, `UpdateNote`).
+/// Returns `Err` with op-kind context on the first failure.
+pub(crate) fn execute_structural_ops_slice(
+    ops: &[Op],
+    workspace_root: &Path,
+    config: &VaultConfig,
+) -> Result<()> {
+    use anyhow::Context as _;
+    for op in ops {
+        let result = match op {
+            Op::RenameTopic(o) => crate::ops::structural::execute_rename_topic(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::RenameAtomic(o) => crate::ops::structural::execute_rename_atomic(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::MoveAtomic(o) => crate::ops::structural::execute_move_atomic(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::PromoteAtomic(o) => crate::ops::structural::execute_promote_atomic(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::DemoteTopic(o) => crate::ops::structural::execute_demote_topic(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::MergeTopics(o) => crate::ops::structural::execute_merge_topics(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::SplitTopic(o) => crate::ops::structural::execute_split_topic(
+                o,
+                workspace_root,
+                &config.synthetic_dir,
+            ),
+            Op::SetEmbed(o) => crate::ops::structural::execute_set_embed(o, workspace_root),
+            _ => continue,
+        };
+        result.with_context(|| format!("{} failed", op.kind_str()))?;
+    }
+    Ok(())
+}
+
+/// Run content ops (`CreateNote`, `UpdateNote`) from `ops` against the
+/// workspace.  Skips structural ops.
+pub(crate) fn execute_content_ops_slice(
+    ops: &[Op],
+    workspace_root: &Path,
+    now: chrono::DateTime<Utc>,
+    manifest: &Manifest,
+) -> Result<()> {
+    for op in ops {
+        match op {
+            Op::CreateNote(o) => execute_create_note(o, workspace_root, now, manifest)?,
+            Op::UpdateNote(o) => execute_update_note(o, workspace_root, now, manifest)?,
+            _ => {}
+        }
+    }
     Ok(())
 }
 
@@ -551,11 +598,25 @@ fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String>
         0 => bail!("No unprocessed sessions. Run `csnotes status` to review."),
         1 => Ok(unprocessed.into_iter().next().unwrap()),
         _ => {
+            if args.next {
+                // Pick the oldest pending session by date, breaking ties by ID.
+                let id = unprocessed
+                    .into_iter()
+                    .min_by_key(|id| {
+                        manifest
+                            .sessions
+                            .get(id)
+                            .map(|e| (e.date, id.clone()))
+                            .unwrap_or_default()
+                    })
+                    .unwrap();
+                return Ok(id);
+            }
             eprintln!("Multiple unprocessed sessions:");
             for id in &unprocessed {
                 eprintln!("  {}", id);
             }
-            bail!("Use --session or --course to specify which session to process.");
+            bail!("Use --session, --course, or --next to specify which session to process.");
         }
     }
 }
@@ -797,6 +858,7 @@ mod tests {
                 fixture: None,
                 agy_model: None,
                 claude_model: None,
+                next: false,
             },
             manifest,
         )

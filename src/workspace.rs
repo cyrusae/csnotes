@@ -8,6 +8,7 @@
 ///     _session.md                           ← rendered briefing
 ///     _sources_index.md                     ← source metadata; consult before reading source files
 ///     _session_report.json                  ← written by AI on exit
+///     _workspace_meta.json                  ← vault root + run_id + committed ops history
 ///     input_raw_*.md                        ← raw notes (XML-wrapped, read-only)
 ///     input_*.md                            ← recordings / artifacts (XML-wrapped, read-only)
 ///     sources/                              ← source files (XML-wrapped, read-only)
@@ -20,6 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::config::{SkillVariant, VaultConfig};
@@ -27,6 +29,42 @@ use crate::error::CsnotesError;
 use crate::flags::FlagStore;
 use crate::manifest::{Manifest, SessionEntry, SourceEntry};
 use crate::obsidian::collect_all_block_ids;
+
+// ── Workspace metadata ────────────────────────────────────────────────────────
+
+pub const WORKSPACE_META_FILENAME: &str = "_workspace_meta.json";
+
+/// Sidecar written into every workspace at assemble time.
+/// Consumed by `csnotes commit` to locate the vault root without relying on
+/// the calling shell's working directory, and to track progressive commit state.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WorkspaceMeta {
+    pub vault_root: PathBuf,
+    pub run_id: String,
+    /// Ops already committed to the vault via `csnotes commit`.
+    /// The CLI owns this list — it is the ground truth of what has been
+    /// executed, regardless of how the AI may have rewritten the report.
+    /// Teardown skips re-executing these; `csnotes commit` uses `.len()` as
+    /// the cursor into `report.operations`.
+    #[serde(default)]
+    pub committed_ops: Vec<crate::report::Op>,
+}
+
+impl WorkspaceMeta {
+    pub fn load(workspace_root: &Path) -> Result<Self> {
+        let path = workspace_root.join(WORKSPACE_META_FILENAME);
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        Ok(serde_json::from_str(&content)?)
+    }
+
+    pub fn save(&self, workspace_root: &Path) -> Result<()> {
+        let path = workspace_root.join(WORKSPACE_META_FILENAME);
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(&path, content)?;
+        Ok(())
+    }
+}
 
 // ── Workspace paths ───────────────────────────────────────────────────────────
 
@@ -147,6 +185,19 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     // 6. Render _session.md (includes the vault file index section)
     render_session_md(params, &workspace_root, &vault_files)?;
 
+    // 7. Write _workspace_meta.json so `csnotes commit` can locate the vault
+    //    and track progressive commit state without shell-cwd assumptions.
+    WorkspaceMeta {
+        vault_root: params.vault_root.to_path_buf(),
+        run_id: params.run_id.to_string(),
+        committed_ops: Vec::new(),
+    }
+    .save(&workspace_root)?;
+
+    // 8. Write .claude/settings.json with PreToolUse hooks that block
+    //    destructive file operations the CLI must own (mv, rm .md, etc.).
+    write_workspace_hooks(&workspace_root)?;
+
     Ok(workspace_root)
 }
 
@@ -188,6 +239,134 @@ fn copy_instruction_files(
         fs::copy(&report_schema_src, workspace_root.join("report_schema.md"))
             .with_context(|| format!("copying {}", report_schema_src.display()))?;
     }
+
+    Ok(())
+}
+
+// ── Workspace hooks ───────────────────────────────────────────────────────────
+
+/// Python guard script injected into every workspace as a Claude Code
+/// PreToolUse hook.  Blocks destructive Bash commands that would bypass the
+/// CLI's structural-op system (mv, rm, sed -i, etc.).
+const HOOK_GUARD_SCRIPT: &str = r#"#!/usr/bin/env python3
+"""csnotes workspace guard — PreToolUse hook for the Bash tool.
+
+Blocks shell commands that would restructure or destroy note files without
+going through the csnotes structural-op system.  The CLI owns file layout;
+Claude declares ops, it does not execute moves or deletes directly.
+
+Exit 0 = allow.  Exit 2 = block (Claude sees stderr as the reason).
+"""
+import json
+import re
+import sys
+
+
+BLOCKED = [
+    # mv on .md files or _synthetic/ paths
+    (
+        r'\bmv\b[^\n]*(?:\.md\b|/_synthetic\b|_synthetic/)',
+        "Do not use mv on .md files or _synthetic/ paths.\n"
+        "Declare a structural op (rename_atomic, move_atomic, rename_topic, etc.)\n"
+        "in _session_report.json — the CLI executes all file moves.",
+    ),
+    # rm on .md files
+    (
+        r'\brm\b(?:\s+-\w+)*\s+[^\n]*\.md\b',
+        "Do not use rm on .md files.\n"
+        "Note removal must be declared as a structural op so the CLI can\n"
+        "update wikilinks and maintain vault consistency.",
+    ),
+    # rmdir or rm -r/-rf on _synthetic/ subdirectories
+    (
+        r'\brmdir\b[^\n]*_synthetic\b|\brm\b\s+-[rf]{1,2}\s+[^\n]*_synthetic\b',
+        "Do not rmdir or rm -rf _synthetic/ subdirectories.\n"
+        "Topic folder restructuring is handled by CLI structural ops\n"
+        "(demote_topic, merge_topics, etc.).",
+    ),
+    # git mv (moves files and updates git index, same problem as mv)
+    (
+        r'\bgit\s+mv\b',
+        "Do not use git mv.\n"
+        "Declare rename_atomic or move_atomic in _session_report.json instead.",
+    ),
+    # sed --in-place / sed -i (in-place file mutation bypasses frontmatter contract)
+    (
+        r'\bsed\b[^\n]*(?:--in-place|-i\b)',
+        "Do not edit files in-place with sed -i.\n"
+        "Use the Edit tool to modify file content so changes are tracked.",
+    ),
+    # perl -pi -e (same class of in-place mutation)
+    (
+        r'\bperl\b[^\n]*-pi\b',
+        "Do not edit files in-place with perl -pi.\n"
+        "Use the Edit tool to modify file content so changes are tracked.",
+    ),
+]
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)  # unparseable input — let it through
+
+    command = data.get("tool_input", {}).get("command", "")
+
+    for pattern, guidance in BLOCKED:
+        if re.search(pattern, command):
+            print(
+                f"csnotes workspace guard — BLOCKED\n\n{guidance}\n\n"
+                "Run `csnotes check` to validate the workspace, or exit the\n"
+                "session and re-enter with `csnotes recover --resume`.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+"#;
+
+/// Write `.claude/settings.json` (PreToolUse hook config) and the companion
+/// Python guard script into the workspace.  Called once at assemble time.
+fn write_workspace_hooks(workspace_root: &Path) -> Result<()> {
+    let claude_dir = workspace_root.join(".claude");
+    let hooks_dir = claude_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir).context("creating .claude/hooks/")?;
+
+    // Guard script
+    let script_path = hooks_dir.join("csnotes_guard.py");
+    fs::write(&script_path, HOOK_GUARD_SCRIPT)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
+    }
+
+    // Hook configuration — references the script via a path relative to the
+    // workspace root (Claude Code runs hooks with the project root as CWD).
+    let settings = serde_json::json!({
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python3 .claude/hooks/csnotes_guard.py"
+                        }
+                    ]
+                }
+            ]
+        }
+    });
+    fs::write(
+        claude_dir.join("settings.json"),
+        serde_json::to_string_pretty(&settings)?,
+    )?;
 
     Ok(())
 }
@@ -1103,6 +1282,44 @@ pub fn rebuild_cross_embedded_in(synthetic_root: &Path) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Take a snapshot of the workspace's own `_synthetic/` copy before running
+/// commit ops, so the workspace can be restored to a clean state if any op
+/// fails (letting the user fix the issue and retry `csnotes commit`).
+pub fn take_workspace_snapshot(workspace_root: &Path, synthetic_dir: &str) -> Result<PathBuf> {
+    let src = workspace_root.join(synthetic_dir);
+    let snapshot = workspace_root.join("_synthetic_pre_commit");
+    if src.exists() {
+        copy_dir(&src, &snapshot)?;
+    } else {
+        fs::create_dir_all(&snapshot)?;
+    }
+    Ok(snapshot)
+}
+
+/// Restore the workspace's `_synthetic/` from the pre-commit snapshot taken by
+/// `take_workspace_snapshot`, then remove the snapshot directory.
+pub fn restore_workspace_snapshot(workspace_root: &Path, synthetic_dir: &str) -> Result<()> {
+    let snapshot = workspace_root.join("_synthetic_pre_commit");
+    if !snapshot.exists() {
+        return Ok(());
+    }
+    let current = workspace_root.join(synthetic_dir);
+    if current.exists() {
+        fs::remove_dir_all(&current)?;
+    }
+    fs::rename(&snapshot, &current)?;
+    Ok(())
+}
+
+/// Remove the workspace pre-commit snapshot after a successful commit.
+pub fn cleanup_workspace_snapshot(workspace_root: &Path) -> Result<()> {
+    let snapshot = workspace_root.join("_synthetic_pre_commit");
+    if snapshot.exists() {
+        fs::remove_dir_all(&snapshot).ok();
+    }
     Ok(())
 }
 

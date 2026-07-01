@@ -20,8 +20,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use commands::{
-    audit_cmd, check_cmd, config_cmd, diff, extract, flags_cmd, init, process, reconcile, recover,
-    report_schema_cmd, status,
+    audit_cmd, check_cmd, commit_cmd, config_cmd, diff, extract, flags_cmd, init, process,
+    reconcile, recover, report_schema_cmd, status,
 };
 use config::AiBackend;
 
@@ -53,6 +53,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             agy_model,
             claude_model,
             resume,
+            next,
         } => {
             if resume {
                 return recover::run(recover::RecoverArgs {
@@ -70,6 +71,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
                 fixture,
                 agy_model,
                 claude_model,
+                next,
             })
         }
 
@@ -121,6 +123,10 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
         }),
 
         Command::Check { workspace } => check_cmd::run(check_cmd::CheckArgs { workspace }),
+
+        Command::Commit { workspace, dry_run } => {
+            commit_cmd::run(commit_cmd::CommitArgs { workspace, dry_run })
+        }
 
         Command::ReportSchema => report_schema_cmd::run(),
 
@@ -214,6 +220,11 @@ enum Command {
         /// Resume an in-progress session (equivalent to `csnotes recover --resume`).
         #[arg(long)]
         resume: bool,
+
+        /// Auto-select the oldest pending session when multiple are unprocessed.
+        /// Useful for working through a backlog without specifying --session each time.
+        #[arg(long)]
+        next: bool,
     },
 
     /// Show processing status for sessions, sources, topics, and flags.
@@ -294,6 +305,23 @@ enum Command {
         /// Workspace root to check (defaults to current directory).
         #[arg(long)]
         workspace: Option<std::path::PathBuf>,
+    },
+
+    /// Commit the current batch of ops to the vault from inside an active session.
+    ///
+    /// Runs the teardown pipeline (preconditions → structural ops → content ops
+    /// → invariant suite → merge-back) without ending the session.  The
+    /// workspace persists so work can continue and more ops can be committed.
+    ///
+    /// Run from the workspace directory.  Use --dry-run to preview what would
+    /// run without executing.
+    Commit {
+        /// Workspace root to commit from (defaults to current directory).
+        #[arg(long)]
+        workspace: Option<PathBuf>,
+        /// Preview what would run without executing anything.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Read or update vault configuration.

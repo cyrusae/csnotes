@@ -78,7 +78,7 @@ pub fn run(args: CheckArgs) -> Result<()> {
         );
         eprintln!(
             "Fix the ERRORs above before exiting — \
-             the teardown pipeline will discard the workspace if they remain."
+             your work is preserved until you exit cleanly."
         );
         std::process::exit(1);
     }

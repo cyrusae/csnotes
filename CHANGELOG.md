@@ -14,6 +14,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- csnotes process --next: auto-select oldest pending session for backlog catch-up (L21)
+- rewrite claude.md and synthesis.md: structural ops contract, source priority, debrief reframe (L13)
+- defensive commit: save committed_ops to workspace meta, protect against report rewrites (L19)
+- PreToolUse hook blocking mv/cp of .md files in workspace (L14)
+- csnotes commit: in-session progressive pipeline execution (L12)
+- reconcile reads source_type frontmatter to refine SourceKind (L10)
+- SourceStatus::Staged with frontmatter sync and workspace assembly gating (L9)
+- backfill contributing_sources from wikilinks for existing notes via audit --fix (L6)
+- auto-harvest contributing_sources from body wikilinks at teardown (L5)
+- add csnotes report-schema command; generate schema doc from Rust types (L4)
 - Artifact folder-based session matching: `CPSC5001-09-03/` directory in artifacts attaches all files inside (including nested subfolders like `day1/`) to that session; qualifier derived from path within the session folder (L1)
 - PDF and PPTX lecture slide extraction: text extracted at workspace assembly, boilerplate stripped, near-duplicate slides deduped (L5/#82)
 - Add csnotes check in-workspace validation command (L2)
@@ -39,6 +49,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- fix clippy: extract_source_meta return type too complex (L11)
+- stop discarding workspace on teardown op failures (L8)
+- check must run precondition_pass; precondition failure must not discard workspace (L7)
 - PDF and PPTX artifacts were never registered in the manifest (missing from `ACCEPTED_ARTIFACT_EXTENSIONS`), making workspace slide extraction unreachable; now correctly registered as Slides (L1)
 - Question extraction now catches mid-line `?` marks, not just end-of-line (L6/#83)
 - Respect sources_ignore_dirs in vault file index walk (L4)
@@ -60,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- update CLAUDE.md/GEMINI.md commit section: append-only rule, CLI owns committed history (L20)
 - README: added command reference table + per-command flag summaries; artifact naming patterns section; folder-based matching example in vault layout (L1)
 - `config --set` help text expanded with per-key descriptions; `-h` shows one-liner, `--help` shows full reference (L7/#84)
 - cover ops/structural execute_merge_topics and relink_raw_notes (#75)

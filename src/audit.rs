@@ -50,7 +50,13 @@ impl AuditResult {
 /// Returns `Ok(())` if all preconditions hold; `Err(...)` on the first
 /// failure.
 pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Result<()> {
-    for op in &report.operations {
+    precondition_pass_ops(&report.operations, workspace_root)
+}
+
+/// Same as `precondition_pass` but operates on an arbitrary slice of ops.
+/// Used by `csnotes commit` to check only the not-yet-committed tail.
+pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
+    for op in ops {
         match op {
             Op::CreateNote(op) => {
                 let path = safe_join(workspace_root, &op.path)?;
