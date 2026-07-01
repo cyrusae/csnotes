@@ -1,0 +1,10 @@
+{
+  "uuid": "c28b729c-4c52-43ba-983e-72fe3a697359",
+  "issue_uuid": "f7cb894b-6a97-4b43-a739-58e1f4287bfc",
+  "author": "3owj",
+  "content": "L13 complete. Rewrote CLAUDE_MD, GEMINI_MD, SYNTHESIS_MD in init.rs. CLAUDE_MD: added _workspace_meta.json to layout, new 'File layout is the CLI's job' section (structural ops contract + hooks + two-wave commit workflow), debrief reframed (ask what student worked from, fuzzy=explore not hedge), fixed discard→preserve language. GEMINI_MD: same minus hooks mention, keep --add-dir note and backend:gemini reminder. SYNTHESIS_MD: uncertainty section now distinguishes source ambiguity (flag it) from comprehension gaps (explore first); replaced 'On textbook vs. lecture synthesis' lecture ceiling with 'Depth follows the student' source-agnostic section; 'What success looks like' now covers any source type. 418 tests pass.",
+  "created_at": "2026-07-01T19:32:47.419719Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABALQz0uy/XSWFfFUy22lkrfNWFqa0/ASvuqHQt4R9eKsBSvkePaDRcdQ61EaOs+8YJbgUfo+jUNXkSkHsiJlNJBw=="
+}
