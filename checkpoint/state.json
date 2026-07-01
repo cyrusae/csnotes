@@ -2,7 +2,12 @@
   "next_display_id": 1,
   "next_comment_id": 1,
   "display_id_map": {},
-  "locks": {},
+  "locks": {
+    "-25": {
+      "agent_id": "3owj",
+      "claimed_at": "2026-07-01T23:19:15.897564Z"
+    }
+  },
   "issues": {},
   "unsigned_event_warnings": [
     {
@@ -1124,11 +1129,16 @@
       "agent_id": "3owj",
       "agent_seq": 224,
       "timestamp": "2026-07-01T22:36:20.638975Z"
+    },
+    {
+      "agent_id": "3owj",
+      "agent_seq": 225,
+      "timestamp": "2026-07-01T23:19:15.897564Z"
     }
   ],
   "watermark": {
-    "timestamp": "2026-07-01T22:36:20.638975Z",
+    "timestamp": "2026-07-01T23:19:15.897564Z",
     "agent_id": "3owj",
-    "agent_seq": 224
+    "agent_seq": 225
   }
 }
