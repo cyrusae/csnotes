@@ -53,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- workspace hook command uses relative path, breaks on cd (L26)
 - reconcile --reset loses processed status for re-discovered sessions and sources (L25)
 - init --instructions-only should overwrite existing instruction files (L1)
 - fix pdftotext arg order and skill_variant propagation to workspace (L3)

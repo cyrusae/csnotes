@@ -346,8 +346,12 @@ fn write_workspace_hooks(workspace_root: &Path) -> Result<()> {
         fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
     }
 
-    // Hook configuration — references the script via a path relative to the
-    // workspace root (Claude Code runs hooks with the project root as CWD).
+    // Use the absolute script path so the hook survives `cd` inside the
+    // Bash tool — relative paths break as soon as cwd drifts from the
+    // workspace root.
+    let abs_script = script_path
+        .to_str()
+        .context("workspace path is not valid UTF-8")?;
     let settings = serde_json::json!({
         "hooks": {
             "PreToolUse": [
@@ -356,7 +360,7 @@ fn write_workspace_hooks(workspace_root: &Path) -> Result<()> {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "python3 .claude/hooks/csnotes_guard.py"
+                            "command": format!("python3 {abs_script}")
                         }
                     ]
                 }
