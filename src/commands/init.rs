@@ -321,7 +321,7 @@ Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphena
   notes in `_synthetic/` (created now or pre-existing) **or** any other vault
   file listed in the **Other Vault Files** section of `_session.md`.  Every
   link target must appear in one of those two places — broken wikilinks block
-  the merge.
+  the merge (the workspace is preserved so you can fix and retry).
 
 Write notes as the conversation develops — you don't have to finish the
 debrief first.
@@ -349,8 +349,8 @@ This prints the schema derived from the live Rust types — always correct.
 csnotes check
 ```
 
-This validates every wikilink, block anchor, and block-ID uniqueness constraint
-against your `_synthetic/` directory.  If it reports violations, **your work is
+This validates every wikilink, block anchor, block-ID uniqueness, and
+structural op preconditions.  If it reports violations, **your work is
 preserved** — fix the issues and exit again.  The workspace is kept until you
 exit cleanly or discard it explicitly.
 
@@ -513,8 +513,8 @@ This prints the schema derived from the live Rust types — always correct.
 csnotes check
 ```
 
-This validates every wikilink, block anchor, and block-ID uniqueness constraint
-against your `_synthetic/` directory.  If it reports violations, **your work is
+This validates every wikilink, block anchor, block-ID uniqueness, and
+structural op preconditions.  If it reports violations, **your work is
 preserved** — fix the issues and exit again.  The workspace is kept until you
 exit cleanly or discard it explicitly.
 

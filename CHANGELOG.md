@@ -79,6 +79,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- regenerate report_schema.md to include structural ops section (L24)
+- fix stale discard language + add csnotes commit workflow to claude.md/gemini.md (L23)
 - update README and CHANGELOG for slides extraction, is_question, config --help (#85)
 - research: Gemini/Antigravity equivalent of Claude Code PreToolUse hooks for workspace protection (L18)
 - research: Claude Code hook config resolution (global vs project-scoped, workspace temp dir behavior) (L17)
