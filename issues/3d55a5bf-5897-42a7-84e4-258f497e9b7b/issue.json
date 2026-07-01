@@ -2,11 +2,12 @@
   "uuid": "3d55a5bf-5897-42a7-84e4-258f497e9b7b",
   "display_id": null,
   "title": "csnotes check validates structural op preconditions (rename_topic, move_atomic, etc)",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-07-01T17:42:09.409202Z",
-  "updated_at": "2026-07-01T17:42:09.543994Z",
+  "updated_at": "2026-07-01T20:07:59.774387Z",
+  "closed_at": "2026-07-01T20:07:59.774387Z",
   "labels": [
     "feature"
   ]
