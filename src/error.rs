@@ -64,15 +64,6 @@ pub enum CsnotesError {
     #[error("embed_in target '{0}' declared but file not found in workspace")]
     EmbedInTargetMissing(String),
 
-    #[error(
-        "embed_in declared for '{atomic}' but ![[{atomic}#^{block_id}]] not found in '{index}'"
-    )]
-    EmbedLineMissing {
-        atomic: String,
-        block_id: String,
-        index: String,
-    },
-
     #[error("rename_topic precondition failed: source topic '{0}' not found in workspace")]
     RenameTopicSourceMissing(String),
 

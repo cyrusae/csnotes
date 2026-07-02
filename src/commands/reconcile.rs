@@ -100,6 +100,12 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
 
     let fmt = FilenameFormat::parse(&config.filename_format)?;
     run_scan(vault_root, config, &args, &mut manifest, &fmt)?;
+
+    // Phase 3: rescan _synthetic/ to rebuild the topics map.
+    // This keeps the manifest fresh after manual vault edits, recovery copies,
+    // or any other change that happens outside of normal session processing.
+    crate::audit::rebuild_topics(vault_root, &config.synthetic_dir, &mut manifest)?;
+
     manifest.save(vault_root)?;
     Ok(())
 }

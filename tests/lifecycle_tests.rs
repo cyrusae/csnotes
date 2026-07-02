@@ -400,7 +400,12 @@ fn rename_topic_op_renames_folder_in_vault() {
         !root.join("_synthetic/cpsc5001").exists(),
         "cpsc5001/ folder should be gone after rename"
     );
-    let index = fs::read_to_string(root.join("_synthetic/algorithms/cpsc5001.md")).unwrap();
+    // rename_topic renames the topic-slug index file: cpsc5001.md → algorithms.md
+    assert!(
+        !root.join("_synthetic/algorithms/cpsc5001.md").exists(),
+        "old index filename should be gone after rename"
+    );
+    let index = fs::read_to_string(root.join("_synthetic/algorithms/algorithms.md")).unwrap();
     assert!(
         index.contains("topic: algorithms"),
         "index frontmatter should reflect renamed topic"

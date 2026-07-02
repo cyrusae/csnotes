@@ -26,7 +26,7 @@ use crate::frontmatter::{write_frontmatter, NoteFrontmatter, NoteKind, Provenanc
 use crate::manifest::{Manifest, Relationship, SourceContrib};
 use crate::obsidian::extract_wikilinks;
 use crate::pathutil::safe_join;
-use crate::report::{CreateNoteOp, UpdateNoteOp};
+use crate::report::{CreateNoteOp, SetEmbedOp, UpdateNoteOp};
 
 // ── create_note ───────────────────────────────────────────────────────────────
 
@@ -86,7 +86,20 @@ pub fn execute_create_note(
         );
     }
 
-    write_frontmatter(&note_path, &fm, &body)
+    write_frontmatter(&note_path, &fm, &body)?;
+
+    // Auto-insert embed blocks for each embed_in target.  execute_set_embed is
+    // idempotent, so it's safe if the AI already wrote the block manually.
+    for index_path in &op.embed_in {
+        let embed_op = SetEmbedOp {
+            atomic_path: op.path.clone(),
+            index_path: index_path.clone(),
+            present: true,
+        };
+        crate::ops::structural::execute_set_embed(&embed_op, workspace_root)?;
+    }
+
+    Ok(())
 }
 
 // ── update_note ───────────────────────────────────────────────────────────────
@@ -270,6 +283,95 @@ mod tests {
             session_in_progress: None,
             flags_path: "_generated/flags.json".into(),
         }
+    }
+
+    fn write(path: &std::path::Path, content: &str) {
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        std::fs::write(path, content).unwrap();
+    }
+
+    fn index_frontmatter(topic: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: index\ntopic: {topic}\ntitle: {title}\n\
+             contributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n---\n",
+            topic = topic,
+            title = topic
+        )
+    }
+
+    #[test]
+    fn create_note_with_embed_in_auto_inserts_embed_block() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = tmp.path();
+
+        // AI-written note body (no frontmatter, block anchor present)
+        write(
+            &ws.join("_synthetic/cs/sorting.md"),
+            "Sorting algorithms order data.\n\n^sort-core\n",
+        );
+        // Index note that doesn't yet have the embed line
+        write(
+            &ws.join("_synthetic/cs/cs.md"),
+            &format!("{}# CS\n", index_frontmatter("cs")),
+        );
+
+        let op = CreateNoteOp {
+            kind: crate::frontmatter::NoteKind::Atomic,
+            path: "_synthetic/cs/sorting.md".into(),
+            title: "Sorting".into(),
+            topic: "cs".into(),
+            block_id: Some("sort-core".into()),
+            embed_in: vec!["_synthetic/cs/cs.md".into()],
+            provenance: crate::frontmatter::ProvenanceDelta::default(),
+            change_summary: "initial".into(),
+        };
+
+        let manifest = make_manifest(&[]);
+        execute_create_note(&op, ws, chrono::Utc::now(), &manifest).unwrap();
+
+        // Embed block should now be in the index
+        let index = std::fs::read_to_string(ws.join("_synthetic/cs/cs.md")).unwrap();
+        assert!(
+            index.contains("![[sorting#^sort-core]]"),
+            "embed block not auto-inserted: {index}"
+        );
+    }
+
+    #[test]
+    fn create_note_embed_auto_insert_is_idempotent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = tmp.path();
+
+        write(
+            &ws.join("_synthetic/cs/sorting.md"),
+            "Sorting content.\n\n^sort-core\n",
+        );
+        // Index already has the embed line — running again should not duplicate it.
+        write(
+            &ws.join("_synthetic/cs/cs.md"),
+            &format!("{}![[sorting#^sort-core]]\n", index_frontmatter("cs")),
+        );
+
+        let op = CreateNoteOp {
+            kind: crate::frontmatter::NoteKind::Atomic,
+            path: "_synthetic/cs/sorting.md".into(),
+            title: "Sorting".into(),
+            topic: "cs".into(),
+            block_id: Some("sort-core".into()),
+            embed_in: vec!["_synthetic/cs/cs.md".into()],
+            provenance: crate::frontmatter::ProvenanceDelta::default(),
+            change_summary: "initial".into(),
+        };
+
+        let manifest = make_manifest(&[]);
+        execute_create_note(&op, ws, chrono::Utc::now(), &manifest).unwrap();
+
+        let index = std::fs::read_to_string(ws.join("_synthetic/cs/cs.md")).unwrap();
+        let count = index.matches("![[sorting#^sort-core]]").count();
+        assert_eq!(count, 1, "embed block duplicated: {index}");
     }
 
     #[test]

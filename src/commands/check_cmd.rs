@@ -11,6 +11,7 @@ use anyhow::Result;
 
 use crate::audit::check_workspace;
 use crate::report::{SessionReport, REPORT_FILENAME};
+use crate::workspace::{WorkspaceMeta, WORKSPACE_META_FILENAME};
 
 pub struct CheckArgs {
     /// Workspace root to check (defaults to current directory).
@@ -41,9 +42,19 @@ pub fn run(args: CheckArgs) -> Result<()> {
         match SessionReport::load(&workspace_root) {
             Ok(report) => {
                 println!("check: session report OK");
-                // Validate report preconditions against the workspace so the AI
-                // can catch embed_in / path mismatches before exiting.
-                if let Err(e) = crate::audit::precondition_pass(&report, &workspace_root) {
+                // Only validate the uncommitted tail — ops already committed via
+                // `csnotes commit` have been executed and their preconditions no
+                // longer hold (e.g. source topic folder is gone after rename_topic).
+                let committed_through = if workspace_root.join(WORKSPACE_META_FILENAME).exists() {
+                    WorkspaceMeta::load(&workspace_root)
+                        .map(|m| m.committed_ops.len())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let remaining =
+                    &report.operations[committed_through.min(report.operations.len())..];
+                if let Err(e) = crate::audit::precondition_pass_ops(remaining, &workspace_root) {
                     report_errors.push(format!("precondition failure: {}", e));
                 }
             }

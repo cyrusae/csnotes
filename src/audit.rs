@@ -49,6 +49,7 @@ impl AuditResult {
 /// Check all op preconditions.  Pure read — no mutations.
 /// Returns `Ok(())` if all preconditions hold; `Err(...)` on the first
 /// failure.
+#[allow(dead_code)]
 pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Result<()> {
     precondition_pass_ops(&report.operations, workspace_root)
 }
@@ -79,19 +80,12 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
                     check_block_id_anchor(workspace_root, &op.path, block_id)?;
                 }
 
-                // embed_in targets must exist
+                // embed_in targets must exist; the CLI auto-inserts the embed
+                // block at execution time so the AI does not need to write it.
                 for target in &op.embed_in {
                     let target_path = safe_join(workspace_root, target)?;
                     if !target_path.exists() {
                         return Err(CsnotesError::EmbedInTargetMissing(target.clone()).into());
-                    }
-                    // The ![[...]] embed line must be present in the target index
-                    if let Some(block_id) = &op.block_id {
-                        let note_stem = Path::new(&op.path)
-                            .file_stem()
-                            .unwrap_or_default()
-                            .to_string_lossy();
-                        check_embed_line_present(workspace_root, target, &note_stem, block_id)?;
                     }
                 }
             }
@@ -619,13 +613,113 @@ pub fn audit_vault(
 
 // ── Reindex ───────────────────────────────────────────────────────────────────
 
+/// Rescan `_synthetic/` and rebuild `manifest.topics` from frontmatter.
+///
+/// Clears the existing topics map first so renamed or deleted topics are
+/// removed.  Call this whenever the synthetic vault may have changed outside
+/// of normal session processing (manual edits, recovery copies, etc.).
+pub fn rebuild_topics(
+    vault_root: &Path,
+    synthetic_dir: &str,
+    manifest: &mut Manifest,
+) -> Result<()> {
+    use crate::manifest::TopicEntry;
+
+    let synthetic_root = vault_root.join(synthetic_dir);
+    manifest.topics.clear();
+
+    if !synthetic_root.exists() {
+        return Ok(());
+    }
+
+    for entry in walkdir::WalkDir::new(&synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+    {
+        let content = match crate::frontmatter::read_note(entry.path()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let fm = match parse_frontmatter(&content, entry.path()) {
+            Ok(fm) => fm,
+            Err(_) => continue,
+        };
+
+        let rel_path = entry
+            .path()
+            .strip_prefix(vault_root)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .to_string();
+
+        let topic = manifest
+            .topics
+            .entry(fm.topic.clone())
+            .or_insert_with(|| TopicEntry {
+                index_note: String::new(),
+                atomic_notes: vec![],
+                contributing_sessions: vec![],
+                contributing_sources: vec![],
+                pending_sessions: vec![],
+                last_updated: fm.last_updated,
+                open_flags: 0,
+                source_types: vec![],
+            });
+
+        match fm.kind {
+            NoteKind::Index => topic.index_note = rel_path,
+            NoteKind::Atomic => {
+                if !topic.atomic_notes.contains(&rel_path) {
+                    topic.atomic_notes.push(rel_path);
+                }
+            }
+        }
+
+        for contrib in fm.contributing_sessions {
+            if !topic
+                .contributing_sessions
+                .iter()
+                .any(|c| c.course == contrib.course && c.date == contrib.date)
+            {
+                topic.contributing_sessions.push(contrib);
+            }
+        }
+
+        if fm.last_updated > topic.last_updated {
+            topic.last_updated = fm.last_updated;
+        }
+    }
+
+    // pending_sessions: sessions processed after the topic's last_updated that
+    // declared they touched this topic — signals possible desync.
+    let sessions_snapshot: Vec<(String, Option<chrono::DateTime<chrono::Utc>>, Vec<String>)> =
+        manifest
+            .sessions
+            .iter()
+            .map(|(id, s)| (id.clone(), s.processed_at, s.topics_updated.clone()))
+            .collect();
+
+    for (topic_name, topic_entry) in manifest.topics.iter_mut() {
+        topic_entry.pending_sessions = sessions_snapshot
+            .iter()
+            .filter(|(_, processed_at, topics_updated)| {
+                processed_at.is_some_and(|t| t > topic_entry.last_updated)
+                    && topics_updated.contains(topic_name)
+            })
+            .map(|(id, _, _)| id.clone())
+            .collect();
+    }
+
+    Ok(())
+}
+
 /// Rebuild the manifest from frontmatter + filesystem.
 /// This is the proof that the manifest is disposable — `audit --reindex`
 /// must produce an identical manifest to the committed one.
 pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result<Manifest> {
-    use crate::manifest::{ManifestConfig, TopicEntry};
+    use crate::manifest::ManifestConfig;
 
-    let synthetic_root = vault_root.join(&config.synthetic_dir);
     let manifest_config = ManifestConfig::from_vault_config(config);
     let mut manifest = Manifest::empty(vault_root.to_path_buf(), manifest_config);
 
@@ -637,88 +731,7 @@ pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result
         manifest.sources = old.sources;
     }
 
-    // Walk _synthetic/ and rebuild topics from frontmatter.
-    if synthetic_root.exists() {
-        for entry in walkdir::WalkDir::new(&synthetic_root)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
-        {
-            let content = match crate::frontmatter::read_note(entry.path()) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let fm = match parse_frontmatter(&content, entry.path()) {
-                Ok(fm) => fm,
-                Err(_) => continue,
-            };
-
-            let rel_path = entry
-                .path()
-                .strip_prefix(vault_root)
-                .unwrap_or(entry.path())
-                .to_string_lossy()
-                .to_string();
-
-            let topic = manifest
-                .topics
-                .entry(fm.topic.clone())
-                .or_insert_with(|| TopicEntry {
-                    index_note: String::new(),
-                    atomic_notes: vec![],
-                    contributing_sessions: vec![],
-                    contributing_sources: vec![],
-                    pending_sessions: vec![],
-                    last_updated: fm.last_updated,
-                    open_flags: 0,
-                    source_types: vec![],
-                });
-
-            match fm.kind {
-                NoteKind::Index => topic.index_note = rel_path,
-                NoteKind::Atomic => {
-                    if !topic.atomic_notes.contains(&rel_path) {
-                        topic.atomic_notes.push(rel_path);
-                    }
-                }
-            }
-
-            // Merge contributing sessions
-            for contrib in fm.contributing_sessions {
-                if !topic
-                    .contributing_sessions
-                    .iter()
-                    .any(|c| c.course == contrib.course && c.date == contrib.date)
-                {
-                    topic.contributing_sessions.push(contrib);
-                }
-            }
-
-            // Update last_updated
-            if fm.last_updated > topic.last_updated {
-                topic.last_updated = fm.last_updated;
-            }
-        }
-    }
-
-    // Compute pending_sessions: processed sessions whose processed_at is after
-    // the topic's last_updated AND whose topics_updated lists this topic.
-    // This detects genuine desync — e.g., a session was processed but the
-    // topic's notes weren't updated (crash, manual edit, etc.).
-    for (topic_name, topic_entry) in manifest.topics.iter_mut() {
-        topic_entry.pending_sessions = manifest
-            .sessions
-            .iter()
-            .filter(|(_, s)| {
-                if let Some(processed_at) = s.processed_at {
-                    processed_at > topic_entry.last_updated && s.topics_updated.contains(topic_name)
-                } else {
-                    false
-                }
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
-    }
+    rebuild_topics(vault_root, &config.synthetic_dir, &mut manifest)?;
 
     Ok(manifest)
 }
@@ -760,32 +773,6 @@ fn check_block_id_anchor(workspace_root: &Path, note_path: &str, block_id: &str)
         return Err(CsnotesError::BlockIdAnchorMissing {
             id: block_id.to_string(),
             path: note_path.to_string(),
-        }
-        .into());
-    }
-    Ok(())
-}
-
-fn check_embed_line_present(
-    workspace_root: &Path,
-    index_path: &str,
-    atomic_stem: &str,
-    block_id: &str,
-) -> Result<()> {
-    let path = workspace_root.join(index_path);
-    if !path.exists() {
-        return Ok(()); // target missing is caught separately
-    }
-    let content = crate::frontmatter::read_note(&path)?;
-    let embeds = extract_embeds(&content);
-    let found = embeds
-        .iter()
-        .any(|e| e.file == atomic_stem && e.block_id() == Some(block_id));
-    if !found {
-        return Err(CsnotesError::EmbedLineMissing {
-            atomic: atomic_stem.to_string(),
-            block_id: block_id.to_string(),
-            index: index_path.to_string(),
         }
         .into());
     }
@@ -2177,10 +2164,11 @@ mod tests {
     }
 
     #[test]
-    fn precondition_embed_line_missing_from_index_errors() {
+    fn precondition_embed_line_missing_from_index_passes() {
+        // embed_in no longer requires the embed block to be pre-written;
+        // execute_create_note auto-inserts it at execution time.
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
-        // Index exists but doesn't contain the ![[note#^my-id]] line.
         write(tmp.path(), "index.md", "Some unrelated content.\n");
         let report = make_report(vec![Op::CreateNote(CreateNoteOp {
             kind: NoteKind::Atomic,
@@ -2192,20 +2180,14 @@ mod tests {
             provenance: ProvenanceDelta::default(),
             change_summary: "test".into(),
         })]);
-        let err = precondition_pass(&report, tmp.path()).unwrap_err();
-        assert!(
-            err.to_string().contains("my-id") || err.to_string().contains("note"),
-            "{err}"
-        );
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
     #[test]
-    fn precondition_embed_wrong_file_same_block_id_errors() {
+    fn precondition_embed_wrong_file_same_block_id_passes() {
+        // embed-line presence is no longer a precondition; auto-insertion handles it.
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
-        // Index has the correct block_id but the wrong file stem.
-        // check_embed_line_present uses `file == stem && block_id() == id`;
-        // if `&&` were `||`, the block_id match alone would falsely satisfy it.
         write(tmp.path(), "index.md", "![[other-note#^my-id]]\n");
         let report = make_report(vec![Op::CreateNote(CreateNoteOp {
             kind: NoteKind::Atomic,
@@ -2217,11 +2199,7 @@ mod tests {
             provenance: ProvenanceDelta::default(),
             change_summary: "test".into(),
         })]);
-        let err = precondition_pass(&report, tmp.path()).unwrap_err();
-        assert!(
-            err.to_string().contains("my-id") || err.to_string().contains("note"),
-            "expected embed-line-missing error, got: {err}"
-        );
+        assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
     // ── collect_fixes / apply_fixes ───────────────────────────────────────────

@@ -98,8 +98,9 @@ The index note for a topic (`_synthetic/<topic>/<topic>.md`) carries:
    topic in three weeks.
 
 2. **The embed list** — `![[atomic-slug#^block-id]]` lines for each atomic.
-   The CLI manages insertion of new embeds; you write the paragraph and
-   maintain ordering.
+   The CLI auto-inserts embed lines for new notes declared with `embed_in` in
+   `create_note` — you don't need to write them manually.  For existing embeds,
+   maintain the ordering.
 
 The orientation paragraph should be updated (via `update_note`) when the scope
 of the topic changes significantly — e.g., when a topic that started as "basic

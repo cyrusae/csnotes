@@ -48,10 +48,22 @@ static EMBED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[\[([^\]]+)\]
 /// Returns a `Vec` of the ID strings (without the leading `^`), in the order
 /// they appear in the file.
 pub fn extract_block_ids(content: &str) -> Vec<String> {
-    BLOCK_ANCHOR_RE
-        .captures_iter(content)
-        .map(|cap| cap[1].to_string())
-        .collect()
+    let mut ids = Vec::new();
+    let mut in_fence = false;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        if let Some(cap) = BLOCK_ANCHOR_RE.captures(line) {
+            ids.push(cap[1].to_string());
+        }
+    }
+    ids
 }
 
 /// A parsed wiki-link target.
@@ -204,6 +216,31 @@ mod tests {
         let content = "Some text. ^MyAnchor\n";
         let ids = extract_block_ids(content);
         assert!(ids.is_empty(), "block IDs must be lowercase");
+    }
+
+    #[test]
+    fn block_ids_inside_fenced_code_are_ignored() {
+        let content = "\
+Real anchor. ^real-id
+```java
+int max = 2^31-1;
+radius^2 = r * r;
+```
+Another real anchor. ^also-real
+";
+        let ids = extract_block_ids(content);
+        assert_eq!(
+            ids,
+            vec!["real-id", "also-real"],
+            "carets inside code fences should not be extracted as block IDs"
+        );
+    }
+
+    #[test]
+    fn block_ids_inside_tilde_fence_are_ignored() {
+        let content = "Before. ^before-id\n~~~\n^inside-fence\n~~~\nAfter. ^after-id\n";
+        let ids = extract_block_ids(content);
+        assert_eq!(ids, vec!["before-id", "after-id"]);
     }
 
     #[test]

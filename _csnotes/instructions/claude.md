@@ -46,10 +46,15 @@ references the new layout, use `csnotes commit` to let the CLI execute the
 structural ops first:
 
 1. Write the structural ops (`rename_topic`, `move_atomic`, etc.) in the report.
-2. Run `csnotes commit` — the CLI moves the files and the workspace reflects
-   the new layout immediately.
+2. Run `csnotes commit` — the CLI moves the files, rewrites wikilinks, and the
+   workspace reflects the new layout immediately.
 3. Write content ops that reference the updated paths.
 4. Exit when done — teardown picks up from the committed state.
+
+**Critical:** after commit, all subsequent `create_note` and `update_note` ops
+must reference the **post-commit paths**.  If you renamed `java-fundamentals →
+java`, note ops written after the commit must use `_synthetic/java/...` — the
+old paths no longer exist.
 
 `csnotes commit` also works as a mid-session checkpoint at any point.
 
@@ -141,7 +146,8 @@ csnotes check
 ```
 
 This validates every wikilink, block anchor, block-ID uniqueness, and
-structural op preconditions.  If it reports violations, **your work is
+structural op preconditions.  Already-committed ops are skipped — only the
+uncommitted tail is validated.  If it reports violations, **your work is
 preserved** — fix the issues and exit again.  The workspace is kept until you
 exit cleanly or discard it explicitly.
 

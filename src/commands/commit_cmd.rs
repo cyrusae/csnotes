@@ -22,13 +22,14 @@
 /// on any failure the snapshot is restored so the AI can fix and retry.
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use owo_colors::OwoColorize;
 
 use crate::audit::{invariant_suite, precondition_pass_ops};
 use crate::config::{find_vault_root, VaultConfig};
 use crate::manifest::{Manifest, ManifestLock};
+use crate::ops::path_patch::{normalize_batch, patch_with_batch_renames};
 use crate::report::{SessionReport, REPORT_FILENAME};
 use crate::workspace::{
     cleanup_workspace_snapshot, merge_back, restore_workspace_snapshot, take_snapshot,
@@ -171,6 +172,12 @@ fn commit_ops(
 ) -> Result<()> {
     let now = Utc::now();
 
+    // Normalize in-batch paths: if a rename_topic (or rename_atomic) precedes
+    // later ops that reference the old path, rewrite those paths before
+    // execution so they match where the files actually land.
+    let normalized: Vec<crate::report::Op> = normalize_batch(remaining, &config.synthetic_dir);
+    let remaining = normalized.as_slice();
+
     // Structural ops first so layout is stable for content ops.
     if let Err(e) = execute_structural_ops_slice(remaining, workspace_root, config) {
         eprintln!("{}", "Structural op failed.".red().bold());
@@ -185,11 +192,21 @@ fn commit_ops(
     // Content ops (stamp frontmatter on notes the AI wrote).
     execute_content_ops_slice(remaining, workspace_root, now, manifest)?;
 
+    // Patch report: write normalized ops back into the committed positions and
+    // rewrite stale paths in the uncommitted tail.  The invariant suite then
+    // loads the patched report so it validates the correct (post-rename) paths.
+    patch_and_save_report(
+        workspace_root,
+        meta.committed_ops.len(),
+        remaining,
+        &config.synthetic_dir,
+    )?;
+
     // Invariant suite against the full workspace.
     let audit = invariant_suite(
         workspace_root,
         &config.synthetic_dir,
-        // Pass the full report so the suite sees all created notes.
+        // Load the patched report so the suite sees correct paths.
         &SessionReport::load(workspace_root)?,
         manifest,
     )?;
@@ -217,8 +234,8 @@ fn commit_ops(
         std::fs::remove_dir_all(&snapshot_path).ok();
     }
 
-    // Extend committed_ops with what we just ran — this is the CLI's ground
-    // truth; it is independent of any future report rewrites by the AI.
+    // Extend committed_ops with the normalized ops (what actually ran).
+    // This is the CLI's ground truth, independent of any future report rewrites.
     let mut new_committed_ops = meta.committed_ops.clone();
     new_committed_ops.extend_from_slice(remaining);
     let new_committed = new_committed_ops.len().min(total_ops);
@@ -251,6 +268,42 @@ fn commit_ops(
             }
         );
     }
+
+    Ok(())
+}
+
+/// Write normalized ops back into the committed positions of the report, then
+/// rewrite stale paths in the uncommitted tail based on the rename effects of
+/// the committed batch.  Saves the result to disk so the invariant suite and
+/// any future commit see correct (post-rename) paths.
+fn patch_and_save_report(
+    workspace_root: &Path,
+    committed_count: usize,
+    normalized_batch: &[crate::report::Op],
+    synthetic_dir: &str,
+) -> Result<()> {
+    let mut report = SessionReport::load(workspace_root)?;
+
+    // Overwrite the committed positions with the normalized (path-corrected) ops.
+    for (i, op) in normalized_batch.iter().enumerate() {
+        let idx = committed_count + i;
+        if idx < report.operations.len() {
+            report.operations[idx] = op.clone();
+        }
+    }
+
+    // Rewrite stale paths in the uncommitted tail.
+    let tail_start = committed_count + normalized_batch.len();
+    if tail_start < report.operations.len() {
+        patch_with_batch_renames(
+            &mut report.operations[tail_start..],
+            normalized_batch,
+            synthetic_dir,
+        );
+    }
+
+    let json = serde_json::to_string_pretty(&report).context("serializing patched report")?;
+    std::fs::write(workspace_root.join(REPORT_FILENAME), json).context("saving patched report")?;
 
     Ok(())
 }

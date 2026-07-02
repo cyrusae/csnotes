@@ -20,7 +20,8 @@ use crate::report::*;
 /// Steps:
 /// 1. Rename `_synthetic/{from}/` → `_synthetic/{to}/`
 /// 2. Update the `topic` frontmatter field in every note in the renamed folder
-/// 3. Rewrite any path-qualified wikilinks (`[[{from}/…]]`) across `_synthetic/`
+/// 3. Rename the topic index file `{to}/{from}.md` → `{to}/{to}.md` if present
+/// 4. Rewrite any path-qualified wikilinks (`[[{from}/…]]`) across `_synthetic/`
 pub fn execute_rename_topic(
     op: &RenameTopicOp,
     workspace_root: &Path,
@@ -66,7 +67,23 @@ pub fn execute_rename_topic(
         })?;
     }
 
-    // 3. Rewrite any path-qualified wikilinks across all of `_synthetic/`.
+    // 3. Rename the topic index file if it uses the topic-slug naming convention
+    //    ({from}/{from}.md → {to}/{to}.md).  Index files named `index.md` or
+    //    any other name are left as-is.
+    let old_index = to_dir.join(format!("{}.md", op.from));
+    let new_index = to_dir.join(format!("{}.md", op.to));
+    if old_index.exists() && !new_index.exists() {
+        std::fs::rename(&old_index, &new_index).with_context(|| {
+            format!(
+                "rename_topic: renaming index '{}' → '{}'",
+                old_index.display(),
+                new_index.display()
+            )
+        })?;
+        // topic frontmatter was already updated in step 2; filename is now correct.
+    }
+
+    // 4. Rewrite any path-qualified wikilinks across all of `_synthetic/`.
     //    Pure stem links (e.g. `[[polymorphism]]`) are unaffected because
     //    Obsidian resolves them by filename, not by folder.
     //    Path-qualified links (e.g. `[[inheritance/polymorphism]]`) need
@@ -76,6 +93,10 @@ pub fn execute_rename_topic(
         &format!("{}/", op.from),
         &format!("{}/", op.to),
     )?;
+
+    // Also rewrite bare-slug links to the index file itself:
+    // [[java-fundamentals]] → [[java]] (where java-fundamentals was the old topic slug).
+    rewrite_note_links(&synthetic_root, &op.from, &op.to)?;
 
     Ok(())
 }
@@ -137,9 +158,14 @@ pub fn execute_rename_atomic(
         fm.title = op.new_title.clone();
     })?;
 
+    // Rewrite path-qualified links: [[topic/old-slug]] → [[topic/new-slug]]
     let old_link = format!("{}/{}", topic, old_slug);
     let new_link = format!("{}/{}", topic, op.new_slug);
     rewrite_note_links(&synthetic_root, &old_link, &new_link)?;
+
+    // Rewrite bare-slug links: [[old-slug]] → [[new-slug]]
+    // These are not caught by the path-qualified pass above.
+    rewrite_note_links(&synthetic_root, old_slug, &op.new_slug)?;
 
     Ok(())
 }
@@ -875,6 +901,71 @@ mod tests {
     }
 
     #[test]
+    fn rename_topic_renames_topic_slug_index_file() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        // Index file named after the topic slug (the convention the vault uses).
+        write_note(
+            &synthetic,
+            "java-fundamentals/java-fundamentals.md",
+            &minimal_note("java-fundamentals"),
+        );
+        write_note(
+            &synthetic,
+            "java-fundamentals/variables.md",
+            &minimal_note("java-fundamentals"),
+        );
+
+        let op = RenameTopicOp {
+            from: "java-fundamentals".to_string(),
+            to: "java".to_string(),
+            reason: "shorter name".to_string(),
+        };
+        execute_rename_topic(&op, tmp.path(), "_synthetic").unwrap();
+
+        assert!(
+            !synthetic.join("java/java-fundamentals.md").exists(),
+            "old index name should be gone"
+        );
+        assert!(
+            synthetic.join("java/java.md").exists(),
+            "index should be renamed to match new topic slug"
+        );
+        assert!(
+            synthetic.join("java/variables.md").exists(),
+            "non-index files should be untouched"
+        );
+    }
+
+    #[test]
+    fn rename_topic_leaves_non_slug_index_untouched() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        // Index file uses `index.md` naming convention — must NOT be renamed.
+        write_note(
+            &synthetic,
+            "inheritance/index.md",
+            &minimal_note("inheritance"),
+        );
+
+        let op = RenameTopicOp {
+            from: "inheritance".to_string(),
+            to: "oop".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_topic(&op, tmp.path(), "_synthetic").unwrap();
+
+        assert!(
+            synthetic.join("oop/index.md").exists(),
+            "index.md should survive unchanged"
+        );
+        assert!(
+            !synthetic.join("oop/oop.md").exists(),
+            "should not create oop.md from index.md"
+        );
+    }
+
+    #[test]
     fn rename_topic_rewrites_path_qualified_links() {
         let tmp = TempDir::new().unwrap();
         let synthetic = tmp.path().join("_synthetic");
@@ -1018,6 +1109,45 @@ mod tests {
         assert!(
             !content.contains("old-slug"),
             "old slug should be gone from links"
+        );
+    }
+
+    #[test]
+    fn rename_atomic_rewrites_bare_slug_links() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old Title"),
+        );
+        // Other note uses bare [[old-slug]] without topic prefix.
+        write_note(
+            &synthetic,
+            "other/index.md",
+            "See [[old-slug]] and [[old-slug|With Label]].\n",
+        );
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New Title".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(synthetic.join("other/index.md")).unwrap();
+        assert!(
+            content.contains("[[new-slug]]"),
+            "bare link not rewritten: {content}"
+        );
+        assert!(
+            content.contains("[[new-slug|With Label]]"),
+            "aliased bare link not rewritten: {content}"
+        );
+        assert!(
+            !content.contains("old-slug"),
+            "old slug should be gone: {content}"
         );
     }
 
