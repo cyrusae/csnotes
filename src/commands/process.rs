@@ -185,6 +185,12 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     });
     manifest.save(&vault_root)?;
 
+    // Release the manifest lock before launching the AI session.  The AI may
+    // call `csnotes commit` as a subprocess, which needs its own LOCK_EX
+    // acquire.  Holding the lock across `backend.launch()` (a blocking wait)
+    // would cause that subprocess to deadlock indefinitely.
+    drop(_lock);
+
     // ── Launch AI ─────────────────────────────────────────────────────────
     // Per-run override wins; fall back to config value, then agy's built-in default.
     let agy_model = args.agy_model.or(config.agy_model.clone());
@@ -198,11 +204,14 @@ pub fn run(args: ProcessArgs) -> Result<()> {
     );
     let launch_result = backend.launch(&workspace_root);
 
+    // Re-acquire the lock for teardown and error recording.
+    let _lock = ManifestLock::acquire(&vault_root)?;
+    let mut manifest = Manifest::load(&vault_root)?;
+
     if let Err(e) = launch_result {
         eprintln!("{} {}", "Backend exited with error:".red().bold(), e);
         eprintln!("Workspace preserved at: {}", workspace_root.display());
         eprintln!("Run {} to resume or discard.", "`csnotes recover`".bold());
-        // Record the error in the manifest
         if let Some(ref mut rec) = manifest.session_in_progress {
             rec.error = Some(e.to_string());
         }
