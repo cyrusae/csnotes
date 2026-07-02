@@ -2,11 +2,12 @@
   "uuid": "94b1f84e-12a7-471f-b9d4-d29281fb0e96",
   "display_id": null,
   "title": "csnotes commit hangs: process holds manifest lock across entire AI session",
-  "status": "open",
+  "status": "closed",
   "priority": "critical",
   "created_by": "3owj",
   "created_at": "2026-07-02T04:06:12.122708Z",
-  "updated_at": "2026-07-02T04:06:12.280983Z",
+  "updated_at": "2026-07-02T04:06:40.230795Z",
+  "closed_at": "2026-07-02T04:06:40.230795Z",
   "labels": [
     "bug"
   ]
