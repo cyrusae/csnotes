@@ -1,0 +1,10 @@
+{
+  "uuid": "42c90623-415d-44bc-bd6c-eef5c716fc39",
+  "issue_uuid": "087b0d6c-1ae5-453a-bc59-50d510d71329",
+  "author": "3owj",
+  "content": "Implemented L36: path normalization for commit batches. Added src/ops/path_patch.rs with normalize_batch (in-batch) and patch_with_batch_renames (tail). Wired into commit_ops: normalize before executing, patch+save report before invariant suite. 12 new tests, 468 total green.",
+  "created_at": "2026-07-02T07:24:25.636778Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAs8kG4qHz4xlHP7+afxvlY8zIm9arClmnXWzPBSQLZrnMe5+xu7yXQn2T7dMZ3hlm++dY1beE/hOnPQD+jBVaBg=="
+}
