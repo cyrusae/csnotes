@@ -1,0 +1,10 @@
+{
+  "uuid": "8e95bfe2-eafc-40e7-a1a2-aa756e22ebbf",
+  "issue_uuid": "54b7d399-8916-4667-8fb6-b4535fece3a1",
+  "author": "3owj",
+  "content": "Fixed L28 (rename_atomic bare slug rewrite), L30 (check skips committed ops), L31 (rename_topic renames index file), L32 (embed_in auto-insert in execute_create_note), L33 (extract_block_ids skips code fences), L34 (docs updated). Added 7 tests. 460 total tests green.",
+  "created_at": "2026-07-02T05:41:21.042634Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAmDBQwD8kvkg7lArBCsJOC1vNXtzQz8hxjQSo3L0yhfBoMiVWLs7hpqUOkJkLdNpRpA7wqClSKcDkGy+1TPwIBQ=="
+}
