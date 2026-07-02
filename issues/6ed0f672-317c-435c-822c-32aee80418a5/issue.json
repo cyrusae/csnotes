@@ -1,0 +1,10 @@
+{
+  "uuid": "6ed0f672-317c-435c-822c-32aee80418a5",
+  "display_id": null,
+  "title": "embed_in: check hard-fails if embed block not manually written to index",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-07-02T05:24:11.693860Z",
+  "updated_at": "2026-07-02T05:24:11.693860Z"
+}
