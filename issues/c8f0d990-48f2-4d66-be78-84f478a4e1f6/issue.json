@@ -1,0 +1,10 @@
+{
+  "uuid": "c8f0d990-48f2-4d66-be78-84f478a4e1f6",
+  "display_id": null,
+  "title": "reconcile: add Phase 3 synthetic vault rescan to keep topics map fresh",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-07-02T07:27:26.395238Z",
+  "updated_at": "2026-07-02T07:27:26.395238Z"
+}
