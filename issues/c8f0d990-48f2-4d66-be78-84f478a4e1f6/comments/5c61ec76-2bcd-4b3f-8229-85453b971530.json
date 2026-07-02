@@ -1,0 +1,10 @@
+{
+  "uuid": "5c61ec76-2bcd-4b3f-8229-85453b971530",
+  "issue_uuid": "c8f0d990-48f2-4d66-be78-84f478a4e1f6",
+  "author": "3owj",
+  "content": "Implemented L37: reconcile Phase 3 synthetic vault rescan. Extracted rebuild_topics() from reindex() in audit.rs. Called from run_for_vault in reconcile.rs after existing scan phases. Clears and rebuilds manifest.topics from _synthetic/ frontmatter on every reconcile. 468 tests green.",
+  "created_at": "2026-07-02T07:28:31.236255Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAo0ukQDGqOS1NetPp2l5s7RmZwL6SY+yMgKBTDd35lhTz+yBnl1RJcrTqmCA2HctD9Myn6ejqWjyF9gJH3jsjBg=="
+}
