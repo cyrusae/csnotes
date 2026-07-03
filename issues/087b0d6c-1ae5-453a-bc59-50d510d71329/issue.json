@@ -2,11 +2,12 @@
   "uuid": "087b0d6c-1ae5-453a-bc59-50d510d71329",
   "display_id": null,
   "title": "commit: stale paths in remaining report ops after rename_topic/rename_atomic",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-02T07:01:54.787159Z",
-  "updated_at": "2026-07-02T07:01:54.942554Z",
+  "updated_at": "2026-07-03T02:23:40.047694Z",
+  "closed_at": "2026-07-03T02:23:40.047694Z",
   "labels": [
     "bug"
   ]
