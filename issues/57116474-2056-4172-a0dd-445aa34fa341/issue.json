@@ -1,0 +1,10 @@
+{
+  "uuid": "57116474-2056-4172-a0dd-445aa34fa341",
+  "display_id": null,
+  "title": "pre-flight: warn on suspiciously-short session input files",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-07-03T08:52:43.901290Z",
+  "updated_at": "2026-07-03T08:52:43.901290Z"
+}
