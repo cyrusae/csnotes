@@ -154,8 +154,18 @@ pub fn execute_rename_atomic(
         )
     })?;
 
+    // Read current block_id before updating frontmatter, so we know whether to
+    // sync the anchor (only when block_id was named after the old slug).
+    let old_block_id = crate::frontmatter::read_frontmatter(&to_abs)
+        .ok()
+        .and_then(|fm| fm.block_id);
+    let block_id_matches_slug = old_block_id.as_deref() == Some(old_slug);
+
     crate::frontmatter::update_frontmatter(&to_abs, |fm| {
         fm.title = op.new_title.clone();
+        if block_id_matches_slug {
+            fm.block_id = Some(op.new_slug.clone());
+        }
     })?;
 
     // Rewrite path-qualified links: [[topic/old-slug]] → [[topic/new-slug]]
@@ -166,6 +176,20 @@ pub fn execute_rename_atomic(
     // Rewrite bare-slug links: [[old-slug]] → [[new-slug]]
     // These are not caught by the path-qualified pass above.
     rewrite_note_links(&synthetic_root, old_slug, &op.new_slug)?;
+
+    // Sync the `embeds` slug list in any index note that lists old_slug.
+    // execute_set_embed uses this list for duplicate detection and removal;
+    // a stale entry would cause embeds to leak or be un-removable.
+    rewrite_embeds_slug(&synthetic_root, old_slug, &op.new_slug)?;
+
+    // When block_id matched the old slug, update the body anchor and all
+    // embed anchor references.  Block IDs are vault-unique (audit enforces
+    // this), so a global #^old-slug → #^new-slug replace across _synthetic/
+    // is unambiguous.
+    if block_id_matches_slug {
+        rewrite_block_anchor_in_file(&to_abs, old_slug, &op.new_slug)?;
+        rewrite_embed_anchors(&synthetic_root, old_slug, &op.new_slug)?;
+    }
 
     Ok(())
 }
@@ -681,6 +705,105 @@ fn rewrite_note_links(root: &Path, old_stem: &str, new_stem: &str) -> Result<usi
         }
     }
     Ok(files_changed)
+}
+
+/// Update the `embeds` slug list in every index note under `root` that
+/// contains `old_slug`.  Called after `rename_atomic` so that
+/// `execute_set_embed` sees the correct slug when adding or removing embeds.
+fn rewrite_embeds_slug(root: &Path, old_slug: &str, new_slug: &str) -> Result<()> {
+    use walkdir::WalkDir;
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+    {
+        let path = entry.path();
+        let content = match crate::frontmatter::read_note(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let (yaml, _) = match crate::frontmatter::split_frontmatter(&content) {
+            Some(p) => p,
+            None => continue,
+        };
+        let fm: crate::frontmatter::NoteFrontmatter = match serde_yml::from_str(yaml) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let has_old = fm
+            .embeds
+            .as_ref()
+            .is_some_and(|e| e.iter().any(|s| s == old_slug));
+        if !has_old {
+            continue;
+        }
+        crate::frontmatter::update_frontmatter(path, |f| {
+            if let Some(ref mut embs) = f.embeds {
+                for e in embs.iter_mut() {
+                    if e == old_slug {
+                        *e = new_slug.to_string();
+                    }
+                }
+            }
+        })?;
+    }
+    Ok(())
+}
+
+/// Rewrite the `^old_id` block-anchor marker in a single file's body to
+/// `^new_id`.  Only replaces occurrences at the end of a line (the Obsidian
+/// block-anchor format); ignores the frontmatter.
+fn rewrite_block_anchor_in_file(path: &Path, old_id: &str, new_id: &str) -> Result<()> {
+    let content = crate::frontmatter::read_note(path)?;
+    let old_anchor = format!("^{}", old_id);
+    let new_anchor = format!("^{}", new_id);
+    // A line bears the marker when it either IS the anchor or ends with " ^id".
+    let updated: String = {
+        let mut lines: Vec<String> = Vec::new();
+        for line in content.lines() {
+            if line == old_anchor.as_str() || line.ends_with(&format!(" {}", old_anchor)) {
+                let prefix_len = line.len() - old_anchor.len();
+                lines.push(format!("{}{}", &line[..prefix_len], new_anchor));
+            } else {
+                lines.push(line.to_string());
+            }
+        }
+        lines.join("\n")
+    };
+    let updated = if content.ends_with('\n') {
+        format!("{}\n", updated)
+    } else {
+        updated
+    };
+    if updated != content {
+        std::fs::write(path, updated)?;
+    }
+    Ok(())
+}
+
+/// Rewrite `#^old_id` anchor references in embed/wikilinks across all `.md`
+/// files under `root`.  Safe to do globally because block IDs are
+/// vault-unique (the audit enforces no collisions).
+fn rewrite_embed_anchors(root: &Path, old_id: &str, new_id: &str) -> Result<()> {
+    use walkdir::WalkDir;
+    let old_anchor = format!("#^{}", old_id);
+    let new_anchor = format!("#^{}", new_id);
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+    {
+        let path = entry.path();
+        let content = match crate::frontmatter::read_note(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if content.contains(&old_anchor) {
+            let updated = content.replace(&old_anchor, &new_anchor);
+            std::fs::write(path, updated)?;
+        }
+    }
+    Ok(())
 }
 
 /// In-memory helper: replace `[[old_stem]]`, `[[old_stem#…`, `[[old_stem|…`
@@ -1206,6 +1329,174 @@ mod tests {
             reason: "test".to_string(),
         };
         assert!(execute_rename_atomic(&op, tmp.path(), "_synthetic").is_err());
+    }
+
+    fn index_note(topic: &str, embeds: &[&str]) -> String {
+        let embed_list = if embeds.is_empty() {
+            "[]".to_string()
+        } else {
+            format!(
+                "\n{}",
+                embeds
+                    .iter()
+                    .map(|s| format!("  - {}", s))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        };
+        format!(
+            "---\ncsnotes_schema: 1\nkind: index\ntopic: {topic}\ntitle: {topic}\n\
+             embeds:{embed_list}\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n---\n\n"
+        )
+    }
+
+    #[test]
+    fn rename_atomic_updates_embeds_frontmatter_in_index() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+
+        // Index with old-slug in its embeds list and body.
+        write_note(&synthetic, "cs/cs.md", &index_note("cs", &["old-slug"]));
+        // Body embed line (as set_embed would write it).
+        let idx_path = synthetic.join("cs/cs.md");
+        let mut idx = std::fs::read_to_string(&idx_path).unwrap();
+        idx.push_str("![[old-slug#^test-id]]\n");
+        std::fs::write(&idx_path, &idx).unwrap();
+
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old"),
+        );
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(&idx_path).unwrap();
+        assert!(
+            content.contains("- new-slug"),
+            "embeds list should have new-slug: {content}"
+        );
+        assert!(
+            !content.contains("- old-slug"),
+            "old-slug should be gone from embeds list: {content}"
+        );
+    }
+
+    fn atomic_note_with_slug_as_block_id(topic: &str, slug: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: {topic}\ntitle: {slug}\n\
+             block_id: {slug}\nembeds: ~\ncontributing_sessions: []\n\
+             contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
+             last_updated: \"2026-01-01T00:00:00Z\"\n---\n\nBody.\n\n^{slug}\n"
+        )
+    }
+
+    #[test]
+    fn rename_atomic_updates_block_id_when_it_matches_slug() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_slug_as_block_id("cs", "old-slug"),
+        );
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New Slug".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(synthetic.join("cs/new-slug.md")).unwrap();
+        assert!(
+            content.contains("block_id: new-slug"),
+            "block_id should be updated: {content}"
+        );
+        assert!(
+            content.contains("^new-slug"),
+            "body anchor should be updated: {content}"
+        );
+        assert!(
+            !content.contains("^old-slug"),
+            "old anchor should be gone: {content}"
+        );
+    }
+
+    #[test]
+    fn rename_atomic_rewrites_embed_anchors_when_block_id_matches_slug() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_slug_as_block_id("cs", "old-slug"),
+        );
+        // Index has an embed line with the old block anchor.
+        write_note(&synthetic, "cs/cs.md", &index_note("cs", &["old-slug"]));
+        let idx_path = synthetic.join("cs/cs.md");
+        let mut idx = std::fs::read_to_string(&idx_path).unwrap();
+        idx.push_str("![[old-slug#^old-slug]]\n");
+        std::fs::write(&idx_path, &idx).unwrap();
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New Slug".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(&idx_path).unwrap();
+        assert!(
+            content.contains("![[new-slug#^new-slug]]"),
+            "embed anchor should be updated: {content}"
+        );
+        assert!(
+            !content.contains("#^old-slug"),
+            "old embed anchor should be gone: {content}"
+        );
+    }
+
+    #[test]
+    fn rename_atomic_does_not_change_block_id_when_it_differs_from_slug() {
+        let tmp = TempDir::new().unwrap();
+        let synthetic = tmp.path().join("_synthetic");
+
+        // block_id is "sort-core", not the slug "old-slug"
+        write_note(
+            &synthetic,
+            "cs/old-slug.md",
+            &atomic_note_with_title("cs", "Old"),
+        );
+
+        let op = RenameAtomicOp {
+            path: "_synthetic/cs/old-slug.md".to_string(),
+            new_slug: "new-slug".to_string(),
+            new_title: "New".to_string(),
+            reason: "test".to_string(),
+        };
+        execute_rename_atomic(&op, tmp.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(synthetic.join("cs/new-slug.md")).unwrap();
+        assert!(
+            content.contains("block_id: test-id"),
+            "block_id should be unchanged when it differs from slug: {content}"
+        );
+        assert!(
+            content.contains("^test-id"),
+            "body anchor should be unchanged: {content}"
+        );
     }
 
     // ── move_atomic ──────────────────────────────────────────────────────────

@@ -320,10 +320,11 @@ Prints violations and exits with code 1 if any hard violations are found. Soft w
 ### Audit and repair
 
 ```sh
-csnotes audit             # read-only invariant check across the full vault
-csnotes audit --reindex   # rebuild csnotes.json from frontmatter + filesystem
-csnotes audit --fix       # show mechanical repairs (dry-run)
-csnotes audit --fix --apply  # execute repairs
+csnotes audit                      # read-only invariant check across the full vault
+csnotes audit --reindex            # rebuild csnotes.json from frontmatter + filesystem
+csnotes audit --fix                # show mechanical repairs (dry-run)
+csnotes audit --fix --apply        # execute repairs
+csnotes audit --show-discrepancies # diff manifest topics vs actual filesystem
 ```
 
 ### Renaming the filename format after the fact
@@ -440,7 +441,7 @@ csnotes recover --resume
 | `csnotes init` | Scaffold a new vault (directories, instruction files, `csnotes.toml`). Use `--instructions-only` to refresh just the instruction files. |
 | `csnotes process` | Run an AI synthesis session against pending notes. Auto-reconciles first. |
 | `csnotes reconcile` | Scan all directories and register new sessions, sources, and artifacts in the manifest. |
-| `csnotes status` | Show unprocessed sessions, unprocessed sources, topic health, open flags, and any in-progress warning. |
+| `csnotes status` | Show unprocessed sessions, unprocessed sources, topic health, open flags, and any in-progress warning. `--json` emits compact JSON. `--topic <name>` shows detailed view for one topic. |
 | `csnotes diff` | Semantic diff of what the last session created, updated, or restructured. |
 | `csnotes extract` | Pull action items, deadlines, and questions out of raw notes into `_generated/extracts/`. |
 | `csnotes flags list` | List open review flags. `--all` includes threads and changelog flags. |
@@ -448,7 +449,7 @@ csnotes recover --resume
 | `csnotes flags resolve <id>` | Mark a flag resolved. `--follow-up "..."` records a note at resolution. |
 | `csnotes commit` | Progressive mid-session commit: execute the current batch of ops and merge to vault without ending the session. `--dry-run` previews without executing. |
 | `csnotes recover` | Resume or discard an in-progress session after a crash. `--reset` rebuilds `_synthetic/` from vault state without tearing down the workspace. |
-| `csnotes audit` | Read-only invariant check across the full vault. `--reindex` rebuilds `csnotes.json`. `--fix --apply` runs mechanical repairs. |
+| `csnotes audit` | Read-only invariant check across the full vault. `--reindex` rebuilds `csnotes.json`. `--fix --apply` runs mechanical repairs. `--show-discrepancies` diffs manifest topics against the filesystem. |
 | `csnotes check` | Validate wikilinks, block anchors, block-ID uniqueness, and structural op preconditions from inside an active workspace. Run by the AI before exiting. |
 | `csnotes config` | Read or update vault configuration (see above for options). |
 
@@ -466,6 +467,24 @@ csnotes process --backend agy             # override AI backend for this run
 csnotes process --agy-model gemini-2.5-pro
 csnotes process --dry-run                 # show scope without launching
 csnotes process --resume                  # re-enter an interrupted session
+```
+
+### `csnotes status` flags
+
+```sh
+csnotes status                 # human-readable dashboard
+csnotes status --json          # compact JSON for scripting or AI agent context
+csnotes status --topic <name>  # detailed view of one topic: atomics, sessions, sources, flags
+```
+
+### `csnotes audit` flags
+
+```sh
+csnotes audit                      # read-only invariant check
+csnotes audit --reindex            # rebuild csnotes.json from frontmatter + filesystem
+csnotes audit --fix                # show mechanical repairs (dry-run)
+csnotes audit --fix --apply        # execute repairs
+csnotes audit --show-discrepancies # diff manifest topics vs actual filesystem
 ```
 
 ### `csnotes commit` flags

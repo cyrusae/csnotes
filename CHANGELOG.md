@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- status --topic <name>: detailed per-topic view (replaces show-mappings idea) (L42)
+- status --json: compact machine-readable summary for AI agent context (L41)
+- audit --show-discrepancies: diff manifest topics vs filesystem (L40)
 - add settable-keys reference to csnotes config --help (#84)
 - csnotes recover --reset: rebuild _synthetic from vault state in-place, clear report and committed_ops (L22)
 - csnotes reconcile --reset: wipe sessions+sources and re-reconcile from scratch (L16)
@@ -53,6 +56,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- commit: missing relink pass before invariant check breaks rename batches (L29)
+- merge_back: additive-only, old folders not deleted after rename_topic (L35)
+- rename_atomic leaves broken embed anchors: #^old-slug not rewritten to #^new-slug (L39)
+- teardown structural ops not atomic: no workspace snapshot taken before execution (L38)
+- commit: stale paths in remaining report ops after rename_topic/rename_atomic (L36)
+- session.md: false positive block IDs from carets inside code fences (L33)
+- embed_in: check hard-fails if embed block not manually written to index (L32)
+- rename_topic: index file not renamed to match new topic slug (L31)
+- check: re-validates committed ops against post-commit state (L30)
+- commit: renames half-execute leaving workspace in inconsistent state (L28)
+- rename_atomic leaves broken embed anchors: #^old-slug not rewritten to #^new-slug (L39)
+- teardown structural ops not atomic: no workspace snapshot taken before execution (L38)
 - csnotes commit hangs: process holds manifest lock across entire AI session (L27)
 - workspace hook command uses relative path, breaks on cd (L26)
 - reconcile --reset loses processed status for re-discovered sessions and sources (L25)
@@ -82,6 +97,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- reconcile: add Phase 3 synthetic vault rescan to keep topics map fresh (L37)
+- docs: two-wave workflow section misleads about commit+rename mental model (L34)
 - regenerate report_schema.md to include structural ops section (L24)
 - fix stale discard language + add csnotes commit workflow to claude.md/gemini.md (L23)
 - update README and CHANGELOG for slides extraction, is_question, config --help (#85)

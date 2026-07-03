@@ -76,7 +76,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             })
         }
 
-        Command::Status => status::run(),
+        Command::Status { json, topic } => status::run(status::StatusArgs { json, topic }),
 
         Command::Diff { session } => diff::run(diff::DiffArgs { session }),
 
@@ -125,10 +125,12 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             reindex,
             fix,
             apply,
+            show_discrepancies,
         } => audit_cmd::run(audit_cmd::AuditArgs {
             reindex,
             fix,
             apply,
+            show_discrepancies,
         }),
 
         Command::Check { workspace } => check_cmd::run(check_cmd::CheckArgs { workspace }),
@@ -237,7 +239,14 @@ enum Command {
     },
 
     /// Show processing status for sessions, sources, topics, and flags.
-    Status,
+    Status {
+        /// Emit compact JSON instead of human-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Show detailed view for a single topic by name.
+        #[arg(long)]
+        topic: Option<String>,
+    },
 
     /// Show a semantic diff of the last session's changes.
     Diff {
@@ -304,6 +313,10 @@ enum Command {
         /// Execute the repairs shown by --fix.
         #[arg(long)]
         apply: bool,
+        /// Diff manifest topics against the actual filesystem and report
+        /// stale entries (manifest-only) and untracked files (disk-only).
+        #[arg(long)]
+        show_discrepancies: bool,
     },
 
     /// Print the authoritative `_session_report.json` schema as Markdown.

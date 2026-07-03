@@ -519,7 +519,7 @@ pub(crate) fn execute_content_ops_slice(
 /// Collect the raw-note directories for all active courses (or the flat
 /// vault-root layout when `active_courses` is empty).  Only returns paths
 /// that actually exist on disk.
-fn collect_raw_note_roots(
+pub(crate) fn collect_raw_note_roots(
     vault_root: &std::path::Path,
     config: &VaultConfig,
 ) -> Vec<std::path::PathBuf> {

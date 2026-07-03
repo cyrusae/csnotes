@@ -9,6 +9,7 @@ pub struct AuditArgs {
     /// Only meaningful when `fix` is also true.  Without `--apply`, `--fix`
     /// shows the repair plan without writing anything.
     pub apply: bool,
+    pub show_discrepancies: bool,
 }
 
 pub fn run(args: AuditArgs) -> Result<()> {
@@ -70,6 +71,20 @@ pub fn run(args: AuditArgs) -> Result<()> {
                     "{} violation(s) above require manual resolution.",
                     total - fixable
                 );
+            }
+        }
+    }
+
+    // ── Discrepancy report ────────────────────────────────────────────────────
+    if args.show_discrepancies {
+        println!();
+        println!("Manifest vs filesystem discrepancies:");
+        let discrepancies = crate::audit::manifest_discrepancies(&vault_root, &config, &manifest)?;
+        if discrepancies.is_empty() {
+            println!("  none — manifest matches filesystem");
+        } else {
+            for d in &discrepancies {
+                println!("  {}", d.display());
             }
         }
     }

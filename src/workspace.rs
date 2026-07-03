@@ -1155,7 +1155,7 @@ pub fn merge_back(workspace_root: &Path, vault_root: &Path, synthetic_dir: &str)
     // Ensure vault synthetic dir exists
     fs::create_dir_all(&vault_synthetic)?;
 
-    // Copy each file from the workspace into the vault
+    // Copy each file from the workspace into the vault.
     for entry in walkdir::WalkDir::new(&ws_synthetic)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -1169,6 +1169,53 @@ pub fn merge_back(workspace_root: &Path, vault_root: &Path, synthetic_dir: &str)
                 fs::create_dir_all(parent)?;
             }
             fs::copy(entry.path(), &dest)?;
+        }
+    }
+
+    // Remove vault files and directories that no longer exist in the workspace.
+    // This cleans up stale paths left by rename_topic / rename_atomic ops —
+    // without this pass the old folder/file would linger next to the renamed one.
+    let ws_paths: std::collections::HashSet<PathBuf> = walkdir::WalkDir::new(&ws_synthetic)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let rel = e.path().strip_prefix(&ws_synthetic).ok()?.to_path_buf();
+            if rel.as_os_str().is_empty() {
+                None
+            } else {
+                Some(rel)
+            }
+        })
+        .collect();
+
+    let mut stale_files: Vec<PathBuf> = Vec::new();
+    let mut stale_dirs: Vec<PathBuf> = Vec::new();
+    for entry in walkdir::WalkDir::new(&vault_synthetic)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let rel = match entry.path().strip_prefix(&vault_synthetic) {
+            Ok(r) if r.as_os_str().is_empty() => continue,
+            Ok(r) => r.to_path_buf(),
+            Err(_) => continue,
+        };
+        if !ws_paths.contains(&rel) {
+            if entry.file_type().is_dir() {
+                stale_dirs.push(entry.path().to_path_buf());
+            } else {
+                stale_files.push(entry.path().to_path_buf());
+            }
+        }
+    }
+
+    for path in &stale_files {
+        fs::remove_file(path).ok();
+    }
+    // Sort deepest first so children are removed before parents.
+    stale_dirs.sort_by_key(|b| std::cmp::Reverse(b.components().count()));
+    for path in &stale_dirs {
+        if path.exists() {
+            fs::remove_dir_all(path).ok();
         }
     }
 
@@ -2376,5 +2423,80 @@ mod tests {
             ws_file(ws.path(), "artifacts/notes.md").exists(),
             "text artifact (.md) must be included in workspace"
         );
+    }
+
+    // ── merge_back ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn merge_back_copies_new_files_to_vault() {
+        let ws = TempDir::new().unwrap();
+        let vault = TempDir::new().unwrap();
+
+        write_file(ws.path(), "_synthetic/java/java.md", "index");
+        write_file(ws.path(), "_synthetic/java/foo.md", "atomic");
+
+        merge_back(ws.path(), vault.path(), "_synthetic").unwrap();
+
+        assert!(vault.path().join("_synthetic/java/java.md").exists());
+        assert!(vault.path().join("_synthetic/java/foo.md").exists());
+    }
+
+    #[test]
+    fn merge_back_removes_file_not_in_workspace() {
+        let ws = TempDir::new().unwrap();
+        let vault = TempDir::new().unwrap();
+
+        // Vault has a stale file from a previous rename.
+        write_file(vault.path(), "_synthetic/old-topic/old-topic.md", "stale");
+        write_file(vault.path(), "_synthetic/old-topic/note.md", "stale");
+        // Workspace has the renamed topic.
+        write_file(ws.path(), "_synthetic/new-topic/new-topic.md", "index");
+        write_file(ws.path(), "_synthetic/new-topic/note.md", "atomic");
+
+        merge_back(ws.path(), vault.path(), "_synthetic").unwrap();
+
+        assert!(
+            !vault.path().join("_synthetic/old-topic").exists(),
+            "stale topic folder should be removed"
+        );
+        assert!(vault
+            .path()
+            .join("_synthetic/new-topic/new-topic.md")
+            .exists());
+        assert!(vault.path().join("_synthetic/new-topic/note.md").exists());
+    }
+
+    #[test]
+    fn merge_back_removes_stale_atomic_after_rename_atomic() {
+        let ws = TempDir::new().unwrap();
+        let vault = TempDir::new().unwrap();
+
+        // Vault had old-name.md; workspace has new-name.md after rename_atomic.
+        write_file(vault.path(), "_synthetic/java/java.md", "index");
+        write_file(vault.path(), "_synthetic/java/old-name.md", "stale");
+        write_file(ws.path(), "_synthetic/java/java.md", "index");
+        write_file(ws.path(), "_synthetic/java/new-name.md", "updated");
+
+        merge_back(ws.path(), vault.path(), "_synthetic").unwrap();
+
+        assert!(
+            !vault.path().join("_synthetic/java/old-name.md").exists(),
+            "old-name.md should be removed"
+        );
+        assert!(vault.path().join("_synthetic/java/new-name.md").exists());
+    }
+
+    #[test]
+    fn merge_back_keeps_files_present_in_both() {
+        let ws = TempDir::new().unwrap();
+        let vault = TempDir::new().unwrap();
+
+        write_file(vault.path(), "_synthetic/cs/cs.md", "old content");
+        write_file(ws.path(), "_synthetic/cs/cs.md", "new content");
+
+        merge_back(ws.path(), vault.path(), "_synthetic").unwrap();
+
+        let content = std::fs::read_to_string(vault.path().join("_synthetic/cs/cs.md")).unwrap();
+        assert_eq!(content, "new content");
     }
 }

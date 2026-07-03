@@ -183,6 +183,7 @@ fn write_instruction_files(dir: &Path, cfg: &VaultConfig, force: bool) -> Result
         write_instruction(dir, "gemini.md", GEMINI_MD, force)?;
     }
     write_instruction(dir, "synthesis.md", SYNTHESIS_MD, force)?;
+    write_instruction(dir, "csnotes_reference.md", CSNOTES_REFERENCE_MD, force)?;
     let schema_md = crate::commands::report_schema_cmd::generate();
     write_instruction(dir, "report_schema.md", &schema_md, force)?;
 
@@ -542,6 +543,118 @@ Then confirm manually:
 If you need to do more work, don't exit — it's easier than recovering.
 If you exit early without writing the report, `csnotes recover --resume`
 re-launches this session against the same workspace.
+"##;
+
+const CSNOTES_REFERENCE_MD: &str = r##"# csnotes — command reference
+
+Quick reference for all `csnotes` CLI commands.  Run any command with `--help`
+for the full flag list.
+
+---
+
+## Daily workflow
+
+```sh
+csnotes status                        # dashboard: pending sessions, topics, flags
+csnotes status --json                 # compact JSON (for scripting or AI context)
+csnotes status --topic <name>         # detailed view of one topic
+csnotes reconcile                     # scan vault and register new files in manifest
+csnotes process                       # launch AI session against the pending session
+csnotes diff                          # semantic diff of what the last session changed
+```
+
+## Processing
+
+```sh
+csnotes process                       # auto-picks the one unprocessed session
+csnotes process --next                # oldest pending (backlog catch-up)
+csnotes process --session 09-03       # specific session by date
+csnotes process --session 09-03 --course CPSC5001
+csnotes process --source SICP/ch01   # process a source file
+csnotes process --source Textbooks/SICP  # expand prefix → all sources under path
+csnotes process --topic <name>        # focused review of an existing topic
+csnotes process --backend agy         # override AI backend
+csnotes process --dry-run             # show scope without launching
+csnotes process --resume              # re-enter an interrupted session
+```
+
+## Mid-session (run from inside the workspace)
+
+```sh
+csnotes commit                        # execute current batch of ops, merge to vault
+csnotes commit --dry-run              # preview ops and preconditions without executing
+csnotes check                         # validate wikilinks, anchors, block IDs
+csnotes report-schema                 # print the current _session_report.json schema
+```
+
+## Recovery
+
+```sh
+csnotes recover                       # show recovery options after a crash
+csnotes recover --resume              # re-enter the interrupted session
+csnotes recover --discard             # discard the workspace, leave vault untouched
+csnotes recover --reset               # rebuild _synthetic/ from vault, clear report
+```
+
+## Audit and repair
+
+```sh
+csnotes audit                         # read-only invariant check across the vault
+csnotes audit --reindex               # rebuild csnotes.json from frontmatter + filesystem
+csnotes audit --fix                   # show mechanical repairs (dry-run)
+csnotes audit --fix --apply           # execute repairs
+csnotes audit --show-discrepancies    # diff manifest topics vs actual filesystem
+```
+
+## Reconcile
+
+```sh
+csnotes reconcile                     # scan and register new files
+csnotes reconcile --notify            # desktop notification when new files found
+csnotes reconcile --rename-spaces hyphens     # rename files with spaces
+csnotes reconcile --rename-spaces underscores
+csnotes reconcile --reset             # wipe and re-scan from scratch
+```
+
+## Configuration
+
+```sh
+csnotes config --show                 # print current config
+csnotes config --set key=value        # set a config key
+csnotes config --add-course CPSC5001  # add a course
+csnotes config --archive CPSC5001     # remove from active courses
+csnotes config --migrate              # show rename plan for current filename_format
+csnotes config --migrate --apply      # execute the rename plan
+```
+
+## Flags
+
+```sh
+csnotes flags list                    # list open actionable flags
+csnotes flags list --all              # include threads and changelog flags
+csnotes flags show <id>               # full detail for one flag
+csnotes flags resolve <id>            # mark a flag resolved
+csnotes flags resolve <id> --follow-up "..."  # record a note at resolution
+```
+
+## Setup
+
+```sh
+csnotes init                          # scaffold a new vault
+csnotes init --instructions-only      # refresh instruction files without touching config
+```
+
+---
+
+## Key files
+
+| File | Purpose |
+|---|---|
+| `csnotes.toml` | Vault configuration (directories, courses, AI backend) |
+| `csnotes.json` | Manifest: sessions, sources, topics, in-progress state |
+| `_csnotes/instructions/` | AI instruction files (updated by `--instructions-only`) |
+| `_generated/` | CLI-generated outputs: extracts, flags, session reports |
+| `_synthetic/` | AI-maintained synthesis notes |
 "##;
 
 const SYNTHESIS_MD: &str = r##"# csnotes — synthesis philosophy

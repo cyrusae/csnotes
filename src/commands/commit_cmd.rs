@@ -227,6 +227,14 @@ fn commit_ops(
     // Merge-back to vault.
     merge_back(workspace_root, vault_root, &config.synthetic_dir)?;
 
+    // Relink raw notes in the vault: update wikilinks that reference renamed
+    // _synthetic/ paths so the vault stays consistent after each progressive
+    // commit.  Teardown does the same at step 10.5; doing it here too means
+    // the vault is always in sync rather than only after the final exit.
+    let raw_roots = super::process::collect_raw_note_roots(vault_root, config);
+    let raw_root_refs: Vec<&std::path::Path> = raw_roots.iter().map(|p| p.as_path()).collect();
+    crate::ops::structural::relink_raw_notes(remaining, &raw_root_refs).ok();
+
     // Vault snapshot successfully consumed — clean it up.
     // (If merge_back crashes the snapshot persists for `csnotes recover`.)
     let snapshot_path = vault_root.join(format!("_synthetic_snapshot_{}", meta.run_id));
