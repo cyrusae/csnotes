@@ -14,8 +14,9 @@ use crate::manifest::{InProgressRecord, Manifest, ManifestLock, SessionStatus};
 use crate::ops::content::{execute_create_note, execute_update_note};
 use crate::report::{Op, SessionReport, REPORT_FILENAME};
 use crate::workspace::{
-    assemble, cleanup, merge_back, new_run_id, take_snapshot, WorkspaceMeta, WorkspaceParams,
-    WorkspaceScope,
+    assemble, cleanup, cleanup_workspace_snapshot, merge_back, new_run_id,
+    restore_workspace_snapshot, take_snapshot, take_workspace_snapshot, WorkspaceMeta,
+    WorkspaceParams, WorkspaceScope,
 };
 
 /// `csnotes process` arguments (set by main.rs from clap).
@@ -275,7 +276,7 @@ pub fn run_teardown(
     let remaining = &report.operations[committed_through.min(report.operations.len())..];
 
     if !all_committed {
-        // Step 4: Precondition pass (only for uncommitted ops)
+        // Step 4: Precondition pass (only for uncommitted ops — no mutations yet)
         if let Err(e) = precondition_pass_ops(remaining, workspace_root) {
             eprintln!(
                 "{}",
@@ -288,21 +289,18 @@ pub fn run_teardown(
             return Err(e);
         }
 
-        // Step 5: Structural ops against workspace _synthetic/ copy.
-        if let Err(e) = execute_structural_ops_slice(remaining, workspace_root, config) {
-            eprintln!(
-                "{}",
-                "Structural op failed — workspace preserved.".red().bold()
-            );
-            eprintln!("  {}", e);
-            eprintln!();
-            eprintln!("Your work is safe. Re-enter the workspace, fix the error, and exit again:");
-            eprintln!("  {}", "csnotes recover --resume".bold());
+        // Steps 5-6: Snapshot → execute → restore on failure, cleanup on success.
+        // Structural ops can fail mid-batch leaving a partial rename; the snapshot
+        // makes this block atomic so the AI always re-enters a clean workspace.
+        take_workspace_snapshot(workspace_root, &config.synthetic_dir)?;
+        let ops_result = execute_teardown_ops(remaining, workspace_root, config, manifest, now);
+        if let Err(e) = ops_result {
+            if let Err(re) = restore_workspace_snapshot(workspace_root, &config.synthetic_dir) {
+                eprintln!("warning: failed to restore workspace snapshot: {}", re);
+            }
             return Err(e);
         }
-
-        // Step 6: Content ops
-        execute_content_ops_slice(remaining, workspace_root, now, manifest)?;
+        cleanup_workspace_snapshot(workspace_root)?;
     }
 
     // Step 7: Build updated manifest (always — topics must reflect current state)
@@ -414,6 +412,31 @@ pub fn run_teardown(
         );
     }
 
+    Ok(())
+}
+
+// ── Teardown op execution ─────────────────────────────────────────────────────
+
+/// Run structural then content ops for teardown.  Caller holds a workspace
+/// snapshot and restores it if this returns `Err`.
+fn execute_teardown_ops(
+    ops: &[Op],
+    workspace_root: &Path,
+    config: &VaultConfig,
+    manifest: &Manifest,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
+    if let Err(e) = execute_structural_ops_slice(ops, workspace_root, config) {
+        eprintln!("{}", "Structural op failed.".red().bold());
+        eprintln!("  {}", e);
+        eprintln!();
+        eprintln!(
+            "Workspace restored to pre-op state. Re-enter the workspace, fix the error, and exit again:"
+        );
+        eprintln!("  {}", "csnotes recover --resume".bold());
+        return Err(e);
+    }
+    execute_content_ops_slice(ops, workspace_root, now, manifest)?;
     Ok(())
 }
 
