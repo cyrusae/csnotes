@@ -2,11 +2,12 @@
   "uuid": "2bfdf68d-eaab-4a8e-95b9-23464b9085ee",
   "display_id": null,
   "title": "commit: missing relink pass before invariant check breaks rename batches",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-02T05:24:03.116951Z",
-  "updated_at": "2026-07-02T05:24:03.243605Z",
+  "updated_at": "2026-07-03T02:30:49.476236Z",
+  "closed_at": "2026-07-03T02:30:49.476236Z",
   "labels": [
     "bug"
   ]
