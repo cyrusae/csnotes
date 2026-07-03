@@ -724,8 +724,8 @@ fn scan_sources_dir(
             .to_ascii_lowercase();
 
         let is_md = ext == "md";
-        let is_slide = ext == "pdf" || ext == "pptx";
-        if !is_md && !is_slide {
+        let is_extractable = ext == "pdf" || ext == "pptx" || ext == "docx";
+        if !is_md && !is_extractable {
             continue;
         }
 
@@ -770,8 +770,9 @@ fn scan_sources_dir(
             .to_string_lossy()
             .to_string();
 
-        // Non-md sources (PDF/PPTX): register with empty metadata, no heading scheme.
-        if is_slide {
+        // Non-md extractable sources (PDF/PPTX/DOCX): register with empty
+        // metadata.  Actual content extraction happens at workspace-assembly time.
+        if is_extractable {
             if let Some(entry) = manifest.sources.get_mut(&source_id) {
                 entry.kind = kind;
             } else {
@@ -2454,7 +2455,7 @@ mod tests {
         let sources_dir = tmp.path().join("sources");
         std::fs::create_dir_all(&sources_dir).unwrap();
         std::fs::write(sources_dir.join("image.png"), b"\x89PNG").unwrap();
-        std::fs::write(sources_dir.join("doc.docx"), b"PK fake docx").unwrap();
+        std::fs::write(sources_dir.join("archive.zip"), b"PK fake zip").unwrap();
         let mut manifest = make_empty_manifest_for_sources(tmp.path());
         let mut new_sources = vec![];
         scan_sources_dir(
@@ -2468,7 +2469,7 @@ mod tests {
         .unwrap();
         assert!(
             manifest.sources.is_empty(),
-            "non-md/pdf/pptx files should be skipped"
+            "non-md/pdf/pptx/docx files should be skipped"
         );
     }
 

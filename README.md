@@ -43,6 +43,7 @@ The vault is plain Markdown — no proprietary format. Every note has YAML front
 | `claude` CLI | for Claude backend | runs the AI session |
 | `agy` CLI | for Agy/Gemini backend | runs the AI session |
 | `pdftotext` | optional | extracts text from PDF lecture slides |
+| `pandoc` | optional | extracts text from DOCX source files |
 
 `pdftotext` is part of **poppler-utils**. Install it if you have PDF slides in your artifacts directories:
 
@@ -55,6 +56,18 @@ sudo apt install poppler-utils
 ```
 
 If `pdftotext` is not installed, PDF artifacts are silently skipped during workspace assembly (no crash — the session just won't have slide content). PPTX files are extracted in pure Rust with no external tools.
+
+Install `pandoc` if you have DOCX files (lecture notes, textbook chapters) in your `sources/` directory:
+
+```sh
+# macOS
+brew install pandoc
+
+# Debian/Ubuntu
+sudo apt install pandoc
+```
+
+If `pandoc` is not installed, DOCX sources are silently skipped when assembling a workspace (no crash — the session continues without that content).
 
 ### Build
 

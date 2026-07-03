@@ -629,6 +629,32 @@ fn write_source_file(
         return Ok(None);
     }
 
+    if ext == "docx" {
+        match crate::slides::extract_docx(&src) {
+            Ok(markdown) => {
+                let kind_str = entry.kind.as_str();
+                let wrapped = xml_wrap(
+                    &markdown,
+                    "source",
+                    &[("id", source_id), ("kind", kind_str), ("format", "docx")],
+                );
+                let dest = sources_dir.join(format!("{}.md", source_id));
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&dest, wrapped)?;
+                make_readonly(&dest)?;
+            }
+            Err(e) => {
+                eprintln!(
+                    "warning: DOCX extraction skipped for source '{}': {}",
+                    source_id, e
+                );
+            }
+        }
+        return Ok(None);
+    }
+
     let content = crate::frontmatter::read_note(&src)?;
     let kind_str = entry.kind.as_str();
     let wrapped = xml_wrap(&content, "source", &[("id", source_id), ("kind", kind_str)]);

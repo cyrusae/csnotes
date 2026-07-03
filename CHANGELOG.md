@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- Support extraction of non-md source files (e.g. PowerPoint slides) into markdown (#77)
+- add .docx source extraction via pandoc (L44)
 - process --claude-model flag for per-session model override (L2)
 - status --topic <name>: detailed per-topic view (replaces show-mappings idea) (L42)
 - status --json: compact machine-readable summary for AI agent context (L41)

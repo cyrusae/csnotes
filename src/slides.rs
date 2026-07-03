@@ -116,6 +116,53 @@ pub fn extract_pdf(path: &Path) -> Result<Vec<RawSlide>> {
     Ok(pages_to_raw_slides(text))
 }
 
+/// Extract text from a DOCX file using the `pandoc` CLI tool.
+///
+/// Requires `pandoc` to be on `$PATH`.  Returns the extracted content as a
+/// Markdown string ready for XML-wrapping into the workspace.  Unlike the
+/// slide pipeline, DOCX output is returned directly — document structure
+/// (headings, lists, tables) is preserved as Markdown rather than being
+/// converted to the slide `RawSlide` model.
+///
+/// Returns `Err(SlideError)` if `pandoc` is not found or extraction fails.
+pub fn extract_docx(path: &Path) -> Result<String> {
+    let output = std::process::Command::new("pandoc")
+        .arg("--from=docx")
+        .arg("--to=markdown")
+        .arg("--wrap=none")
+        .arg(path)
+        .output();
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(SlideError(format!(
+                "pandoc not found — install pandoc to extract DOCX sources \
+                 ({})",
+                path.display()
+            )));
+        }
+        Err(e) => {
+            return Err(SlideError(format!(
+                "failed to run pandoc on '{}': {}",
+                path.display(),
+                e
+            )));
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(SlideError(format!(
+            "pandoc failed on '{}': {}",
+            path.display(),
+            stderr.trim()
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 /// Extract slides from a PPTX file (pure Rust — no external tools required).
 ///
 /// Returns `Err(SlideError)` if the file is not a valid PPTX archive.
