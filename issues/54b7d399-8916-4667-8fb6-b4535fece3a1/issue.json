@@ -2,11 +2,12 @@
   "uuid": "54b7d399-8916-4667-8fb6-b4535fece3a1",
   "display_id": null,
   "title": "commit: renames half-execute leaving workspace in inconsistent state",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-02T05:24:00.877796Z",
-  "updated_at": "2026-07-02T05:24:01.006949Z",
+  "updated_at": "2026-07-03T02:23:29.602333Z",
+  "closed_at": "2026-07-03T02:23:29.602333Z",
   "labels": [
     "bug"
   ]
