@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- process --claude-model flag for per-session model override (L2)
 - status --topic <name>: detailed per-topic view (replaces show-mappings idea) (L42)
 - status --json: compact machine-readable summary for AI agent context (L41)
 - audit --show-discrepancies: diff manifest topics vs filesystem (L40)
@@ -97,6 +98,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- add csnotes_reference.md instruction file + README flag docs (L43)
 - reconcile: add Phase 3 synthetic vault rescan to keep topics map fresh (L37)
 - docs: two-wave workflow section misleads about commit+rename mental model (L34)
 - regenerate report_schema.md to include structural ops section (L24)

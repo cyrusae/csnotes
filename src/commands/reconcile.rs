@@ -717,7 +717,15 @@ fn scan_sources_dir(
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("md") {
+        let ext = path
+            .extension()
+            .and_then(|x| x.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        let is_md = ext == "md";
+        let is_slide = ext == "pdf" || ext == "pptx";
+        if !is_md && !is_slide {
             continue;
         }
 
@@ -735,6 +743,11 @@ fn scan_sources_dir(
             "Textbooks" => SourceKind::Textbook,
             _ => SourceKind::Other,
         };
+
+        // Non-md formats cannot be AI conversations (no frontmatter).
+        if kind == SourceKind::AiConversation && !is_md {
+            continue;
+        }
 
         if kind == SourceKind::AiConversation && !scan_ai_conversations {
             continue;
@@ -756,6 +769,30 @@ fn scan_sources_dir(
             .unwrap_or(path)
             .to_string_lossy()
             .to_string();
+
+        // Non-md sources (PDF/PPTX): register with empty metadata, no heading scheme.
+        if is_slide {
+            if let Some(entry) = manifest.sources.get_mut(&source_id) {
+                entry.kind = kind;
+            } else {
+                manifest.sources.insert(
+                    source_id.clone(),
+                    SourceEntry {
+                        path: rel_path,
+                        kind,
+                        status: SourceStatus::Unprocessed,
+                        last_processed_at: None,
+                        heading_scheme: vec![],
+                        topics_updated: vec![],
+                        summary: None,
+                        tags: vec![],
+                        courses: vec![],
+                    },
+                );
+                new_sources.push(source_id);
+            }
+            continue;
+        }
 
         // Read content once; used for heading scheme and frontmatter extraction.
         let content = match crate::frontmatter::read_note(path) {
@@ -2329,6 +2366,146 @@ mod tests {
             err.to_string().contains("in progress"),
             "must bail when session_in_progress is set: {err}"
         );
+    }
+
+    #[test]
+    fn scan_sources_registers_pdf_source() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        // Write a minimal fake PDF (binary content — reconcile should not try to read it)
+        std::fs::create_dir_all(&sources_dir).unwrap();
+        std::fs::write(sources_dir.join("sicp.pdf"), b"%PDF-1.4 fake").unwrap();
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(
+            manifest.sources.contains_key("sicp"),
+            "PDF source should be registered with bare stem as key"
+        );
+        assert_eq!(new_sources, vec!["sicp"]);
+        let entry = &manifest.sources["sicp"];
+        assert!(entry.heading_scheme.is_empty());
+        assert_eq!(entry.status, crate::manifest::SourceStatus::Unprocessed);
+        assert!(entry.path.ends_with("sicp.pdf"));
+    }
+
+    #[test]
+    fn scan_sources_registers_pptx_source() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        std::fs::create_dir_all(&sources_dir).unwrap();
+        std::fs::write(sources_dir.join("lecture01.pptx"), b"PK fake pptx").unwrap();
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(manifest.sources.contains_key("lecture01"));
+        assert!(manifest.sources["lecture01"]
+            .path
+            .ends_with("lecture01.pptx"));
+    }
+
+    #[test]
+    fn scan_sources_pdf_in_subdir_uses_subdir_prefix() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let books_dir = sources_dir.join("Textbooks");
+        std::fs::create_dir_all(&books_dir).unwrap();
+        std::fs::write(books_dir.join("sicp-ch01.pdf"), b"%PDF fake").unwrap();
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(
+            manifest.sources.contains_key("Textbooks/sicp-ch01"),
+            "PDF in subdir should get subdir/stem ID"
+        );
+        assert_eq!(
+            manifest.sources["Textbooks/sicp-ch01"].kind,
+            SourceKind::Textbook
+        );
+    }
+
+    #[test]
+    fn scan_sources_skips_unknown_binary_extensions() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        std::fs::create_dir_all(&sources_dir).unwrap();
+        std::fs::write(sources_dir.join("image.png"), b"\x89PNG").unwrap();
+        std::fs::write(sources_dir.join("doc.docx"), b"PK fake docx").unwrap();
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(
+            manifest.sources.is_empty(),
+            "non-md/pdf/pptx files should be skipped"
+        );
+    }
+
+    #[test]
+    fn scan_sources_pdf_already_registered_is_not_duplicated() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        std::fs::create_dir_all(&sources_dir).unwrap();
+        std::fs::write(sources_dir.join("sicp.pdf"), b"%PDF fake").unwrap();
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        let mut new_sources = vec![];
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert_eq!(new_sources.len(), 1);
+        // Second scan should not add again.
+        new_sources.clear();
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &mut new_sources,
+        )
+        .unwrap();
+        assert!(
+            new_sources.is_empty(),
+            "already-registered PDF should not be added again"
+        );
+        assert_eq!(manifest.sources.len(), 1);
     }
 }
 
