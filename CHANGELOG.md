@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- pre-flight: warn on suspiciously-short session input files (L45)
 - Support extraction of non-md source files (e.g. PowerPoint slides) into markdown (#77)
 - add .docx source extraction via pandoc (L44)
 - process --claude-model flag for per-session model override (L2)
@@ -100,6 +101,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- tests for count_words_in_file (L46)
 - add csnotes_reference.md instruction file + README flag docs (L43)
 - reconcile: add Phase 3 synthetic vault rescan to keep topics map fresh (L37)
 - docs: two-wave workflow section misleads about commit+rename mental model (L34)

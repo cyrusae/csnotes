@@ -98,6 +98,40 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         }
     }
 
+    // ── Near-empty file check ─────────────────────────────────────────────
+    if let WorkspaceScope::Session { session_id } = &scope {
+        if let Some(entry) = manifest.sessions.get(session_id) {
+            const WORD_THRESHOLD: usize = 100;
+            let mut short_files: Vec<(String, usize)> = vec![];
+
+            let note_path = vault_root.join(&entry.raw_note);
+            if let Some(wc) = count_words_in_file(&note_path) {
+                if wc < WORD_THRESHOLD {
+                    short_files.push((entry.raw_note.clone(), wc));
+                }
+            }
+            for rec in &entry.recording_exports {
+                let rec_path = vault_root.join(&rec.path);
+                if let Some(wc) = count_words_in_file(&rec_path) {
+                    if wc < WORD_THRESHOLD {
+                        short_files.push((rec.path.clone(), wc));
+                    }
+                }
+            }
+
+            if !short_files.is_empty() {
+                match prompt_short_files(session_id, &short_files)? {
+                    ShortFileChoice::Continue => {}
+                    ShortFileChoice::Pause => {
+                        println!("Paused. Fill in the placeholder files and run `csnotes process` again.");
+                        return Ok(());
+                    }
+                    ShortFileChoice::Quit => return Ok(()),
+                }
+            }
+        }
+    }
+
     // ── Assemble workspace ────────────────────────────────────────────────
     let run_id = new_run_id();
     let backend_kind = args.backend.unwrap_or(config.default_backend);
@@ -1037,6 +1071,42 @@ mod tests {
         let m = make_manifest_with_sources(&["Textbooks/SICP/Ch01"]);
         assert!(expand_source_ids(&["Textbooks/TAPL".to_string()], &m).is_err());
     }
+
+    // ── count_words_in_file ───────────────────────────────────────────────────
+
+    #[test]
+    fn count_words_returns_correct_count() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "one two three four five").unwrap();
+        assert_eq!(count_words_in_file(tmp.path()), Some(5));
+    }
+
+    #[test]
+    fn count_words_empty_file_returns_zero() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "").unwrap();
+        assert_eq!(count_words_in_file(tmp.path()), Some(0));
+    }
+
+    #[test]
+    fn count_words_missing_file_returns_none() {
+        let path = std::path::Path::new("/tmp/csnotes-test-nonexistent-file-xyzzy.md");
+        assert_eq!(count_words_in_file(path), None);
+    }
+
+    #[test]
+    fn count_words_whitespace_only_returns_zero() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "   \n\t\n   ").unwrap();
+        assert_eq!(count_words_in_file(tmp.path()), Some(0));
+    }
+
+    #[test]
+    fn count_words_multiline_counts_all_words() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "first line\nsecond line\nthird line\n").unwrap();
+        assert_eq!(count_words_in_file(tmp.path()), Some(6));
+    }
 }
 
 // ── No-recording prompt ───────────────────────────────────────────────────────
@@ -1060,5 +1130,41 @@ fn prompt_no_recording(session_id: &str) -> Result<RecordingChoice> {
         "p" => RecordingChoice::Pause,
         "q" => RecordingChoice::Quit,
         _ => RecordingChoice::Continue,
+    })
+}
+
+/// Count whitespace-delimited words in a file.  Returns `None` if the file
+/// cannot be read (missing or unreadable — those errors are handled elsewhere).
+fn count_words_in_file(path: &std::path::Path) -> Option<usize> {
+    let content = std::fs::read_to_string(path).ok()?;
+    Some(content.split_whitespace().count())
+}
+
+enum ShortFileChoice {
+    Continue,
+    Pause,
+    Quit,
+}
+
+fn prompt_short_files(session_id: &str, files: &[(String, usize)]) -> Result<ShortFileChoice> {
+    use std::io::{self, BufRead, Write};
+    eprintln!(
+        "Warning: {} input file{} for {} {} suspiciously short (< 100 words) — may be a placeholder:",
+        files.len(),
+        if files.len() == 1 { "" } else { "s" },
+        session_id,
+        if files.len() == 1 { "is" } else { "are" },
+    );
+    for (path, wc) in files {
+        eprintln!("  {} ({} words)", path, wc);
+    }
+    print!("[c]ontinue / [p]ause / [q]uit: ");
+    io::stdout().flush()?;
+    let stdin = io::stdin();
+    let line = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
+    Ok(match line.trim() {
+        "p" => ShortFileChoice::Pause,
+        "q" => ShortFileChoice::Quit,
+        _ => ShortFileChoice::Continue,
     })
 }
