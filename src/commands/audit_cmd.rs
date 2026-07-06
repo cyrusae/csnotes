@@ -76,6 +76,7 @@ pub fn run(args: AuditArgs) -> Result<()> {
     }
 
     // ── Discrepancy report ────────────────────────────────────────────────────
+    let mut has_discrepancies = false;
     if args.show_discrepancies {
         println!();
         println!("Manifest vs filesystem discrepancies:");
@@ -83,6 +84,7 @@ pub fn run(args: AuditArgs) -> Result<()> {
         if discrepancies.is_empty() {
             println!("  none — manifest matches filesystem");
         } else {
+            has_discrepancies = true;
             for d in &discrepancies {
                 println!("  {}", d.display());
             }
@@ -90,13 +92,34 @@ pub fn run(args: AuditArgs) -> Result<()> {
     }
 
     // ── Exit code ─────────────────────────────────────────────────────────────
-    if !audit.is_clean() {
+    if !audit.is_clean() || has_discrepancies {
         std::process::exit(1);
     }
 
     if !args.fix {
-        // Only print "clean" when not in fix mode (fix mode already printed its summary)
+        println!();
+        if let Some(ref rec) = manifest.session_in_progress {
+            println!(
+                "⚠  session in progress  run_id={}  phase={}",
+                rec.run_id, rec.phase
+            );
+        }
         println!("Vault is clean.");
+        if !manifest.topics.is_empty() {
+            println!();
+            for (name, topic) in &manifest.topics {
+                println!(
+                    "  {:<30}  {} atomic{}",
+                    name,
+                    topic.atomic_notes.len(),
+                    if topic.atomic_notes.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    },
+                );
+            }
+        }
     }
 
     Ok(())

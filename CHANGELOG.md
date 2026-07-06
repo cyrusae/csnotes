@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- audit clean output: show topic/atomic summary and open-session flag (L48)
 - pre-flight: warn on suspiciously-short session input files (L45)
 - Support extraction of non-md source files (e.g. PowerPoint slides) into markdown (#77)
 - add .docx source extraction via pandoc (L44)
@@ -60,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- audit --show-discrepancies prints 'Vault is clean' even when discrepancies exist (L47)
 - commit: missing relink pass before invariant check breaks rename batches (L29)
 - merge_back: additive-only, old folders not deleted after rename_topic (L35)
 - rename_atomic leaves broken embed anchors: #^old-slug not rewritten to #^new-slug (L39)
