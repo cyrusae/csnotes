@@ -1,0 +1,10 @@
+{
+  "uuid": "c119df25-0955-4cff-9e2c-e293d4523322",
+  "issue_uuid": "b7fa835e-7542-4065-a759-0042e3b58d57",
+  "author": "3owj",
+  "content": "Restored explicit bash command list in course-review.md file layout rules (mv, rm, git mv, rmdir, sed -i are shell commands not Claude-specific).",
+  "created_at": "2026-07-07T05:41:58.333477Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAY8iGCwPENfc4renS7R3Z463aOjyCcBEWgRRV92eZKi42wn0deQOSLbNeLkePsietaF57glWAvhtSXYjtZFmsCQ=="
+}
