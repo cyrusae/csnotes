@@ -2,11 +2,12 @@
   "uuid": "de0a0d58-d040-4d7b-a327-cc9f8c08e572",
   "display_id": null,
   "title": "Add course-scoped review mode to process command",
+  "description": "Problem: process --topic is the closest broad review scope but excludes raw notes/recordings/artifacts and includes sources from all courses, not just the target. Unsuitable for studying for a specific exam (e.g. want Data Structures scope without pulling in Introductory Java).\n\nProposed: --course {name} as a standalone process scope (distinct from its current session-disambiguator role):\n- All sessions for that course → raw notes, recordings, artifacts included\n- Sources filtered to that course via existing source_visible_for_course logic\n- Other courses excluded\n\nDesign notes:\n- Workspace assembly is straightforward; session scope already has per-course source filtering, this extends to N sessions\n- Skill prompt needs a new mode header (Course Review) so the AI synthesizes across sessions rather than processing one session\n- May need a new SkillVariant or a separate prompt branch in workspace.rs\n- Flag name conflict: --course already exists as a disambiguator; options are (a) context-sensitive (no --session = scope mode), (b) rename new flag to --review, (c) rename disambiguator to --for-course\n\nOpen questions:\n- What directive does the AI get with many sessions of raw notes? Consolidate? Gap-fill?\n- Does this replace --topic for exam prep or complement it?",
   "status": "open",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-07-07T04:51:08.296368Z",
-  "updated_at": "2026-07-07T04:51:08.449312Z",
+  "updated_at": "2026-07-07T04:51:34.304609Z",
   "labels": [
     "feature"
   ]
