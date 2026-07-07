@@ -1,0 +1,10 @@
+{
+  "uuid": "fd1f3274-e0c7-4640-bae2-74f51c8cbb98",
+  "issue_uuid": "971980ab-18b6-4d14-89c2-b6e73b9891db",
+  "author": "3owj",
+  "content": "Course inference from folder path: active_courses passed as param to scan_sources_dir; infer_course_from_path helper checks intermediate dir components against active_courses; applied to both extractable (no frontmatter) and md sources (fallback when frontmatter has no courses). 4 new tests covering extractable inference, md fallback, frontmatter precedence, and non-matching folder.",
+  "created_at": "2026-07-07T06:05:36.345947Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABANTxY/honznPaQmysmu4HUpSwSmNj2Fp1r4WdoMvDt7kjWUwrCquPbr5a3DybI6u0oCDuoLSP+AA4Tprs/vwzBQ=="
+}
