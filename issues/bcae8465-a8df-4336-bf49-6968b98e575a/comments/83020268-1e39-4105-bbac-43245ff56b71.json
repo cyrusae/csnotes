@@ -1,0 +1,10 @@
+{
+  "uuid": "83020268-1e39-4105-bbac-43245ff56b71",
+  "issue_uuid": "bcae8465-a8df-4336-bf49-6968b98e575a",
+  "author": "3owj",
+  "content": "Added 'summary' to kind_from_source_type mapping to PersonalNotes alongside 'highlights' and 'notes'. Added test scan_sources_source_type_summary_sets_personal_notes.",
+  "created_at": "2026-07-07T04:34:34.471908Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAdANW8OyEg6SfYOHQ0auPo5WD14PKBkqyFYeb1xMClAB0l47te4m50rXAFAhRci6VDnmGc/+Od0o+pNCaI/WNDQ=="
+}
