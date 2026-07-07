@@ -3,11 +3,12 @@
   "display_id": null,
   "title": "Add CourseReview skill variant for interactive study sessions",
   "description": "Adds a study-oriented skill variant to process. Exploratory-first, vault changes optional.\n\n## Design\n\n- Invocation: csnotes process --course CPSC5002 (no new flag; CourseReview auto-selected when scope is Course)\n- Two output layers:\n  1. Journal accompaniment: always emitted as CreateNote to _journal/{course}/review-{date}.md — captures ephemeral context (lab confusion, instructor framing) that belongs in study narrative but not long-term reference vault\n  2. Optional atomic ops: CreateNote/UpdateNote to _synthetic/ only when something reference-worthy surfaces; zero atomic ops is valid\n- Session header embeds expected journal path so the AI knows where to write it\n\n## Implementation\n- SkillVariant::CourseReview added to config.rs\n- journal_dir config key (default _journal) in VaultConfig\n- instruction_source_path() returns course-review.md for CourseReview\n- process.rs auto-selects CourseReview when args.course is Some\n- render_session_md Course arm embeds journal path\n- New _csnotes/instructions/course-review.md\n\n## Depends on L52 (done)",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-07-07T04:55:19.814419Z",
-  "updated_at": "2026-07-07T05:30:10.770079Z",
+  "updated_at": "2026-07-07T06:12:55.474122Z",
+  "closed_at": "2026-07-07T06:12:55.474122Z",
   "labels": [
     "feature"
   ]
