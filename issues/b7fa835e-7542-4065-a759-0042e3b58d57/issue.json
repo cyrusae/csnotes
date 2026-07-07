@@ -2,11 +2,12 @@
   "uuid": "b7fa835e-7542-4065-a759-0042e3b58d57",
   "display_id": null,
   "title": "revert vague file layout rule in course-review.md",
-  "status": "open",
+  "status": "closed",
   "priority": "low",
   "created_by": "3owj",
   "created_at": "2026-07-07T05:41:45.221426Z",
-  "updated_at": "2026-07-07T05:41:45.376043Z",
+  "updated_at": "2026-07-07T06:12:55.823593Z",
+  "closed_at": "2026-07-07T06:12:55.823593Z",
   "labels": [
     "fix"
   ]
