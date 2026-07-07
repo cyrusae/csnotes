@@ -1,10 +1,3 @@
-/// The invariant suite.
-///
-/// Runs against the workspace (pre-merge) during teardown, and against the
-/// vault (read-only) when `csnotes audit` is invoked directly.
-///
-/// Hard violations → discard workspace (vault untouched).
-/// Soft warnings   → logged, never block commit.
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -44,11 +37,10 @@ impl AuditResult {
     }
 }
 
-// ── Pre-merge precondition pass (Phase 0) ─────────────────────────────────────
+// ── Pre-merge precondition pass ───────────────────────────────────────────────
 
 /// Check all op preconditions.  Pure read — no mutations.
-/// Returns `Ok(())` if all preconditions hold; `Err(...)` on the first
-/// failure.
+/// Returns `Ok(())` if all preconditions hold; `Err(...)` on the first failure.
 #[allow(dead_code)]
 pub fn precondition_pass(report: &SessionReport, workspace_root: &Path) -> Result<()> {
     precondition_pass_ops(&report.operations, workspace_root)
@@ -61,11 +53,7 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
         match op {
             Op::CreateNote(op) => {
                 let path = safe_join(workspace_root, &op.path)?;
-                // The file must ALREADY exist — the AI wrote it.
-                // `create_note` on an existing csnotes-frontmatter path is the
-                // precondition failure (would clobber an existing note).
                 if path.exists() {
-                    // Check if it already has csnotes frontmatter
                     if let Ok(content) = crate::frontmatter::read_note(&path) {
                         if crate::frontmatter::split_frontmatter(&content).is_some() {
                             return Err(CsnotesError::CreateNotePathExists(op.path.clone()).into());
@@ -75,13 +63,10 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
                     return Err(CsnotesError::UpdateNotePathMissing(op.path.clone()).into());
                 }
 
-                // block_id anchor must be present in the body
                 if let Some(block_id) = &op.block_id {
                     check_block_id_anchor(workspace_root, &op.path, block_id)?;
                 }
 
-                // embed_in targets must exist; the CLI auto-inserts the embed
-                // block at execution time so the AI does not need to write it.
                 for target in &op.embed_in {
                     let target_path = safe_join(workspace_root, target)?;
                     if !target_path.exists() {
@@ -95,16 +80,11 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
                 if !path.exists() {
                     return Err(CsnotesError::UpdateNotePathMissing(op.path.clone()).into());
                 }
-                // Must have parseable csnotes frontmatter
                 let content = crate::frontmatter::read_note(&path)?;
                 parse_frontmatter(&content, &path)?;
             }
 
             Op::RenameTopic(op) => {
-                // The source topic folder must exist in the workspace.
-                // (The config synthetic_dir is not available here, so we scan
-                // for the folder under any direct child of the workspace root
-                // that looks like a synthetic dir.)
                 let synthetic = workspace_root.join("_synthetic");
                 let possible_dirs = [
                     safe_join(&synthetic, &op.from)?,
@@ -206,7 +186,6 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
                 let synthetic = workspace_root.join("_synthetic");
                 let into_dir = safe_join(&synthetic, &op.into)?;
 
-                // Collect filenames already in the target (if it exists).
                 let mut landing: std::collections::HashSet<String> = if into_dir.exists() {
                     std::fs::read_dir(&into_dir)
                         .map(|rd| {
@@ -287,7 +266,6 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
                 if !atomic_abs.exists() {
                     return Err(CsnotesError::SetEmbedAtomicMissing(op.atomic_path.clone()).into());
                 }
-                // Verify atomic has a block_id — set_embed can't run without one.
                 let raw = std::fs::read_to_string(&atomic_abs)?;
                 if let Some((yaml, _)) = crate::frontmatter::split_frontmatter(&raw) {
                     let fm: Result<crate::frontmatter::NoteFrontmatter, _> =
@@ -304,7 +282,7 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
     Ok(())
 }
 
-// ── Post-execution invariant suite (Phase 0) ──────────────────────────────────
+// ── Post-execution invariant suite ────────────────────────────────────────────
 
 /// Run the full invariant suite against the (post-execution) workspace.
 /// Hard violations mean discard; soft warnings mean log-and-commit.
@@ -317,7 +295,6 @@ pub fn invariant_suite(
     let mut result = AuditResult::default();
     let synthetic_root = workspace_root.join(synthetic_dir);
 
-    // 1. Check block ID uniqueness across all notes
     if synthetic_root.exists() {
         for (id, paths) in block_id_collisions(&synthetic_root)? {
             result.hard_violations.push(format!(
@@ -328,7 +305,6 @@ pub fn invariant_suite(
         }
     }
 
-    // 2. For each note declared in ops, verify schema-valid frontmatter
     for op in &report.operations {
         if let Op::CreateNote(op) = op {
             match safe_join(workspace_root, &op.path) {
@@ -364,7 +340,6 @@ pub fn invariant_suite(
         }
     }
 
-    // 3. Every atomic note must have block_id in frontmatter AND matching anchor
     if synthetic_root.exists() {
         for entry in walkdir::WalkDir::new(&synthetic_root)
             .into_iter()
@@ -402,38 +377,23 @@ pub fn invariant_suite(
         }
     }
 
-    // 4. Every [[wikilink]] in _synthetic/ must resolve — including links to
-    //    vault files outside _synthetic/ (sources, AI-Conversations, etc.)
-    //    which were indexed during workspace assembly and written to
-    //    _vault_stems.json.
     if synthetic_root.exists() {
         let vault_stems = load_vault_stems(workspace_root);
         check_links_resolve(&synthetic_root, &synthetic_root, &vault_stems, &mut result)?;
     }
 
-    // 5. Soft: orphan atomics (not embedded by any index in their topic folder)
     check_orphan_atomics(&synthetic_root, &mut result)?;
 
     Ok(result)
 }
 
-// ── In-workspace check (no report required) ───────────────────────────────────
+// ── In-workspace check ────────────────────────────────────────────────────────
 
 /// Run the structural subset of the invariant suite against a workspace
-/// `_synthetic/` directory **without** needing a session report.
+/// `_synthetic/` directory without needing a session report.
 ///
 /// This is the function backing `csnotes check`, which Claude can invoke from
-/// inside the workspace before exiting to surface violations early — before
-/// the CLI teardown would otherwise discard the whole workspace.
-///
-/// Checks performed (all of these can be self-corrected by Claude):
-/// 1. Block-ID uniqueness across all atomic notes.
-/// 2. Every atomic note has a matching `^block-id` anchor in its body.
-/// 3. Every `[[wikilink]]` and `![[embed]]` resolves to a file in `_synthetic/`.
-/// 4. (Soft) Orphan atomics not embedded by any index in their topic folder.
-///
-/// Report-dependent checks (frontmatter validity per declared op) are skipped
-/// because the report may not be fully written yet when `csnotes check` runs.
+/// inside the workspace before exiting to surface violations early.
 pub fn check_workspace(workspace_root: &Path, synthetic_dir: &str) -> Result<AuditResult> {
     let mut result = AuditResult::default();
     let synthetic_root = workspace_root.join(synthetic_dir);
@@ -446,7 +406,6 @@ pub fn check_workspace(workspace_root: &Path, synthetic_dir: &str) -> Result<Aud
         return Ok(result);
     }
 
-    // 1. Block-ID collisions
     for (id, paths) in block_id_collisions(&synthetic_root)? {
         result.hard_violations.push(format!(
             "block ID '^{}' appears in multiple files: {}",
@@ -455,7 +414,6 @@ pub fn check_workspace(workspace_root: &Path, synthetic_dir: &str) -> Result<Aud
         ));
     }
 
-    // 2. Every atomic note must have block_id in frontmatter AND a matching anchor
     for entry in walkdir::WalkDir::new(&synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -491,22 +449,19 @@ pub fn check_workspace(workspace_root: &Path, synthetic_dir: &str) -> Result<Aud
         }
     }
 
-    // 3. Link and embed resolution — including cross-vault links
     let vault_stems = load_vault_stems(workspace_root);
     check_links_resolve(&synthetic_root, &synthetic_root, &vault_stems, &mut result)?;
 
-    // 4. Orphan atomics (soft)
     check_orphan_atomics(&synthetic_root, &mut result)?;
 
     Ok(result)
 }
 
-// ── Direct vault audit (no report context) ────────────────────────────────────
+// ── Direct vault audit ────────────────────────────────────────────────────────
 
 const AI_CONVERSATION_SIDECAR_WORD_THRESHOLD: usize = 4_500;
 
 /// Run the invariant suite against the vault directly (for `csnotes audit`).
-/// Does not require a session report — checks structural consistency only.
 pub fn audit_vault(
     vault_root: &Path,
     config: &crate::config::VaultConfig,
@@ -522,7 +477,6 @@ pub fn audit_vault(
         ));
     }
 
-    // Block ID uniqueness
     for (id, paths) in block_id_collisions(&synthetic_root)? {
         result.hard_violations.push(format!(
             "block ID '^{}' appears in multiple files: {}",
@@ -531,7 +485,6 @@ pub fn audit_vault(
         ));
     }
 
-    // Frontmatter validity + atomic anchor check
     for entry in walkdir::WalkDir::new(&synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -566,7 +519,6 @@ pub fn audit_vault(
         }
     }
 
-    // Link resolution — accept links to any vault file, not just _synthetic/
     let ignore_names: Vec<&str> = config
         .sources_ignore_dirs
         .iter()
@@ -583,10 +535,8 @@ pub fn audit_vault(
     );
     check_links_resolve(&synthetic_root, &synthetic_root, &vault_stems, &mut result)?;
 
-    // Orphan atomics (soft)
     check_orphan_atomics(&synthetic_root, &mut result)?;
 
-    // Sidecar nudge: AI conversation sources that are long but have no .json
     for (source_id, entry) in &manifest.sources {
         if entry.kind != SourceKind::AiConversation {
             continue;
@@ -611,132 +561,69 @@ pub fn audit_vault(
     Ok(result)
 }
 
-// ── Reindex ───────────────────────────────────────────────────────────────────
+// ── Vault stem index ──────────────────────────────────────────────────────────
 
-/// Rescan `_synthetic/` and rebuild `manifest.topics` from frontmatter.
-///
-/// Clears the existing topics map first so renamed or deleted topics are
-/// removed.  Call this whenever the synthetic vault may have changed outside
-/// of normal session processing (manual edits, recovery copies, etc.).
-pub fn rebuild_topics(
+/// Collect lowercased stem and root-relative-path identifiers for all `.md`
+/// files in `vault_root`, skipping top-level directories in `excluded_dirs`.
+pub fn collect_vault_stems(
     vault_root: &Path,
-    synthetic_dir: &str,
-    manifest: &mut Manifest,
-) -> Result<()> {
-    use crate::manifest::TopicEntry;
-
-    let synthetic_root = vault_root.join(synthetic_dir);
-    manifest.topics.clear();
-
-    if !synthetic_root.exists() {
-        return Ok(());
-    }
-
-    for entry in walkdir::WalkDir::new(&synthetic_root)
+    excluded_dirs: &[&str],
+    ignore_names: &[&str],
+) -> std::collections::HashSet<String> {
+    walkdir::WalkDir::new(vault_root)
+        .min_depth(1)
         .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
-    {
-        let content = match crate::frontmatter::read_note(entry.path()) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let fm = match parse_frontmatter(&content, entry.path()) {
-            Ok(fm) => fm,
-            Err(_) => continue,
-        };
-
-        let rel_path = entry
-            .path()
-            .strip_prefix(vault_root)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .to_string();
-
-        let topic = manifest
-            .topics
-            .entry(fm.topic.clone())
-            .or_insert_with(|| TopicEntry {
-                index_note: String::new(),
-                atomic_notes: vec![],
-                contributing_sessions: vec![],
-                contributing_sources: vec![],
-                pending_sessions: vec![],
-                last_updated: fm.last_updated,
-                open_flags: 0,
-                source_types: vec![],
-            });
-
-        match fm.kind {
-            NoteKind::Index => topic.index_note = rel_path,
-            NoteKind::Atomic => {
-                if !topic.atomic_notes.contains(&rel_path) {
-                    topic.atomic_notes.push(rel_path);
+        .filter_entry(|e| {
+            if e.file_type().is_dir() {
+                let name = e.file_name().to_str().unwrap_or("");
+                if e.depth() == 1
+                    && (excluded_dirs.contains(&name) || name.starts_with("_synthetic_"))
+                {
+                    return false;
+                }
+                if ignore_names.contains(&name) {
+                    return false;
                 }
             }
-        }
-
-        for contrib in fm.contributing_sessions {
-            if !topic
-                .contributing_sessions
-                .iter()
-                .any(|c| c.course == contrib.course && c.date == contrib.date)
-            {
-                topic.contributing_sessions.push(contrib);
-            }
-        }
-
-        if fm.last_updated > topic.last_updated {
-            topic.last_updated = fm.last_updated;
-        }
-    }
-
-    // pending_sessions: sessions processed after the topic's last_updated that
-    // declared they touched this topic — signals possible desync.
-    let sessions_snapshot: Vec<(String, Option<chrono::DateTime<chrono::Utc>>, Vec<String>)> =
-        manifest
-            .sessions
-            .iter()
-            .map(|(id, s)| (id.clone(), s.processed_at, s.topics_updated.clone()))
-            .collect();
-
-    for (topic_name, topic_entry) in manifest.topics.iter_mut() {
-        topic_entry.pending_sessions = sessions_snapshot
-            .iter()
-            .filter(|(_, processed_at, topics_updated)| {
-                processed_at.is_some_and(|t| t > topic_entry.last_updated)
-                    && topics_updated.contains(topic_name)
-            })
-            .map(|(id, _, _)| id.clone())
-            .collect();
-    }
-
-    Ok(())
+            true
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+        .flat_map(|e| {
+            let stem = e
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_lowercase());
+            let rel = e
+                .path()
+                .strip_prefix(vault_root)
+                .ok()
+                .map(|p| p.with_extension(""))
+                .and_then(|p| p.to_str().map(|s| s.to_lowercase()));
+            [stem, rel].into_iter().flatten()
+        })
+        .collect()
 }
 
-/// Rebuild the manifest from frontmatter + filesystem.
-/// This is the proof that the manifest is disposable — `audit --reindex`
-/// must produce an identical manifest to the committed one.
-pub fn reindex(vault_root: &Path, config: &crate::config::VaultConfig) -> Result<Manifest> {
-    use crate::manifest::ManifestConfig;
-
-    let manifest_config = ManifestConfig::from_vault_config(config);
-    let mut manifest = Manifest::empty(vault_root.to_path_buf(), manifest_config);
-
-    // Load existing sessions and sources from the old manifest if present
-    // (reindex only rebuilds the topics map from frontmatter; sessions and
-    // sources are registered by reconcile, not derivable from _synthetic/).
-    if let Ok(old) = Manifest::load(vault_root) {
-        manifest.sessions = old.sessions;
-        manifest.sources = old.sources;
+/// Load the vault-wide stem index written to `_vault_stems.json` during
+/// workspace assembly.  Returns an empty set if the file is absent.
+pub fn load_vault_stems(workspace_root: &Path) -> std::collections::HashSet<String> {
+    let path = workspace_root.join("_vault_stems.json");
+    if !path.exists() {
+        return std::collections::HashSet::new();
     }
-
-    rebuild_topics(vault_root, &config.synthetic_dir, &mut manifest)?;
-
-    Ok(manifest)
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    serde_json::from_str::<Vec<String>>(&content)
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Private helpers ───────────────────────────────────────────────────────────
 
 fn block_id_collisions(synthetic_root: &Path) -> Result<HashMap<String, Vec<String>>> {
     let mut files: Vec<(String, String)> = Vec::new();
@@ -785,10 +672,6 @@ fn check_links_resolve(
     extra: &std::collections::HashSet<String>,
     result: &mut AuditResult,
 ) -> Result<()> {
-    // Pre-collect all note stems once so each link lookup is O(1) rather than
-    // triggering a full WalkDir per link (which would be O(N²) across N notes).
-    // `extra` contains stems/paths from outside _synthetic/ (e.g. vault files,
-    // sources) so that cross-vault wikilinks are not falsely flagged as broken.
     let mut known_stems = collect_note_stems(search_root);
     known_stems.extend(extra.iter().cloned());
 
@@ -829,17 +712,6 @@ fn check_links_resolve(
     Ok(())
 }
 
-/// Collect lowercased identifiers for all `.md` files under `root`.
-///
-/// Each file contributes **two** entries to the set so that both
-/// `[[slug]]` and `[[topic/slug]]` wikilink formats resolve correctly:
-///
-/// - The bare file stem (e.g. `java-boxed-primitives`)
-/// - The root-relative path without extension (e.g. `java/java-boxed-primitives`)
-///
-/// Both are lowercased so the lookup is case-insensitive regardless of how
-/// the link or the filename is cased on disk (macOS HFS+/APFS is
-/// case-insensitive, but git and string comparisons are not).
 fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
     walkdir::WalkDir::new(root)
         .into_iter()
@@ -862,399 +734,11 @@ fn collect_note_stems(root: &Path) -> std::collections::HashSet<String> {
         .collect()
 }
 
-/// Collect lowercased stem and root-relative-path identifiers for all `.md`
-/// files in `vault_root`, skipping top-level directories whose names appear in
-/// `excluded_dirs`.
-///
-/// Use this to build the set of vault files that may be wikilinked from
-/// `_synthetic/` notes even though those files live outside `_synthetic/`.
-/// Pass the result as `extra` to callers of `check_links_resolve`.
-///
-/// Typical exclusions: `["_synthetic", "_generated", "_csnotes"]` plus any
-/// directories whose names start with `_synthetic_` (snapshot/broken dirs).
-pub fn collect_vault_stems(
-    vault_root: &Path,
-    excluded_dirs: &[&str],
-    ignore_names: &[&str],
-) -> std::collections::HashSet<String> {
-    walkdir::WalkDir::new(vault_root)
-        .min_depth(1)
-        .into_iter()
-        .filter_entry(|e| {
-            if e.file_type().is_dir() {
-                let name = e.file_name().to_str().unwrap_or("");
-                // Top-level: skip internal csnotes dirs and snapshot dirs.
-                if e.depth() == 1
-                    && (excluded_dirs.contains(&name) || name.starts_with("_synthetic_"))
-                {
-                    return false;
-                }
-                // Any depth: skip dirs whose names appear in ignore_names
-                // (mirrors sources_ignore_dirs so generator/tool subdirs are
-                // excluded everywhere, not just inside sources/).
-                if ignore_names.contains(&name) {
-                    return false;
-                }
-            }
-            true
-        })
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
-        .flat_map(|e| {
-            let stem = e
-                .path()
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_lowercase());
-            let rel = e
-                .path()
-                .strip_prefix(vault_root)
-                .ok()
-                .map(|p| p.with_extension(""))
-                .and_then(|p| p.to_str().map(|s| s.to_lowercase()));
-            [stem, rel].into_iter().flatten()
-        })
-        .collect()
-}
-
-/// Load the vault-wide stem index written to `_vault_stems.json` during
-/// workspace assembly.  Returns an empty set if the file is absent (e.g. when
-/// running against a workspace built by an older version of csnotes).
-///
-/// This is the in-workspace companion to `collect_vault_stems`: the assembler
-/// walks the vault once and serialises the result so that `csnotes check`
-/// (which only sees the workspace, not the vault) can validate cross-vault
-/// wikilinks without a second full walk.
-pub fn load_vault_stems(workspace_root: &Path) -> std::collections::HashSet<String> {
-    let path = workspace_root.join("_vault_stems.json");
-    if !path.exists() {
-        return std::collections::HashSet::new();
-    }
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return std::collections::HashSet::new(),
-    };
-    serde_json::from_str::<Vec<String>>(&content)
-        .unwrap_or_default()
-        .into_iter()
-        .collect()
-}
-
-// ── Manifest discrepancy report ───────────────────────────────────────────────
-
-/// A single discrepancy between the manifest and the actual filesystem.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Discrepancy {
-    pub kind: DiscrepancyKind,
-    pub topic: String,
-    pub path: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum DiscrepancyKind {
-    /// Manifest records this topic but no matching index note exists on disk.
-    StaleTopicInManifest,
-    /// A topic folder with an index note exists on disk but has no manifest entry.
-    UntrackedTopicOnDisk,
-    /// Manifest lists this atomic note but the file does not exist on disk.
-    StaleAtomicInManifest,
-    /// An atomic note file exists on disk but is absent from the manifest for its topic.
-    UntrackedAtomicOnDisk,
-}
-
-impl Discrepancy {
-    pub fn display(&self) -> String {
-        match self.kind {
-            DiscrepancyKind::StaleTopicInManifest => {
-                format!(
-                    "stale   topic  [manifest-only]  {} ({})",
-                    self.topic, self.path
-                )
-            }
-            DiscrepancyKind::UntrackedTopicOnDisk => {
-                format!(
-                    "untracked topic [disk-only]      {} ({})",
-                    self.topic, self.path
-                )
-            }
-            DiscrepancyKind::StaleAtomicInManifest => {
-                format!("stale   atomic [manifest-only]  {}", self.path)
-            }
-            DiscrepancyKind::UntrackedAtomicOnDisk => {
-                format!("untracked atomic [disk-only]    {}", self.path)
-            }
-        }
-    }
-}
-
-/// Compare `manifest.topics` against the current filesystem state and return
-/// all differences.
-///
-/// Performs a fresh `rebuild_topics` scan into a throwaway manifest, then diffs
-/// the two topic maps.  The result covers:
-///
-/// - Topics the manifest knows about whose index notes are gone from disk.
-/// - Topic folders on disk that have no manifest entry.
-/// - Individual atomic notes that the manifest lists but that don't exist on disk.
-/// - Individual atomic note files on disk that the manifest doesn't list.
-pub fn manifest_discrepancies(
-    vault_root: &Path,
-    config: &crate::config::VaultConfig,
-    manifest: &Manifest,
-) -> Result<Vec<Discrepancy>> {
-    use crate::manifest::ManifestConfig;
-
-    // Build a fresh view of what's on disk.
-    let manifest_config = ManifestConfig::from_vault_config(config);
-    let mut fresh = Manifest::empty(vault_root.to_path_buf(), manifest_config);
-    rebuild_topics(vault_root, &config.synthetic_dir, &mut fresh)?;
-
-    let mut out: Vec<Discrepancy> = Vec::new();
-
-    // Topics in manifest but not on disk.
-    for (topic, entry) in &manifest.topics {
-        if !fresh.topics.contains_key(topic.as_str()) {
-            out.push(Discrepancy {
-                kind: DiscrepancyKind::StaleTopicInManifest,
-                topic: topic.clone(),
-                path: entry.index_note.clone(),
-            });
-        }
-    }
-
-    // Topics on disk but not in manifest.
-    for (topic, entry) in &fresh.topics {
-        if !manifest.topics.contains_key(topic.as_str()) {
-            out.push(Discrepancy {
-                kind: DiscrepancyKind::UntrackedTopicOnDisk,
-                topic: topic.clone(),
-                path: entry.index_note.clone(),
-            });
-        }
-    }
-
-    // Per-topic atomic note diffs (only for topics present in both).
-    let mut common_topics: Vec<&str> = manifest
-        .topics
-        .keys()
-        .filter(|t| fresh.topics.contains_key(t.as_str()))
-        .map(|s| s.as_str())
-        .collect();
-    common_topics.sort_unstable();
-
-    for topic in common_topics {
-        let manifest_atomics: std::collections::HashSet<&str> = manifest.topics[topic]
-            .atomic_notes
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-        let disk_atomics: std::collections::HashSet<&str> = fresh.topics[topic]
-            .atomic_notes
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-
-        let mut stale: Vec<&str> = manifest_atomics
-            .difference(&disk_atomics)
-            .copied()
-            .collect();
-        stale.sort_unstable();
-        for path in stale {
-            out.push(Discrepancy {
-                kind: DiscrepancyKind::StaleAtomicInManifest,
-                topic: topic.to_string(),
-                path: path.to_string(),
-            });
-        }
-
-        let mut untracked: Vec<&str> = disk_atomics
-            .difference(&manifest_atomics)
-            .copied()
-            .collect();
-        untracked.sort_unstable();
-        for path in untracked {
-            out.push(Discrepancy {
-                kind: DiscrepancyKind::UntrackedAtomicOnDisk,
-                topic: topic.to_string(),
-                path: path.to_string(),
-            });
-        }
-    }
-
-    Ok(out)
-}
-
-// ── Fix plan ──────────────────────────────────────────────────────────────────
-
-use std::path::PathBuf;
-
-/// A single mechanical repair that `audit --fix --apply` can execute.
-pub struct FixItem {
-    /// Human-readable description for the dry-run preview.
-    pub description: String,
-    pub action: FixAction,
-}
-
-pub enum FixAction {
-    /// Append a `^block_id` anchor to the end of the note body.
-    AppendAnchor { path: PathBuf, block_id: String },
-    /// Add source credits (harvested from body wikilinks) to frontmatter.
-    /// `last_updated` is intentionally preserved — the note body is unchanged.
-    BackfillSources {
-        path: PathBuf,
-        sources: Vec<crate::manifest::SourceContrib>,
-    },
-}
-
-/// Collect all auto-repairable issues in `_synthetic/`.
-///
-/// Detects:
-/// - Atomic notes whose frontmatter declares a `block_id` but whose body is
-///   missing the corresponding `^id` anchor.
-/// - Notes with `[[wikilinks]]` to registered source files that are not yet
-///   recorded in `contributing_sources`.
-pub fn collect_fixes(
-    vault_root: &Path,
-    config: &crate::config::VaultConfig,
-    manifest: &Manifest,
-) -> Result<Vec<FixItem>> {
-    let synthetic_root = vault_root.join(&config.synthetic_dir);
-    let mut fixes = Vec::new();
-
-    if !synthetic_root.exists() {
-        return Ok(fixes);
-    }
-
-    for entry in walkdir::WalkDir::new(&synthetic_root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
-    {
-        let content = match read_note(entry.path()) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        // Unparseable frontmatter can't be auto-repaired
-        let fm = match parse_frontmatter(&content, entry.path()) {
-            Ok(fm) => fm,
-            Err(_) => continue,
-        };
-
-        // ── Missing block anchor ───────────────────────────────────────────
-        if fm.kind == NoteKind::Atomic {
-            if let Some(id) = &fm.block_id {
-                if !extract_block_ids(&content).contains(id) {
-                    let rel = entry
-                        .path()
-                        .strip_prefix(vault_root)
-                        .unwrap_or(entry.path());
-                    fixes.push(FixItem {
-                        description: format!(
-                            "'{}': append '^{}' anchor to body",
-                            rel.display(),
-                            id
-                        ),
-                        action: FixAction::AppendAnchor {
-                            path: entry.path().to_path_buf(),
-                            block_id: id.clone(),
-                        },
-                    });
-                }
-            }
-        }
-
-        // ── Missing source credits ─────────────────────────────────────────
-        // Split content so we only scan the body, not the frontmatter YAML.
-        let body = match crate::frontmatter::split_frontmatter(&content) {
-            Some((_yaml, b)) => b,
-            None => continue,
-        };
-        let harvested = crate::ops::content::harvest_source_contribs(body, manifest);
-        let new_sources: Vec<_> = harvested
-            .into_iter()
-            .filter(|sc| {
-                !fm.contributing_sources
-                    .iter()
-                    .any(|e| e.source_id == sc.source_id)
-            })
-            .collect();
-        if !new_sources.is_empty() {
-            let rel = entry
-                .path()
-                .strip_prefix(vault_root)
-                .unwrap_or(entry.path());
-            let ids: Vec<&str> = new_sources.iter().map(|s| s.source_id.as_str()).collect();
-            fixes.push(FixItem {
-                description: format!(
-                    "'{}': credit source(s) [{}] from body wikilinks",
-                    rel.display(),
-                    ids.join(", ")
-                ),
-                action: FixAction::BackfillSources {
-                    path: entry.path().to_path_buf(),
-                    sources: new_sources,
-                },
-            });
-        }
-    }
-
-    Ok(fixes)
-}
-
-/// Execute a collected fix plan.  Returns the number of repairs applied.
-pub fn apply_fixes(fixes: &[FixItem]) -> Result<usize> {
-    use anyhow::Context;
-    let mut applied = 0;
-    for fix in fixes {
-        match &fix.action {
-            FixAction::AppendAnchor { path, block_id } => {
-                let content = crate::frontmatter::read_note(path)
-                    .with_context(|| format!("reading {}", path.display()))?;
-                // Append anchor on its own line, preceded by a blank line if
-                // the body doesn't already end with one.
-                let trimmed = content.trim_end_matches('\n');
-                let gap = if trimmed.ends_with('\n') {
-                    "\n"
-                } else {
-                    "\n\n"
-                };
-                let new_content = format!("{}{}\n^{}\n", trimmed, gap, block_id);
-                std::fs::write(path, new_content)
-                    .with_context(|| format!("writing {}", path.display()))?;
-                applied += 1;
-            }
-            FixAction::BackfillSources { path, sources } => {
-                let content = crate::frontmatter::read_note(path)
-                    .with_context(|| format!("reading {}", path.display()))?;
-                let (yaml, body) = crate::frontmatter::split_frontmatter(&content)
-                    .ok_or_else(|| anyhow::anyhow!("no frontmatter in '{}'", path.display()))?;
-                let mut fm: crate::frontmatter::NoteFrontmatter = serde_yml::from_str(yaml)
-                    .with_context(|| format!("parsing frontmatter in '{}'", path.display()))?;
-                // Extend directly — do NOT touch last_updated (body unchanged).
-                for sc in sources {
-                    if !fm
-                        .contributing_sources
-                        .iter()
-                        .any(|e| e.source_id == sc.source_id)
-                    {
-                        fm.contributing_sources.push(sc.clone());
-                    }
-                }
-                crate::frontmatter::write_frontmatter(path, &fm, body)
-                    .with_context(|| format!("writing '{}'", path.display()))?;
-                applied += 1;
-            }
-        }
-    }
-    Ok(applied)
-}
-
 fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Result<()> {
     if !synthetic_root.exists() {
         return Ok(());
     }
 
-    // Collect all embed targets across all notes
     let mut embedded: std::collections::HashSet<String> = std::collections::HashSet::new();
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
@@ -1270,7 +754,6 @@ fn check_orphan_atomics(synthetic_root: &Path, result: &mut AuditResult) -> Resu
         }
     }
 
-    // Find atomics not embedded anywhere
     for entry in walkdir::WalkDir::new(synthetic_root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -1307,13 +790,13 @@ mod tests {
     use super::*;
     use crate::config::{AiBackend, SkillVariant, SnapshotMode, VaultConfig};
     use crate::frontmatter::ProvenanceDelta;
-    use crate::manifest::{ManifestConfig, SessionEntry, SessionStatus};
+    use crate::manifest::ManifestConfig;
     use crate::report::{
         CreateNoteOp, DemoteTopicOp, MergeTopicsOp, MoveAtomicOp, PromoteAtomicOp, RenameAtomicOp,
         RenameTopicOp, ReportScope, ScopeKind, SessionReport, SetEmbedOp, SplitTarget,
         SplitTopicOp, UpdateNoteOp,
     };
-    use chrono::{DateTime, Utc};
+    use chrono::Utc;
     use tempfile::TempDir;
 
     fn write(dir: &std::path::Path, name: &str, body: &str) {
@@ -1482,7 +965,6 @@ mod tests {
     #[test]
     fn precondition_create_note_file_missing_errors() {
         let tmp = TempDir::new().unwrap();
-        // AI is supposed to have written the file, but it's absent.
         let report = make_report(vec![create_op("note.md")]);
         let err = precondition_pass(&report, tmp.path()).unwrap_err();
         assert!(err.to_string().contains("note.md"), "{err}");
@@ -1492,7 +974,6 @@ mod tests {
     #[test]
     fn precondition_create_note_existing_frontmatter_errors() {
         let tmp = TempDir::new().unwrap();
-        // File already has csnotes frontmatter → would clobber an existing note.
         write(tmp.path(), "note.md", csnotes_note());
         let report = make_report(vec![create_op("note.md")]);
         let err = precondition_pass(&report, tmp.path()).unwrap_err();
@@ -1502,7 +983,6 @@ mod tests {
     #[test]
     fn precondition_create_note_fresh_file_passes() {
         let tmp = TempDir::new().unwrap();
-        // File exists but has no frontmatter — AI wrote a fresh file, that's correct.
         write(tmp.path(), "note.md", "# Raw content, no frontmatter\n");
         let report = make_report(vec![create_op("note.md")]);
         assert!(precondition_pass(&report, tmp.path()).is_ok());
@@ -1546,7 +1026,6 @@ mod tests {
     #[test]
     fn precondition_update_note_invalid_frontmatter_errors() {
         let tmp = TempDir::new().unwrap();
-        // File exists but has no csnotes frontmatter — parse_frontmatter must fail.
         write(tmp.path(), "note.md", "# Just prose, no frontmatter\n");
         let report = make_report(vec![update_op("note.md")]);
         assert!(
@@ -1567,7 +1046,6 @@ mod tests {
     #[test]
     fn precondition_rename_topic_source_exists_passes() {
         let tmp = TempDir::new().unwrap();
-        // Source exists under _synthetic/, destination does not → should pass.
         std::fs::create_dir_all(tmp.path().join("_synthetic/sorting")).unwrap();
         let report = make_report(vec![rename_op("sorting", "algorithms")]);
         assert!(precondition_pass(&report, tmp.path()).is_ok());
@@ -1576,7 +1054,6 @@ mod tests {
     #[test]
     fn precondition_rename_topic_dest_exists_errors() {
         let tmp = TempDir::new().unwrap();
-        // Source exists under _synthetic/; dest also exists → collision.
         std::fs::create_dir_all(tmp.path().join("_synthetic/sorting")).unwrap();
         std::fs::create_dir_all(tmp.path().join("_synthetic/algorithms")).unwrap();
         let report = make_report(vec![rename_op("sorting", "algorithms")]);
@@ -1584,8 +1061,6 @@ mod tests {
         assert!(err.to_string().contains("algorithms"), "{err}");
         assert!(err.to_string().contains("already exists"), "{err}");
     }
-
-    // ── rename_atomic preconditions ───────────────────────────────────────────
 
     #[test]
     fn precondition_rename_atomic_source_missing_errors() {
@@ -1616,8 +1091,6 @@ mod tests {
         let report = make_report(vec![rename_atomic_op("_synthetic/cs/old.md", "new")]);
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
-
-    // ── move_atomic preconditions ─────────────────────────────────────────────
 
     #[test]
     fn precondition_move_atomic_source_missing_errors() {
@@ -1663,8 +1136,6 @@ mod tests {
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
-    // ── promote_atomic preconditions ──────────────────────────────────────────
-
     #[test]
     fn precondition_promote_atomic_source_missing_errors() {
         let tmp = TempDir::new().unwrap();
@@ -1694,8 +1165,6 @@ mod tests {
         let report = make_report(vec![promote_atomic_op("_synthetic/cs/bfs.md", "new-topic")]);
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
-
-    // ── demote_topic preconditions ────────────────────────────────────────────
 
     #[test]
     fn precondition_demote_topic_same_errors() {
@@ -1735,8 +1204,6 @@ mod tests {
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
-    // ── merge_topics preconditions ────────────────────────────────────────────
-
     #[test]
     fn precondition_merge_topics_source_missing_errors() {
         let tmp = TempDir::new().unwrap();
@@ -1770,8 +1237,6 @@ mod tests {
         let report = make_report(vec![merge_topics_op(vec!["cs", "graphs"], "algorithms")]);
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
-
-    // ── split_topic preconditions ─────────────────────────────────────────────
 
     #[test]
     fn precondition_split_topic_source_missing_errors() {
@@ -1818,8 +1283,6 @@ mod tests {
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
-    // ── set_embed preconditions ───────────────────────────────────────────────
-
     #[test]
     fn precondition_set_embed_index_missing_errors() {
         let tmp = TempDir::new().unwrap();
@@ -1855,7 +1318,6 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("_synthetic/cs")).unwrap();
         write(tmp.path(), "_synthetic/cs/index.md", index_note());
-        // Atomic without block_id
         let no_block_id = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: BFS\n\
              contributing_sessions: []\ncontributing_sources: []\n\
              created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
@@ -1887,9 +1349,6 @@ mod tests {
 
     #[test]
     fn crlf_frontmatter_parsed_correctly_in_audit() {
-        // check_orphan_atomics reads file content; before the read_note fix,
-        // CRLF line endings caused parse_frontmatter to fail, silently skipping
-        // notes and producing no orphan warnings for unembedded atomics.
         let tmp = TempDir::new().unwrap();
         let crlf_atomic = "---\r\ncsnotes_schema: 1\r\nkind: atomic\r\ntopic: cs\r\n\
             title: Sorting\r\nblock_id: sort-01\r\ncontributing_sessions: []\r\n\
@@ -1899,9 +1358,6 @@ mod tests {
 
         let mut result = AuditResult::default();
         check_orphan_atomics(tmp.path(), &mut result).unwrap();
-        // The atomic is not embedded by anything, so it must appear as an orphan.
-        // If CRLF broke parse_frontmatter, kind would be unknown and no warning
-        // would be emitted — the assertion would fail.
         assert_eq!(result.soft_warnings.len(), 1);
         assert!(result.soft_warnings[0].contains("orphan atomic"));
     }
@@ -1921,7 +1377,6 @@ mod tests {
     #[test]
     fn check_links_resolve_accepts_case_insensitive_links() {
         let tmp = TempDir::new().unwrap();
-        // Index note links to "Sorting" (capital S); the file on disk is "sorting.md".
         write(tmp.path(), "sorting.md", "# Sorting\n");
         write(tmp.path(), "index.md", "See [[Sorting]].\n");
         let mut result = AuditResult::default();
@@ -1968,7 +1423,7 @@ mod tests {
                 .hard_violations
                 .iter()
                 .any(|v| v.contains("ghost-atomic")),
-            "expected hard violation for broken embed, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -1985,7 +1440,7 @@ mod tests {
                 .hard_violations
                 .iter()
                 .any(|v| v.contains("ghost-atomic")),
-            "expected hard violation for broken embed, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -1993,24 +1448,20 @@ mod tests {
     #[test]
     fn check_orphan_atomics_embedded_atomic_not_warned() {
         let tmp = TempDir::new().unwrap();
-        // An atomic embedded by an index note must NOT be flagged as an orphan.
         write(tmp.path(), "sorting.md", csnotes_note());
         write(tmp.path(), "index.md", "![[sorting#^test-01]]\n");
         let mut result = AuditResult::default();
         check_orphan_atomics(tmp.path(), &mut result).unwrap();
         assert!(
             result.soft_warnings.is_empty(),
-            "embedded atomic should not be flagged as orphan: {:?}",
+            "{:?}",
             result.soft_warnings
         );
     }
 
-    // ── audit_vault caller tests ──────────────────────────────────────────────
-
     #[test]
     fn audit_vault_warns_when_synthetic_dir_absent() {
         let tmp = TempDir::new().unwrap();
-        // No _synthetic/ directory created.
         let result = audit_vault(
             tmp.path(),
             &make_vault_config(),
@@ -2029,7 +1480,6 @@ mod tests {
     #[test]
     fn audit_vault_broken_wikilink_is_hard_violation() {
         let tmp = TempDir::new().unwrap();
-        // _synthetic/ exists but the link target does not.
         write(tmp.path(), "_synthetic/index.md", "See [[missing-note]].\n");
         let result = audit_vault(
             tmp.path(),
@@ -2042,7 +1492,7 @@ mod tests {
                 .hard_violations
                 .iter()
                 .any(|v| v.contains("missing-note")),
-            "expected hard violation for missing-note, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -2050,7 +1500,6 @@ mod tests {
     #[test]
     fn audit_vault_orphan_atomic_is_soft_warning() {
         let tmp = TempDir::new().unwrap();
-        // Atomic note not embedded by any index → orphan warning.
         write(tmp.path(), "_synthetic/cs/sorting.md", csnotes_note());
         let result = audit_vault(
             tmp.path(),
@@ -2060,12 +1509,10 @@ mod tests {
         .unwrap();
         assert!(
             result.soft_warnings.iter().any(|w| w.contains("orphan")),
-            "expected orphan warning, got: {:?}",
+            "{:?}",
             result.soft_warnings
         );
     }
-
-    // ── invariant_suite caller tests ──────────────────────────────────────────
 
     #[test]
     fn invariant_suite_clean_when_no_synthetic_dir() {
@@ -2073,12 +1520,7 @@ mod tests {
         let report = make_report(vec![]);
         let manifest = make_empty_manifest(tmp.path());
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
-        // Both check_links_resolve and check_orphan_atomics guard on dir existence.
-        assert!(
-            result.is_clean(),
-            "expected clean result, got: {:?}",
-            result
-        );
+        assert!(result.is_clean(), "{:?}", result);
     }
 
     #[test]
@@ -2093,7 +1535,7 @@ mod tests {
                 .hard_violations
                 .iter()
                 .any(|v| v.contains("ghost-note")),
-            "expected hard violation for ghost-note, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -2107,7 +1549,7 @@ mod tests {
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         assert!(
             result.soft_warnings.iter().any(|w| w.contains("orphan")),
-            "expected orphan warning, got: {:?}",
+            "{:?}",
             result.soft_warnings
         );
     }
@@ -2115,8 +1557,6 @@ mod tests {
     #[test]
     fn invariant_suite_index_note_without_block_id_is_not_flagged() {
         let tmp = TempDir::new().unwrap();
-        // Index notes never carry block_id.  The block_id check in invariant_suite
-        // must be guarded by `fm.kind == NoteKind::Atomic`, not `!=`.
         write(
             tmp.path(),
             "_synthetic/cs/index.md",
@@ -2133,7 +1573,7 @@ mod tests {
                 .hard_violations
                 .iter()
                 .any(|v| v.contains("block_id")),
-            "index note must not trigger block_id violation: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -2143,12 +1583,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "Sorting.md", "# Sorting\n");
         let stems = collect_note_stems(tmp.path());
-        // collect_note_stems lowercases everything so case-insensitive lookups work.
         assert!(stems.contains("sorting"));
         assert!(!stems.contains("mergesort"));
     }
-
-    // Helpers for the tests below -------------------------------------------------
 
     fn clean_note(block_id: &str) -> String {
         format!(
@@ -2181,8 +1618,6 @@ mod tests {
         })
     }
 
-    // ── duplicate block IDs ───────────────────────────────────────────────────
-
     #[test]
     fn invariant_suite_duplicate_block_ids_is_hard_violation() {
         let tmp = TempDir::new().unwrap();
@@ -2193,7 +1628,7 @@ mod tests {
         let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("dup-01")),
-            "expected duplicate block_id violation, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -2211,12 +1646,10 @@ mod tests {
         .unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("dup-01")),
-            "expected duplicate block_id violation, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
-
-    // ── audit_vault atomic anchor check ──────────────────────────────────────
 
     #[test]
     fn audit_vault_atomic_missing_anchor_is_hard_violation() {
@@ -2234,7 +1667,7 @@ mod tests {
         .unwrap();
         assert!(
             result.hard_violations.iter().any(|v| v.contains("sort-01")),
-            "expected hard violation for missing anchor, got: {:?}",
+            "{:?}",
             result.hard_violations
         );
     }
@@ -2268,8 +1701,6 @@ mod tests {
         );
     }
 
-    // ── check_block_id_anchor (via precondition_pass) ─────────────────────────
-
     #[test]
     fn precondition_create_note_block_id_anchor_present_passes() {
         let tmp = TempDir::new().unwrap();
@@ -2286,8 +1717,6 @@ mod tests {
         let err = precondition_pass(&report, tmp.path()).unwrap_err();
         assert!(err.to_string().contains("my-id"), "{err}");
     }
-
-    // ── check_embed_line_present (via precondition_pass) ─────────────────────
 
     #[test]
     fn precondition_embed_line_present_passes_when_embed_in_index() {
@@ -2309,8 +1738,6 @@ mod tests {
 
     #[test]
     fn precondition_embed_line_missing_from_index_passes() {
-        // embed_in no longer requires the embed block to be pre-written;
-        // execute_create_note auto-inserts it at execution time.
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
         write(tmp.path(), "index.md", "Some unrelated content.\n");
@@ -2329,7 +1756,6 @@ mod tests {
 
     #[test]
     fn precondition_embed_wrong_file_same_block_id_passes() {
-        // embed-line presence is no longer a precondition; auto-insertion handles it.
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "note.md", "# Content\n\n^my-id\n");
         write(tmp.path(), "index.md", "![[other-note#^my-id]]\n");
@@ -2346,401 +1772,174 @@ mod tests {
         assert!(precondition_pass(&report, tmp.path()).is_ok());
     }
 
-    // ── collect_fixes / apply_fixes ───────────────────────────────────────────
-
     #[test]
-    fn collect_fixes_returns_empty_when_no_synthetic_dir() {
-        let tmp = TempDir::new().unwrap();
-        let manifest = make_empty_manifest(tmp.path());
-        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
-        assert!(fixes.is_empty());
-    }
-
-    #[test]
-    fn collect_fixes_returns_fix_for_atomic_missing_anchor() {
+    fn collect_note_stems_includes_relative_path() {
         let tmp = TempDir::new().unwrap();
         write(
             tmp.path(),
-            "_synthetic/cs/sorting.md",
-            &note_missing_anchor("sort-01"),
+            "java/java-boxed-primitives.md",
+            "# Java Boxed Primitives\n",
         );
-        let manifest = make_empty_manifest(tmp.path());
-        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
-        assert_eq!(
-            fixes.len(),
-            1,
-            "expected one fix, got: {:?}",
-            fixes.iter().map(|f| &f.description).collect::<Vec<_>>()
-        );
-        assert!(
-            fixes[0].description.contains("sort-01"),
-            "{}",
-            fixes[0].description
-        );
+        let stems = collect_note_stems(tmp.path());
+        assert!(stems.contains("java-boxed-primitives"), "{:?}", stems);
+        assert!(stems.contains("java/java-boxed-primitives"), "{:?}", stems);
     }
 
     #[test]
-    fn collect_fixes_returns_no_fix_when_anchor_present() {
+    fn collect_note_stems_rel_path_is_lowercased() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "Java/Java-Boxed-Primitives.md", "body\n");
+        let stems = collect_note_stems(tmp.path());
+        assert!(stems.contains("java-boxed-primitives"));
+        assert!(stems.contains("java/java-boxed-primitives"));
+        assert!(!stems.contains("Java-Boxed-Primitives"));
+        assert!(!stems.contains("Java/Java-Boxed-Primitives"));
+    }
+
+    #[test]
+    fn check_links_resolve_accepts_topic_prefixed_wikilink() {
         let tmp = TempDir::new().unwrap();
         write(
             tmp.path(),
-            "_synthetic/cs/sorting.md",
-            &clean_note("sort-01"),
+            "java/java-boxed-primitives.md",
+            "# Java Boxed Primitives\n",
         );
-        let manifest = make_empty_manifest(tmp.path());
-        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
-        assert!(
-            fixes.is_empty(),
-            "no fix needed for note with anchor present"
-        );
-    }
-
-    #[test]
-    fn apply_fixes_appends_anchor_and_reports_count() {
-        let tmp = TempDir::new().unwrap();
-        let note_path = tmp.path().join("note.md");
-        std::fs::write(&note_path, "Content.\n").unwrap();
-        let fixes = vec![FixItem {
-            description: "test fix".into(),
-            action: FixAction::AppendAnchor {
-                path: note_path.clone(),
-                block_id: "sort-01".into(),
-            },
-        }];
-        let count = apply_fixes(&fixes).unwrap();
-        assert_eq!(count, 1);
-        let content = std::fs::read_to_string(&note_path).unwrap();
-        assert!(
-            content.contains("^sort-01"),
-            "anchor not appended:\n{content}"
-        );
-    }
-
-    #[test]
-    fn apply_fixes_counts_all_applied() {
-        let tmp = TempDir::new().unwrap();
-        let path_a = tmp.path().join("a.md");
-        let path_b = tmp.path().join("b.md");
-        std::fs::write(&path_a, "Content A.\n").unwrap();
-        std::fs::write(&path_b, "Content B.\n").unwrap();
-        let fixes = vec![
-            FixItem {
-                description: "fix a".into(),
-                action: FixAction::AppendAnchor {
-                    path: path_a.clone(),
-                    block_id: "id-a".into(),
-                },
-            },
-            FixItem {
-                description: "fix b".into(),
-                action: FixAction::AppendAnchor {
-                    path: path_b.clone(),
-                    block_id: "id-b".into(),
-                },
-            },
-        ];
-        let count = apply_fixes(&fixes).unwrap();
-        assert_eq!(count, 2);
-        assert!(std::fs::read_to_string(&path_a).unwrap().contains("^id-a"));
-        assert!(std::fs::read_to_string(&path_b).unwrap().contains("^id-b"));
-    }
-
-    // ── backfill_sources (collect_fixes + apply_fixes) ───────────────────────
-
-    fn note_with_source_link(block_id: &str, link: &str) -> String {
-        format!(
-            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
-             block_id: {block_id}\ncontributing_sessions: []\ncontributing_sources: []\n\
-             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-             ---\nSee [[{link}]] for details.\n\n^{block_id}\n"
-        )
-    }
-
-    fn manifest_with_source(vault_root: &Path, source_id: &str) -> Manifest {
-        use crate::manifest::{SourceEntry, SourceKind, SourceStatus};
-        let mut m = make_empty_manifest(vault_root);
-        m.sources.insert(
-            source_id.to_string(),
-            SourceEntry {
-                path: format!("sources/{}.md", source_id),
-                kind: SourceKind::Textbook,
-                status: SourceStatus::Unprocessed,
-                last_processed_at: None,
-                heading_scheme: vec![],
-                topics_updated: vec![],
-                summary: None,
-                tags: vec![],
-                courses: vec![],
-            },
-        );
-        m
-    }
-
-    #[test]
-    fn collect_fixes_detects_missing_source_credit() {
-        let tmp = TempDir::new().unwrap();
         write(
             tmp.path(),
-            "_synthetic/cs/sorting.md",
-            &note_with_source_link("sort-01", "Textbooks/SICP/Chapter-05"),
+            "java/index.md",
+            "See [[java/java-boxed-primitives]].\n",
         );
-        let manifest = manifest_with_source(tmp.path(), "Textbooks/SICP/Chapter-05");
-        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
-        assert_eq!(
-            fixes.len(),
-            1,
-            "expected one backfill fix, got: {:?}",
-            fixes.iter().map(|f| &f.description).collect::<Vec<_>>()
-        );
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
         assert!(
-            fixes[0].description.contains("Textbooks/SICP/Chapter-05"),
-            "{}",
-            fixes[0].description
-        );
-    }
-
-    #[test]
-    fn collect_fixes_no_fix_when_source_already_credited() {
-        let tmp = TempDir::new().unwrap();
-        // Note that already has the source in contributing_sources.
-        let content = format!(
-            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
-             block_id: sort-01\ncontributing_sessions: []\n\
-             contributing_sources:\n  - source_id: Textbooks/SICP/Chapter-05\n    relationship: introduced\n\
-             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-             ---\nSee [[Textbooks/SICP/Chapter-05]] for details.\n\n^sort-01\n"
-        );
-        write(tmp.path(), "_synthetic/cs/sorting.md", &content);
-        let manifest = manifest_with_source(tmp.path(), "Textbooks/SICP/Chapter-05");
-        let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();
-        assert!(
-            fixes.is_empty(),
-            "no fix needed when source already credited: {:?}",
-            fixes.iter().map(|f| &f.description).collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn apply_fixes_backfill_adds_source_and_preserves_last_updated() {
-        let tmp = TempDir::new().unwrap();
-        let note_path = tmp.path().join("note.md");
-        std::fs::write(
-            &note_path,
-            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
-             block_id: sort-01\ncontributing_sessions: []\ncontributing_sources: []\n\
-             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-             ---\nSee [[Textbooks/SICP/Chapter-05]].\n\n^sort-01\n",
-        )
-        .unwrap();
-
-        let fixes = vec![FixItem {
-            description: "backfill test".into(),
-            action: FixAction::BackfillSources {
-                path: note_path.clone(),
-                sources: vec![crate::manifest::SourceContrib {
-                    source_id: "Textbooks/SICP/Chapter-05".into(),
-                    relationship: crate::manifest::Relationship::Introduced,
-                }],
-            },
-        }];
-        let count = apply_fixes(&fixes).unwrap();
-        assert_eq!(count, 1);
-
-        let content = std::fs::read_to_string(&note_path).unwrap();
-        assert!(
-            content.contains("Textbooks/SICP/Chapter-05"),
-            "source not written to frontmatter:\n{content}"
-        );
-        // last_updated must not change (body was not touched).
-        assert!(
-            content.contains("last_updated: \"2026-01-01T00:00:00Z\""),
-            "last_updated should be unchanged:\n{content}"
-        );
-    }
-
-    // ── reindex ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn reindex_collects_atomic_notes_for_topic() {
-        let tmp = TempDir::new().unwrap();
-        write(
-            tmp.path(),
-            "_synthetic/cs/sorting.md",
-            &clean_note("sort-01"),
-        );
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest
-            .topics
-            .get("cs")
-            .expect("cs topic should exist after reindex");
-        assert_eq!(topic.atomic_notes.len(), 1);
-        assert!(
-            topic.atomic_notes[0].contains("sorting.md"),
+            result.hard_violations.is_empty(),
             "{:?}",
-            topic.atomic_notes
-        );
-    }
-
-    // ── reindex contributing session deduplication ────────────────────────────
-
-    fn note_with_contrib(block_id: &str, course: &str, date: &str) -> String {
-        format!(
-            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
-             block_id: {block_id}\n\
-             contributing_sessions:\n- course: {course}\n  date: \"{date}\"\n  relationship: introduced\n\
-             contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
-             last_updated: \"2026-01-01T00:00:00Z\"\n---\nContent.\n\n^{block_id}\n"
-        )
-    }
-
-    #[test]
-    fn reindex_deduplicates_identical_contributing_sessions() {
-        let tmp = TempDir::new().unwrap();
-        // Two notes both carrying the same (course, date) contrib — must appear once.
-        write(
-            tmp.path(),
-            "_synthetic/cs/note-a.md",
-            &note_with_contrib("id-a", "CS101", "2026-01-10"),
-        );
-        write(
-            tmp.path(),
-            "_synthetic/cs/note-b.md",
-            &note_with_contrib("id-b", "CS101", "2026-01-10"),
-        );
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist");
-        assert_eq!(
-            topic.contributing_sessions.len(),
-            1,
-            "identical session must appear only once: {:?}",
-            topic.contributing_sessions
+            result.hard_violations
         );
     }
 
     #[test]
-    fn reindex_keeps_distinct_contributing_sessions_by_date() {
+    fn check_links_resolve_accepts_mixed_case_topic_prefixed_wikilink() {
         let tmp = TempDir::new().unwrap();
-        // Same course, different dates — both must be kept.
-        // If the dedup predicate used `||` instead of `&&`, the date-only
-        // difference would be ignored and one entry would be dropped.
         write(
             tmp.path(),
-            "_synthetic/cs/note-a.md",
-            &note_with_contrib("id-a", "CS101", "2026-01-10"),
+            "java/java-boxed-primitives.md",
+            "# Java Boxed Primitives\n",
         );
         write(
             tmp.path(),
-            "_synthetic/cs/note-b.md",
-            &note_with_contrib("id-b", "CS101", "2026-01-17"),
+            "java/index.md",
+            "See [[Java/Java-Boxed-Primitives]].\n",
         );
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist");
-        assert_eq!(
-            topic.contributing_sessions.len(),
-            2,
-            "sessions with same course but different date must both be kept: {:?}",
-            topic.contributing_sessions
-        );
-    }
-
-    // ── reindex pending_sessions ──────────────────────────────────────────────
-
-    fn write_manifest_with_session(
-        vault_root: &Path,
-        session_id: &str,
-        processed_at: Option<DateTime<Utc>>,
-        topics_updated: Vec<String>,
-    ) {
-        let mut m = make_empty_manifest(vault_root);
-        m.sessions.insert(
-            session_id.to_string(),
-            SessionEntry {
-                date: chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap(),
-                course: "CS101".into(),
-                filename_format: "{course}-{mm}-{dd}".into(),
-                raw_note: "notes/cs101-01-10.md".into(),
-                recording_exports: vec![],
-                artifacts: vec![],
-                recording_missing: false,
-                status: SessionStatus::Processed,
-                processed_at,
-                topics_updated,
-            },
-        );
-        m.save(vault_root).unwrap();
-    }
-
-    #[test]
-    fn reindex_pending_sessions_includes_post_topic_session() {
-        let tmp = TempDir::new().unwrap();
-        // Note last_updated Jan 01; session processed Jun 01 (after).  Session
-        // lists "cs" → must appear in pending_sessions.
-        write(
-            tmp.path(),
-            "_synthetic/cs/sorting.md",
-            &clean_note("sort-01"),
-        );
-        let processed = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
-        write_manifest_with_session(tmp.path(), "sess-1", Some(processed), vec!["cs".into()]);
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        let mut result = AuditResult::default();
+        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
         assert!(
-            topic.pending_sessions.contains(&"sess-1".to_string()),
-            "session processed after last_updated must be pending: {:?}",
-            topic.pending_sessions
+            result.hard_violations.is_empty(),
+            "{:?}",
+            result.hard_violations
         );
     }
 
     #[test]
-    fn reindex_pending_sessions_excludes_pre_topic_session() {
+    fn collect_vault_stems_excludes_specified_dirs() {
         let tmp = TempDir::new().unwrap();
-        // Note last_updated Jun 01; session processed Jan 01 (before).
-        // Must NOT be in pending_sessions.
-        let late_note = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Late\n\
-                         block_id: late-01\ncontributing_sessions: []\ncontributing_sources: []\n\
-                         created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-06-01T00:00:00Z\"\n\
-                         ---\nContent.\n\n^late-01\n";
-        write(tmp.path(), "_synthetic/cs/late.md", late_note);
-        let processed = "2026-01-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
-        write_manifest_with_session(tmp.path(), "old-sess", Some(processed), vec!["cs".into()]);
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist");
-        assert!(
-            !topic.pending_sessions.contains(&"old-sess".to_string()),
-            "session processed before last_updated must not be pending: {:?}",
-            topic.pending_sessions
-        );
-    }
-
-    #[test]
-    fn reindex_pending_sessions_excludes_session_not_for_topic() {
-        let tmp = TempDir::new().unwrap();
-        // Session processed after the topic's last_updated, but topics_updated
-        // lists a different topic.  Must NOT appear in cs's pending_sessions.
+        write(tmp.path(), "_synthetic/topic/note.md", "body\n");
+        write(tmp.path(), "_synthetic_broken_abc/topic/note.md", "body\n");
         write(
             tmp.path(),
-            "_synthetic/cs/sorting.md",
-            &clean_note("sort-01"),
+            "AI-Conversations/Claude/Java-boxed-primitives.md",
+            "body\n",
         );
-        let processed = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
-        write_manifest_with_session(
-            tmp.path(),
-            "wrong-topic-sess",
-            Some(processed),
-            vec!["other-topic".into()],
-        );
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist");
+        let stems = collect_vault_stems(tmp.path(), &["_synthetic"], &[]);
+        assert!(stems.contains("java-boxed-primitives"), "{:?}", stems);
         assert!(
-            !topic
-                .pending_sessions
-                .contains(&"wrong-topic-sess".to_string()),
-            "session for different topic must not appear in cs pending_sessions: {:?}",
-            topic.pending_sessions
+            stems.contains("ai-conversations/claude/java-boxed-primitives"),
+            "{:?}",
+            stems
+        );
+        assert!(!stems.contains("note"), "{:?}", stems);
+    }
+
+    #[test]
+    fn collect_vault_stems_respects_ignore_names_at_any_depth() {
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "AI-Conversations/Claude/java-notes.md",
+            "body\n",
+        );
+        write(tmp.path(), "sources/_tools/generator.md", "body\n");
+        write(tmp.path(), "sources/SICP/_exercises/ch01.md", "body\n");
+        let stems = collect_vault_stems(tmp.path(), &[], &["_tools", "_exercises"]);
+        assert!(stems.contains("java-notes"));
+        assert!(!stems.contains("generator"), "{:?}", stems);
+        assert!(!stems.contains("ch01"), "{:?}", stems);
+    }
+
+    #[test]
+    fn load_vault_stems_returns_empty_when_file_absent() {
+        let tmp = TempDir::new().unwrap();
+        let stems = load_vault_stems(tmp.path());
+        assert!(stems.is_empty());
+    }
+
+    #[test]
+    fn load_vault_stems_round_trips_json() {
+        let tmp = TempDir::new().unwrap();
+        let data = serde_json::to_string(&vec![
+            "java-boxed-primitives",
+            "ai-conversations/claude/java-boxed-primitives",
+        ])
+        .unwrap();
+        std::fs::write(tmp.path().join("_vault_stems.json"), data).unwrap();
+        let stems = load_vault_stems(tmp.path());
+        assert!(stems.contains("java-boxed-primitives"));
+        assert!(stems.contains("ai-conversations/claude/java-boxed-primitives"));
+    }
+
+    #[test]
+    fn check_links_resolve_accepts_cross_vault_link_via_extra_stems() {
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/java/overview.md",
+            "See [[Java-boxed-primitives]] for details.\n",
+        );
+        let mut extra = std::collections::HashSet::new();
+        extra.insert("java-boxed-primitives".to_string());
+        extra.insert("ai-conversations/claude/java-boxed-primitives".to_string());
+        let synthetic_root = tmp.path().join("_synthetic");
+        let mut result = AuditResult::default();
+        check_links_resolve(&synthetic_root, &synthetic_root, &extra, &mut result).unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "{:?}",
+            result.hard_violations
         );
     }
 
-    // ── sidecar nudge (audit_vault) ───────────────────────────────────────────
+    #[test]
+    fn check_workspace_accepts_cross_vault_link_when_vault_stems_file_present() {
+        let tmp = TempDir::new().unwrap();
+        let note = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: java\ntitle: Overview\n\
+                    block_id: java-overview\ncontributing_sessions: []\n\
+                    contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
+                    last_updated: \"2026-01-01T00:00:00Z\"\n---\n\
+                    See [[Java-boxed-primitives]].\n\n^java-overview\n";
+        write(tmp.path(), "_synthetic/java/overview.md", note);
+        let stems = serde_json::to_string(&vec![
+            "java-boxed-primitives",
+            "ai-conversations/claude/java-boxed-primitives",
+        ])
+        .unwrap();
+        std::fs::write(tmp.path().join("_vault_stems.json"), stems).unwrap();
+        let result = check_workspace(tmp.path(), "_synthetic").unwrap();
+        assert!(
+            result.hard_violations.is_empty(),
+            "{:?}",
+            result.hard_violations
+        );
+    }
 
     fn make_ai_source_manifest(vault_root: &Path, source_id: &str, path: &str) -> Manifest {
         use crate::manifest::{SourceEntry, SourceStatus};
@@ -2765,10 +1964,8 @@ mod tests {
     #[test]
     fn audit_vault_warns_when_long_ai_conversation_has_no_sidecar() {
         let tmp = TempDir::new().unwrap();
-        // Write a long AI conversation (well over the 4 500-word threshold).
         let body = "word ".repeat(4_600);
         write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
-        // No chat.json alongside it.
         let manifest = make_ai_source_manifest(
             tmp.path(),
             "AI-Conversations/Gemini/chat",
@@ -2780,7 +1977,7 @@ mod tests {
                 .soft_warnings
                 .iter()
                 .any(|w| w.contains("AI-Conversations/Gemini/chat")),
-            "expected sidecar nudge warning, got: {:?}",
+            "{:?}",
             result.soft_warnings
         );
     }
@@ -2790,7 +1987,6 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let body = "word ".repeat(2_100);
         write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
-        // Sidecar exists — no warning expected.
         write(
             tmp.path(),
             "sources/AI-Conversations/Gemini/chat.json",
@@ -2804,7 +2000,7 @@ mod tests {
         let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(
             !result.soft_warnings.iter().any(|w| w.contains("sidecar")),
-            "no sidecar warning expected when .json present: {:?}",
+            "{:?}",
             result.soft_warnings
         );
     }
@@ -2812,7 +2008,6 @@ mod tests {
     #[test]
     fn audit_vault_no_sidecar_warn_for_short_ai_conversation() {
         let tmp = TempDir::new().unwrap();
-        // Short conversation — under threshold, no nudge.
         let body = "word ".repeat(500);
         write(tmp.path(), "sources/AI-Conversations/Gemini/chat.md", &body);
         let manifest = make_ai_source_manifest(
@@ -2823,413 +2018,8 @@ mod tests {
         let result = audit_vault(tmp.path(), &make_vault_config(), &manifest).unwrap();
         assert!(
             !result.soft_warnings.iter().any(|w| w.contains("sidecar")),
-            "no sidecar warning expected for short conversation: {:?}",
+            "{:?}",
             result.soft_warnings
-        );
-    }
-
-    #[test]
-    fn reindex_tracks_last_updated_as_max() {
-        let tmp = TempDir::new().unwrap();
-        // Two notes in the same topic with different last_updated timestamps.
-        let early = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Early\n\
-                     block_id: early-01\ncontributing_sessions: []\ncontributing_sources: []\n\
-                     created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-                     ---\nContent.\n\n^early-01\n";
-        let late = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Late\n\
-                     block_id: late-01\ncontributing_sessions: []\ncontributing_sources: []\n\
-                     created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-06-01T00:00:00Z\"\n\
-                     ---\nContent.\n\n^late-01\n";
-        write(tmp.path(), "_synthetic/cs/early.md", early);
-        write(tmp.path(), "_synthetic/cs/late.md", late);
-        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
-        let topic = manifest.topics.get("cs").expect("cs topic should exist");
-        // last_updated must be the later of the two timestamps.
-        assert_eq!(
-            topic.last_updated.format("%Y-%m-%d").to_string(),
-            "2026-06-01",
-            "expected max last_updated, got: {}",
-            topic.last_updated
-        );
-    }
-
-    // ── collect_note_stems: topic-path and case-insensitive coverage ──────────
-
-    #[test]
-    fn collect_note_stems_includes_relative_path() {
-        // A note nested in a topic subdirectory should appear under BOTH its
-        // bare stem AND its root-relative path (without .md) so that both
-        // [[slug]] and [[topic/slug]] wikilink styles resolve.
-        let tmp = TempDir::new().unwrap();
-        write(
-            tmp.path(),
-            "java/java-boxed-primitives.md",
-            "# Java Boxed Primitives\n",
-        );
-        let stems = collect_note_stems(tmp.path());
-        assert!(
-            stems.contains("java-boxed-primitives"),
-            "bare stem must be present; got: {:?}",
-            stems
-        );
-        assert!(
-            stems.contains("java/java-boxed-primitives"),
-            "root-relative path must be present; got: {:?}",
-            stems
-        );
-    }
-
-    #[test]
-    fn collect_note_stems_rel_path_is_lowercased() {
-        // Mixed-case filename: both the stem and the relative path must be
-        // lowercased so lookups are always case-insensitive.
-        let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "Java/Java-Boxed-Primitives.md", "body\n");
-        let stems = collect_note_stems(tmp.path());
-        assert!(
-            stems.contains("java-boxed-primitives"),
-            "stem must be lowercased"
-        );
-        assert!(
-            stems.contains("java/java-boxed-primitives"),
-            "rel-path must be lowercased"
-        );
-        // Original-case forms must NOT appear — the whole point is normalisation.
-        assert!(!stems.contains("Java-Boxed-Primitives"));
-        assert!(!stems.contains("Java/Java-Boxed-Primitives"));
-    }
-
-    #[test]
-    fn check_links_resolve_accepts_topic_prefixed_wikilink() {
-        // A link written as [[topic/slug]] must resolve when the file lives at
-        // <root>/topic/slug.md — this is the format Claude naturally produces
-        // when working inside a topic-organised _synthetic directory.
-        let tmp = TempDir::new().unwrap();
-        write(
-            tmp.path(),
-            "java/java-boxed-primitives.md",
-            "# Java Boxed Primitives\n",
-        );
-        write(
-            tmp.path(),
-            "java/index.md",
-            "See [[java/java-boxed-primitives]].\n",
-        );
-        let mut result = AuditResult::default();
-        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
-        assert!(
-            result.hard_violations.is_empty(),
-            "topic-prefixed link should resolve: {:?}",
-            result.hard_violations
-        );
-    }
-
-    #[test]
-    fn check_links_resolve_accepts_mixed_case_topic_prefixed_wikilink() {
-        // [[Java/Java-Boxed-Primitives]] (capitalised) must resolve against
-        // java/java-boxed-primitives.md — case-insensitive on both sides.
-        let tmp = TempDir::new().unwrap();
-        write(
-            tmp.path(),
-            "java/java-boxed-primitives.md",
-            "# Java Boxed Primitives\n",
-        );
-        write(
-            tmp.path(),
-            "java/index.md",
-            "See [[Java/Java-Boxed-Primitives]].\n",
-        );
-        let mut result = AuditResult::default();
-        check_links_resolve(tmp.path(), tmp.path(), &Default::default(), &mut result).unwrap();
-        assert!(
-            result.hard_violations.is_empty(),
-            "mixed-case topic-prefixed link should resolve: {:?}",
-            result.hard_violations
-        );
-    }
-
-    // ── collect_vault_stems / load_vault_stems / cross-vault links ────────────
-
-    #[test]
-    fn collect_vault_stems_excludes_specified_dirs() {
-        let tmp = TempDir::new().unwrap();
-        // File inside excluded dir — must NOT appear in stems.
-        write(tmp.path(), "_synthetic/topic/note.md", "body\n");
-        // File inside _synthetic_broken_* — must NOT appear.
-        write(tmp.path(), "_synthetic_broken_abc/topic/note.md", "body\n");
-        // File outside excluded dirs — MUST appear.
-        write(
-            tmp.path(),
-            "AI-Conversations/Claude/Java-boxed-primitives.md",
-            "body\n",
-        );
-
-        let stems = collect_vault_stems(tmp.path(), &["_synthetic"], &[]);
-
-        // AI-Conversations file must be present in both forms.
-        assert!(
-            stems.contains("java-boxed-primitives"),
-            "bare stem should be present: {:?}",
-            stems
-        );
-        assert!(
-            stems.contains("ai-conversations/claude/java-boxed-primitives"),
-            "rel-path should be present: {:?}",
-            stems
-        );
-
-        // Excluded dir contents must not appear.
-        assert!(
-            !stems.contains("note"),
-            "_synthetic contents must be excluded: {:?}",
-            stems
-        );
-    }
-
-    #[test]
-    fn collect_vault_stems_respects_ignore_names_at_any_depth() {
-        // ignore_names (mirrors sources_ignore_dirs) should prune matching
-        // directory names wherever they appear in the tree, not just at depth 1.
-        let tmp = TempDir::new().unwrap();
-        // A normal file that should appear.
-        write(
-            tmp.path(),
-            "AI-Conversations/Claude/java-notes.md",
-            "body\n",
-        );
-        // Files inside an ignored subdir — at depth 2 and depth 3.
-        write(tmp.path(), "sources/_tools/generator.md", "body\n");
-        write(tmp.path(), "sources/SICP/_exercises/ch01.md", "body\n");
-
-        let stems = collect_vault_stems(tmp.path(), &[], &["_tools", "_exercises"]);
-
-        assert!(stems.contains("java-notes"), "normal file must appear");
-        assert!(
-            !stems.contains("generator"),
-            "_tools contents must be excluded: {:?}",
-            stems
-        );
-        assert!(
-            !stems.contains("ch01"),
-            "_exercises contents must be excluded: {:?}",
-            stems
-        );
-    }
-
-    #[test]
-    fn load_vault_stems_returns_empty_when_file_absent() {
-        let tmp = TempDir::new().unwrap();
-        let stems = load_vault_stems(tmp.path());
-        assert!(stems.is_empty());
-    }
-
-    #[test]
-    fn load_vault_stems_round_trips_json() {
-        let tmp = TempDir::new().unwrap();
-        let data = serde_json::to_string(&vec![
-            "java-boxed-primitives",
-            "ai-conversations/claude/java-boxed-primitives",
-        ])
-        .unwrap();
-        std::fs::write(tmp.path().join("_vault_stems.json"), data).unwrap();
-
-        let stems = load_vault_stems(tmp.path());
-        assert!(stems.contains("java-boxed-primitives"));
-        assert!(stems.contains("ai-conversations/claude/java-boxed-primitives"));
-    }
-
-    #[test]
-    fn check_links_resolve_accepts_cross_vault_link_via_extra_stems() {
-        // Simulates a synthetic note linking to an AI-Conversations file that
-        // lives outside _synthetic/ — the link should resolve when vault stems
-        // are provided as `extra`.
-        let tmp = TempDir::new().unwrap();
-        write(
-            tmp.path(),
-            "_synthetic/java/overview.md",
-            "See [[Java-boxed-primitives]] for details.\n",
-        );
-        // The target file lives outside _synthetic/ — only present in extra.
-        let mut extra = std::collections::HashSet::new();
-        extra.insert("java-boxed-primitives".to_string());
-        extra.insert("ai-conversations/claude/java-boxed-primitives".to_string());
-
-        let synthetic_root = tmp.path().join("_synthetic");
-        let mut result = AuditResult::default();
-        check_links_resolve(&synthetic_root, &synthetic_root, &extra, &mut result).unwrap();
-        assert!(
-            result.hard_violations.is_empty(),
-            "cross-vault link should resolve with extra stems: {:?}",
-            result.hard_violations
-        );
-    }
-
-    #[test]
-    fn check_workspace_accepts_cross_vault_link_when_vault_stems_file_present() {
-        // End-to-end: workspace has _vault_stems.json; check_workspace should
-        // not flag a link to a file that lives outside _synthetic/.
-        let tmp = TempDir::new().unwrap();
-
-        // Minimal atomic note with correct frontmatter and anchor.
-        let note = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: java\ntitle: Overview\n\
-                    block_id: java-overview\ncontributing_sessions: []\n\
-                    contributing_sources: []\ncreated: \"2026-01-01T00:00:00Z\"\n\
-                    last_updated: \"2026-01-01T00:00:00Z\"\n---\n\
-                    See [[Java-boxed-primitives]].\n\n^java-overview\n";
-        write(tmp.path(), "_synthetic/java/overview.md", note);
-
-        // Write vault stems file listing the cross-vault target.
-        let stems = serde_json::to_string(&vec![
-            "java-boxed-primitives",
-            "ai-conversations/claude/java-boxed-primitives",
-        ])
-        .unwrap();
-        std::fs::write(tmp.path().join("_vault_stems.json"), stems).unwrap();
-
-        let result = check_workspace(tmp.path(), "_synthetic").unwrap();
-        assert!(
-            result.hard_violations.is_empty(),
-            "cross-vault link must pass when target appears in _vault_stems.json: {:?}",
-            result.hard_violations
-        );
-    }
-
-    // ── manifest_discrepancies ────────────────────────────────────────────────
-
-    fn disc_atomic_note(topic: &str, block_id: &str) -> String {
-        format!(
-            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: {topic}\ntitle: Test\n\
-             block_id: {block_id}\ncontributing_sessions: []\ncontributing_sources: []\n\
-             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-             ---\nContent.\n\n^{block_id}\n"
-        )
-    }
-
-    fn disc_index_note(topic: &str) -> String {
-        format!(
-            "---\ncsnotes_schema: 1\nkind: index\ntopic: {topic}\ntitle: {topic}\n\
-             contributing_sessions: []\ncontributing_sources: []\n\
-             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
-             ---\n"
-        )
-    }
-
-    #[test]
-    fn discrepancies_empty_when_manifest_matches_disk() {
-        let tmp = TempDir::new().unwrap();
-        let vault = tmp.path();
-        let config = make_vault_config();
-
-        write(vault, "_synthetic/java/java.md", &disc_index_note("java"));
-        write(
-            vault,
-            "_synthetic/java/java-generics.md",
-            &disc_atomic_note("java", "java-gen-01"),
-        );
-
-        let mut manifest = make_empty_manifest(vault);
-        rebuild_topics(vault, "_synthetic", &mut manifest).unwrap();
-
-        let result = manifest_discrepancies(vault, &config, &manifest).unwrap();
-        assert!(
-            result.is_empty(),
-            "expected no discrepancies, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn discrepancies_detects_stale_topic_in_manifest() {
-        let tmp = TempDir::new().unwrap();
-        let vault = tmp.path();
-        let config = make_vault_config();
-
-        write(vault, "_synthetic/java/java.md", &disc_index_note("java"));
-        let mut manifest = make_empty_manifest(vault);
-        rebuild_topics(vault, "_synthetic", &mut manifest).unwrap();
-        std::fs::remove_dir_all(vault.join("_synthetic/java")).unwrap();
-
-        let result = manifest_discrepancies(vault, &config, &manifest).unwrap();
-        assert!(
-            result
-                .iter()
-                .any(|d| d.kind == DiscrepancyKind::StaleTopicInManifest && d.topic == "java"),
-            "expected stale topic, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn discrepancies_detects_untracked_topic_on_disk() {
-        let tmp = TempDir::new().unwrap();
-        let vault = tmp.path();
-        let config = make_vault_config();
-
-        write(vault, "_synthetic/java/java.md", &disc_index_note("java"));
-        let manifest = make_empty_manifest(vault);
-
-        let result = manifest_discrepancies(vault, &config, &manifest).unwrap();
-        assert!(
-            result
-                .iter()
-                .any(|d| d.kind == DiscrepancyKind::UntrackedTopicOnDisk && d.topic == "java"),
-            "expected untracked topic, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn discrepancies_detects_stale_atomic_in_manifest() {
-        let tmp = TempDir::new().unwrap();
-        let vault = tmp.path();
-        let config = make_vault_config();
-
-        write(vault, "_synthetic/java/java.md", &disc_index_note("java"));
-        write(
-            vault,
-            "_synthetic/java/java-generics.md",
-            &disc_atomic_note("java", "java-gen-01"),
-        );
-
-        let mut manifest = make_empty_manifest(vault);
-        rebuild_topics(vault, "_synthetic", &mut manifest).unwrap();
-        std::fs::remove_file(vault.join("_synthetic/java/java-generics.md")).unwrap();
-
-        let result = manifest_discrepancies(vault, &config, &manifest).unwrap();
-        assert!(
-            result
-                .iter()
-                .any(|d| d.kind == DiscrepancyKind::StaleAtomicInManifest
-                    && d.path.contains("java-generics")),
-            "expected stale atomic, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn discrepancies_detects_untracked_atomic_on_disk() {
-        let tmp = TempDir::new().unwrap();
-        let vault = tmp.path();
-        let config = make_vault_config();
-
-        write(vault, "_synthetic/java/java.md", &disc_index_note("java"));
-        let mut manifest = make_empty_manifest(vault);
-        rebuild_topics(vault, "_synthetic", &mut manifest).unwrap();
-
-        write(
-            vault,
-            "_synthetic/java/java-generics.md",
-            &disc_atomic_note("java", "java-gen-01"),
-        );
-
-        let result = manifest_discrepancies(vault, &config, &manifest).unwrap();
-        assert!(
-            result
-                .iter()
-                .any(|d| d.kind == DiscrepancyKind::UntrackedAtomicOnDisk
-                    && d.path.contains("java-generics")),
-            "expected untracked atomic, got: {:?}",
-            result
         );
     }
 }

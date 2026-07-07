@@ -825,17 +825,22 @@ fn scan_sources_dir(
             // Already registered: refresh informational metadata while preserving
             // operational state (status, last_processed_at, topics_updated).
             // kind is refreshed from frontmatter so adding source_type later takes effect.
-            // Exception: promote to Staged when frontmatter says so and the source
-            // hasn't been worked on yet — don't downgrade InProgress or Processed.
+            // Staged is the only frontmatter-driven status: promote Unprocessed→Staged
+            // when the hint appears, and demote Staged→Unprocessed when it disappears.
+            // Never touch Processed or InProgress — those are set by the pipeline.
             entry.summary = meta.summary;
             entry.tags = meta.tags;
             entry.courses = meta.courses;
             entry.heading_scheme = heading_scheme;
             entry.kind = kind;
-            if meta.status_hint == Some(SourceStatus::Staged)
-                && entry.status == SourceStatus::Unprocessed
-            {
-                entry.status = SourceStatus::Staged;
+            match (meta.status_hint, entry.status) {
+                (Some(SourceStatus::Staged), SourceStatus::Unprocessed) => {
+                    entry.status = SourceStatus::Staged;
+                }
+                (hint, SourceStatus::Staged) if hint != Some(SourceStatus::Staged) => {
+                    entry.status = SourceStatus::Unprocessed;
+                }
+                _ => {}
             }
             continue;
         }
@@ -910,7 +915,7 @@ fn extract_source_meta(content: &str) -> SourceMeta {
 /// Returns `None` for unrecognised values (directory-inferred kind is kept).
 fn kind_from_source_type(s: &str) -> Option<SourceKind> {
     match s {
-        "highlights" | "notes" => Some(SourceKind::PersonalNotes),
+        "highlights" | "notes" | "summary" => Some(SourceKind::PersonalNotes),
         _ => None,
     }
 }
@@ -1704,6 +1709,35 @@ mod tests {
     }
 
     #[test]
+    fn scan_sources_source_type_summary_sets_personal_notes() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+        write_file(
+            &dir,
+            "Chapter-03-notes.md",
+            "---\nsource_type: summary\n---\n\n# My summary of ch3\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/Chapter-03-notes"].kind,
+            crate::manifest::SourceKind::PersonalNotes,
+            "source_type: summary should set PersonalNotes"
+        );
+    }
+
+    #[test]
     fn scan_sources_no_source_type_keeps_directory_inferred_kind() {
         let tmp = TempDir::new().unwrap();
         let sources_dir = tmp.path().join("sources");
@@ -1896,6 +1930,51 @@ mod tests {
             manifest.sources["Textbooks/Zybooks/Chapter-07"].status,
             SourceStatus::Processed,
             "Processed should not be downgraded to Staged by frontmatter"
+        );
+    }
+
+    #[test]
+    fn scan_sources_staged_demoted_when_frontmatter_status_removed() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let chapter_dir = sources_dir.join("Textbooks").join("Zybooks");
+
+        // First scan: status: incomplete → Staged.
+        write_file(
+            &chapter_dir,
+            "Chapter-07.md",
+            "---\nstatus: incomplete\n---\n\n# Chapter 7\n",
+        );
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Zybooks/Chapter-07"].status,
+            SourceStatus::Staged
+        );
+
+        // User removes the status field — source should revert to Unprocessed.
+        write_file(&chapter_dir, "Chapter-07.md", "# Chapter 7\n");
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Zybooks/Chapter-07"].status,
+            SourceStatus::Unprocessed,
+            "removing status: incomplete should demote Staged back to Unprocessed"
         );
     }
 

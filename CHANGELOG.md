@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- add 'summary' as source_type value mapping to PersonalNotes (L50)
 - audit clean output: show topic/atomic summary and open-session flag (L48)
 - pre-flight: warn on suspiciously-short session input files (L45)
 - Support extraction of non-md source files (e.g. PowerPoint slides) into markdown (#77)
@@ -61,6 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- reconcile: existing Staged source not demoted when frontmatter status removed (L49)
 - audit --show-discrepancies prints 'Vault is clean' even when discrepancies exist (L47)
 - commit: missing relink pass before invariant check breaks rename batches (L29)
 - merge_back: additive-only, old folders not deleted after rename_topic (L35)
