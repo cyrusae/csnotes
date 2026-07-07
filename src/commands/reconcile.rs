@@ -200,6 +200,7 @@ fn run_scan(
             manifest,
             config.scan_ai_conversations,
             &config.sources_ignore_dirs,
+            &config.active_courses,
             &mut new_sources,
         )?;
     }
@@ -686,6 +687,7 @@ fn scan_sources_dir(
     manifest: &mut Manifest,
     scan_ai_conversations: bool,
     ignore_dirs: &[String],
+    active_courses: &[String],
     new_sources: &mut Vec<String>,
 ) -> Result<()> {
     // Evict any already-registered sources whose ID path passes through an
@@ -775,8 +777,12 @@ fn scan_sources_dir(
         // Non-md extractable sources (PDF/PPTX/DOCX): register with empty
         // metadata.  Actual content extraction happens at workspace-assembly time.
         if is_extractable {
+            let inferred = infer_course_from_path(rel_to_sources, active_courses);
             if let Some(entry) = manifest.sources.get_mut(&source_id) {
                 entry.kind = kind;
+                if entry.courses.is_empty() {
+                    entry.courses = inferred.into_iter().collect();
+                }
             } else {
                 manifest.sources.insert(
                     source_id.clone(),
@@ -789,7 +795,7 @@ fn scan_sources_dir(
                         topics_updated: vec![],
                         summary: None,
                         tags: vec![],
-                        courses: vec![],
+                        courses: inferred.into_iter().collect(),
                     },
                 );
                 new_sources.push(source_id);
@@ -813,6 +819,15 @@ fn scan_sources_dir(
         // Extract summary, tags, courses, and optional hints from frontmatter.
         let meta = extract_source_meta(&content);
 
+        // Fall back to folder-inferred course when frontmatter has none.
+        let courses = if meta.courses.is_empty() {
+            infer_course_from_path(rel_to_sources, active_courses)
+                .into_iter()
+                .collect()
+        } else {
+            meta.courses
+        };
+
         // source_type frontmatter overrides the directory-inferred kind.
         let kind = meta.kind_hint.unwrap_or(kind);
 
@@ -832,7 +847,7 @@ fn scan_sources_dir(
             // Never touch Processed or InProgress — those are set by the pipeline.
             entry.summary = meta.summary;
             entry.tags = meta.tags;
-            entry.courses = meta.courses;
+            entry.courses = courses;
             entry.heading_scheme = heading_scheme;
             entry.kind = kind;
             match (meta.status_hint, entry.status) {
@@ -865,7 +880,7 @@ fn scan_sources_dir(
                 topics_updated: vec![],
                 summary: meta.summary,
                 tags: meta.tags,
-                courses: meta.courses,
+                courses,
             },
         );
         new_sources.push(source_id);
@@ -911,6 +926,32 @@ fn extract_source_meta(content: &str) -> SourceMeta {
         status_hint: meta.status,
         kind_hint: meta.source_type.as_deref().and_then(kind_from_source_type),
     }
+}
+
+/// Infer course from an intermediate folder component in the path.
+/// Checks each directory component after the kind folder (and before the
+/// filename) against `active_courses`, returning the first match.
+///
+/// Example: `WorkedExamples/ARIN5300/prob1.pdf` → `Some("ARIN5300")`
+fn infer_course_from_path(rel_to_sources: &Path, active_courses: &[String]) -> Option<String> {
+    if active_courses.is_empty() {
+        return None;
+    }
+    let components: Vec<&str> = rel_to_sources
+        .components()
+        .filter_map(|c| c.as_os_str().to_str())
+        .collect();
+    // Skip kind folder (index 0) and filename (last). Check intermediate dirs.
+    for component in components
+        .iter()
+        .skip(1)
+        .take(components.len().saturating_sub(2))
+    {
+        if active_courses.iter().any(|c| c == component) {
+            return Some((*component).to_string());
+        }
+    }
+    None
 }
 
 /// Map a `source_type` frontmatter string to a `SourceKind` refinement.
@@ -1344,6 +1385,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -1386,6 +1428,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -1414,6 +1457,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             false,
+            &[],
             &[],
             &mut new_sources,
         )
@@ -1444,6 +1488,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -1470,6 +1515,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut new_sources,
         )
@@ -1505,6 +1551,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -1536,6 +1583,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut new_sources,
         )
@@ -1571,6 +1619,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -1595,6 +1644,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut new_sources,
         )
@@ -1624,6 +1674,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut new_sources2,
         )
@@ -1672,6 +1723,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -1702,6 +1754,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -1730,6 +1783,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -1754,6 +1808,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut vec![],
         )
@@ -1781,6 +1836,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -1800,6 +1856,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut vec![],
         )
@@ -1827,6 +1884,7 @@ mod tests {
                 tmp.path(),
                 &mut manifest,
                 true,
+                &[],
                 &[],
                 &mut vec![],
             )
@@ -1857,6 +1915,7 @@ mod tests {
                 tmp.path(),
                 &mut manifest,
                 true,
+                &[],
                 &[],
                 &mut vec![],
             )
@@ -1893,6 +1952,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -1903,6 +1963,111 @@ mod tests {
         assert_eq!(
             manifest.sources["Textbooks/Gaddis/syllabus"].kind,
             crate::manifest::SourceKind::Syllabus,
+        );
+    }
+
+    #[test]
+    fn scan_sources_course_inferred_from_folder_for_extractable() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("WorkedExamples").join("ARIN5300");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("prob1.pdf"), b"%PDF-1.4").unwrap();
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &["ARIN5300".to_string(), "CPSC5001".to_string()],
+            &mut vec![],
+        )
+        .unwrap();
+
+        let entry = &manifest.sources["WorkedExamples/ARIN5300/prob1"];
+        assert_eq!(entry.kind, crate::manifest::SourceKind::WorkedExample);
+        assert_eq!(entry.courses, vec!["ARIN5300"]);
+    }
+
+    #[test]
+    fn scan_sources_course_inferred_from_folder_for_md_no_frontmatter() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("CPSC5001");
+        write_file(&dir, "Chapter-01.md", "# Chapter 1\n\nNo frontmatter.\n");
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &["CPSC5001".to_string()],
+            &mut vec![],
+        )
+        .unwrap();
+
+        let entry = &manifest.sources["Textbooks/CPSC5001/Chapter-01"];
+        assert_eq!(entry.courses, vec!["CPSC5001"]);
+    }
+
+    #[test]
+    fn scan_sources_frontmatter_courses_take_precedence_over_folder() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("CPSC5001");
+        write_file(
+            &dir,
+            "Chapter-01.md",
+            "---\ncourses: [CPSC5002]\n---\n\n# Chapter 1\n",
+        );
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &["CPSC5001".to_string(), "CPSC5002".to_string()],
+            &mut vec![],
+        )
+        .unwrap();
+
+        let entry = &manifest.sources["Textbooks/CPSC5001/Chapter-01"];
+        assert_eq!(
+            entry.courses,
+            vec!["CPSC5002"],
+            "explicit frontmatter courses should win over folder inference"
+        );
+    }
+
+    #[test]
+    fn scan_sources_no_course_inferred_when_folder_not_in_active_courses() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+        write_file(&dir, "Chapter-01.md", "# Chapter 1\n");
+
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            false,
+            &[],
+            &["CPSC5001".to_string()],
+            &mut vec![],
+        )
+        .unwrap();
+
+        let entry = &manifest.sources["Textbooks/Gaddis/Chapter-01"];
+        assert!(
+            entry.courses.is_empty(),
+            "publisher folder name should not be inferred as a course"
         );
     }
 
@@ -1926,6 +2091,7 @@ mod tests {
                 tmp.path(),
                 &mut manifest,
                 true,
+                &[],
                 &[],
                 &mut new_sources,
             )
@@ -1956,6 +2122,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -1975,6 +2142,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut vec![],
         )
@@ -2004,6 +2172,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -2021,6 +2190,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut vec![],
         )
@@ -2051,6 +2221,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut vec![],
         )
         .unwrap();
@@ -2066,6 +2237,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             true,
+            &[],
             &[],
             &mut vec![],
         )
@@ -2102,6 +2274,7 @@ mod tests {
             &mut manifest,
             true,
             &ignore,
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2144,6 +2317,7 @@ mod tests {
             &mut manifest,
             true,
             &ignore,
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2181,6 +2355,7 @@ mod tests {
             &mut manifest,
             true,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2198,6 +2373,7 @@ mod tests {
             &mut manifest,
             true,
             &ignore,
+            &[],
             &mut new_sources2,
         )
         .unwrap();
@@ -2330,6 +2506,7 @@ mod tests {
             &mut manifest,
             false,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2356,6 +2533,7 @@ mod tests {
             &mut manifest,
             false,
             &["sources".to_string()],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2562,6 +2740,7 @@ mod tests {
             &mut manifest,
             false,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2590,6 +2769,7 @@ mod tests {
             &mut manifest,
             false,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2613,6 +2793,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             false,
+            &[],
             &[],
             &mut new_sources,
         )
@@ -2642,6 +2823,7 @@ mod tests {
             &mut manifest,
             false,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2665,6 +2847,7 @@ mod tests {
             &mut manifest,
             false,
             &[],
+            &[],
             &mut new_sources,
         )
         .unwrap();
@@ -2676,6 +2859,7 @@ mod tests {
             tmp.path(),
             &mut manifest,
             false,
+            &[],
             &[],
             &mut new_sources,
         )
