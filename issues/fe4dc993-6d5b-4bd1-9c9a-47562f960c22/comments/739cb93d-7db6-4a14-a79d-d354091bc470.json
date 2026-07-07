@@ -1,0 +1,10 @@
+{
+  "uuid": "739cb93d-7db6-4a14-a79d-d354091bc470",
+  "issue_uuid": "fe4dc993-6d5b-4bd1-9c9a-47562f960c22",
+  "author": "3owj",
+  "content": "Folder inference (WorkedExamples/WorkedExample, Syllabi/Syllabus) and frontmatter source_type override (worked_example, syllabus) added to reconcile.rs. 3 new tests covering both paths.",
+  "created_at": "2026-07-07T05:55:18.502334Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAPGvcc6Oo9UJVINKwFFa4P02+FpPmAF2yb4aJqRQHpgdR7VBZektm/9j2v0sMq/TT4qcNRuW+r7KkNjdpOfkQAQ=="
+}
