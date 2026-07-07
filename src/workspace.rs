@@ -98,8 +98,10 @@ pub struct WorkspaceParams<'a> {
     pub manifest: &'a Manifest,
     pub run_id: &'a str,
     pub scope: WorkspaceScope,
-    /// Runtime-derived skill variant (from backend_kind, not config.skill_variant).
+    /// Task-level skill variant (drives which source instruction file is copied).
     pub skill_variant: SkillVariant,
+    /// Backend being launched (drives the workspace discovery filename: CLAUDE.md / GEMINI.md).
+    pub backend_kind: crate::config::AiBackend,
     /// If true, print what would happen but don't create anything.
     pub dry_run: bool,
 }
@@ -146,6 +148,7 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
         params.vault_root,
         params.config,
         params.skill_variant,
+        params.backend_kind,
         &workspace_root,
     )?;
 
@@ -232,16 +235,24 @@ fn copy_instruction_files(
     vault_root: &Path,
     config: &VaultConfig,
     skill_variant: SkillVariant,
+    backend_kind: crate::config::AiBackend,
     workspace_root: &Path,
 ) -> Result<()> {
-    let instruction_src = config.instruction_source_path(vault_root);
+    let src_filename = match skill_variant {
+        SkillVariant::Claude => "claude.md",
+        SkillVariant::Gemini => "gemini.md",
+        SkillVariant::CourseReview => "course-review.md",
+    };
+    let dest_name = match backend_kind {
+        crate::config::AiBackend::Claude | crate::config::AiBackend::Mock => "CLAUDE.md",
+        crate::config::AiBackend::Agy => "GEMINI.md",
+    };
+    let instruction_src = vault_root
+        .join(&config.csnotes_dir)
+        .join("instructions")
+        .join(src_filename);
     let synthesis_src = config.synthesis_md_path(vault_root);
     let report_schema_src = config.report_schema_path(vault_root);
-
-    let dest_name = match skill_variant {
-        SkillVariant::Claude => "CLAUDE.md",
-        SkillVariant::Gemini => "GEMINI.md",
-    };
 
     if instruction_src.exists() {
         fs::copy(&instruction_src, workspace_root.join(dest_name))
@@ -1031,6 +1042,7 @@ fn render_session_md(
         }
         WorkspaceScope::Course { course } => {
             use crate::manifest::SessionStatus;
+            let today = chrono::Local::now().format("%Y-%m-%d");
             out.push_str(&format!("# Course Workspace — {}\n\n", course));
             out.push_str("## Scope\n");
             out.push_str(&format!("- Course: {}\n", course));
@@ -1048,7 +1060,11 @@ fn render_session_md(
                 let ids: Vec<&str> = sessions.iter().map(|(id, _)| id.as_str()).collect();
                 out.push_str(&format!("- Sessions included: {}\n", ids.join(", ")));
             }
-            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
+            out.push_str(&format!("- run_id: `{}`\n", params.run_id));
+            out.push_str(&format!(
+                "- Journal entry path: `_journal/{}/review-{}.md`\n\n",
+                course, today
+            ));
         }
     }
 
@@ -2752,6 +2768,57 @@ mod tests {
         assert!(
             !included.contains(&"CPSC5002-2026-01-10"),
             "other course excluded"
+        );
+    }
+
+    #[test]
+    fn course_session_md_includes_journal_path() {
+        use crate::config::{AiBackend, SkillVariant, SnapshotMode, VaultConfig};
+        use crate::manifest::{Manifest, ManifestConfig};
+
+        let ws = TempDir::new().unwrap();
+        let vault = TempDir::new().unwrap();
+
+        let cfg: VaultConfig = serde_json::from_str("{}").unwrap();
+        let manifest = Manifest::empty(
+            vault.path().to_path_buf(),
+            ManifestConfig {
+                raw_dir: "notes".into(),
+                recordings_dir: "recordings".into(),
+                artifacts_dir: "artifacts".into(),
+                sources_dir: "sources".into(),
+                synthetic_dir: "_synthetic".into(),
+                generated_dir: "_generated".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                default_backend: AiBackend::Mock,
+                skill_variant: SkillVariant::Claude,
+                snapshot_mode: SnapshotMode::PreMerge,
+            },
+        );
+
+        let params = WorkspaceParams {
+            vault_root: vault.path(),
+            config: &cfg,
+            manifest: &manifest,
+            run_id: "test-run",
+            scope: WorkspaceScope::Course {
+                course: "CPSC5002".to_string(),
+            },
+            skill_variant: SkillVariant::CourseReview,
+            backend_kind: AiBackend::Mock,
+            dry_run: false,
+        };
+
+        render_session_md(&params, ws.path(), &[]).unwrap();
+
+        let session_md = std::fs::read_to_string(ws.path().join("_session.md")).unwrap();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let expected = format!("_journal/CPSC5002/review-{}.md", today);
+        assert!(
+            session_md.contains(&expected),
+            "session.md should contain journal path {}, got:\n{}",
+            expected,
+            session_md
         );
     }
 }

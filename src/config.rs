@@ -34,6 +34,9 @@ impl std::fmt::Display for AiBackend {
 pub enum SkillVariant {
     Claude,
     Gemini,
+    /// Auto-selected when WorkspaceScope::Course is used. Exploration-first;
+    /// journal entry always emitted, atomic ops optional.
+    CourseReview,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,6 +222,7 @@ impl VaultConfig {
         let filename = match self.skill_variant {
             SkillVariant::Claude => "claude.md",
             SkillVariant::Gemini => "gemini.md",
+            SkillVariant::CourseReview => "course-review.md",
         };
         vault_root
             .join(&self.csnotes_dir)

@@ -143,6 +143,12 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         crate::config::AiBackend::Agy => crate::config::SkillVariant::Gemini,
         crate::config::AiBackend::Mock => config.skill_variant, // tests may want either
     };
+    // Course scope always uses the review skill regardless of backend.
+    let skill_variant = if args.course.is_some() {
+        crate::config::SkillVariant::CourseReview
+    } else {
+        skill_variant
+    };
 
     let ws_params = WorkspaceParams {
         vault_root: &vault_root,
@@ -151,6 +157,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         run_id: &run_id,
         scope,
         skill_variant,
+        backend_kind,
         dry_run: args.dry_run,
     };
 
@@ -1132,6 +1139,50 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), "first line\nsecond line\nthird line\n").unwrap();
         assert_eq!(count_words_in_file(tmp.path()), Some(6));
+    }
+
+    // ── resolve_scope ─────────────────────────────────────────────────────────
+
+    fn make_args_course(course: &str) -> ProcessArgs {
+        ProcessArgs {
+            session: None,
+            for_course: None,
+            course: Some(course.to_string()),
+            sources: vec![],
+            topic: None,
+            dry_run: false,
+            backend: None,
+            fixture: None,
+            agy_model: None,
+            claude_model: None,
+            next: false,
+        }
+    }
+
+    #[test]
+    fn resolve_scope_course_returns_course_scope() {
+        let m = make_manifest_with_sessions(&[]);
+        let scope = resolve_scope(&make_args_course("CPSC5002"), &m).unwrap();
+        assert!(matches!(scope, WorkspaceScope::Course { course } if course == "CPSC5002"));
+    }
+
+    #[test]
+    fn resolve_scope_course_and_for_course_conflict_errors() {
+        let m = make_manifest_with_sessions(&[]);
+        let args = ProcessArgs {
+            session: None,
+            for_course: Some("CPSC5002".to_string()),
+            course: Some("CPSC5002".to_string()),
+            sources: vec![],
+            topic: None,
+            dry_run: false,
+            backend: None,
+            fixture: None,
+            agy_model: None,
+            claude_model: None,
+            next: false,
+        };
+        assert!(resolve_scope(&args, &m).is_err());
     }
 }
 
