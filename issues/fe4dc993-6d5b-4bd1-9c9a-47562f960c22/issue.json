@@ -2,11 +2,12 @@
   "uuid": "fe4dc993-6d5b-4bd1-9c9a-47562f960c22",
   "display_id": null,
   "title": "add WorkedExample SourceKind variant",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-07-07T05:48:39.506361Z",
-  "updated_at": "2026-07-07T05:48:39.670500Z",
+  "updated_at": "2026-07-07T06:12:56.149521Z",
+  "closed_at": "2026-07-07T06:12:56.149521Z",
   "labels": [
     "enhancement"
   ]
