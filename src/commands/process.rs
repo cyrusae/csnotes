@@ -22,6 +22,9 @@ use crate::workspace::{
 /// `csnotes process` arguments (set by main.rs from clap).
 pub struct ProcessArgs {
     pub session: Option<String>,
+    /// Disambiguator: `{course}-{date}` session ID prefix when date alone is ambiguous.
+    pub for_course: Option<String>,
+    /// Scope flag: assemble a course-wide workspace (all processed sessions + sources).
     pub course: Option<String>,
     /// Source IDs or path prefixes passed via `--source`.  Each entry is either
     /// an exact source ID or a prefix that expands to all matching IDs.
@@ -201,6 +204,16 @@ pub fn run(args: ProcessArgs) -> Result<()> {
                 if let Some(entry) = manifest.topics.get(topic) {
                     continuation("atomics :", &entry.atomic_notes.len().to_string());
                 }
+            }
+            WorkspaceScope::Course { course } => {
+                use crate::manifest::SessionStatus;
+                let session_count = manifest
+                    .sessions
+                    .values()
+                    .filter(|e| &e.course == course && e.status == SessionStatus::Processed)
+                    .count();
+                dim_colon("scope   :", &format!("course {}", course));
+                continuation("sessions:", &format!("{} processed", session_count));
             }
         }
         dim_colon("backend :", &backend_kind.to_string());
@@ -586,6 +599,14 @@ fn resolve_scope(args: &ProcessArgs, manifest: &Manifest) -> Result<WorkspaceSco
             topic: topic.clone(),
         });
     }
+    if let Some(course) = &args.course {
+        if args.for_course.is_some() {
+            anyhow::bail!("--for-course is a session disambiguator and cannot be combined with --course (scope)");
+        }
+        return Ok(WorkspaceScope::Course {
+            course: course.clone(),
+        });
+    }
 
     let session_id = resolve_session_id(args, manifest)?;
     Ok(WorkspaceScope::Session { session_id })
@@ -630,7 +651,7 @@ fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String>
         .collect();
 
     if let Some(session) = &args.session {
-        if let Some(course) = &args.course {
+        if let Some(course) = &args.for_course {
             let id = format!("{}-{}", course, session);
             if manifest.sessions.contains_key(&id) {
                 return Ok(id);
@@ -653,7 +674,7 @@ fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String>
             0 => bail!("No session found for date '{}'", session),
             1 => return Ok(matches.into_iter().next().unwrap()),
             _ => bail!(
-                "Date '{}' matches multiple sessions: {}. Use --course to disambiguate.",
+                "Date '{}' matches multiple sessions: {}. Use --for-course to disambiguate.",
                 session,
                 matches.join(", ")
             ),
@@ -683,7 +704,7 @@ fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String>
             for id in &unprocessed {
                 eprintln!("  {}", id);
             }
-            bail!("Use --session, --course, or --next to specify which session to process.");
+            bail!("Use --session, --for-course, or --next to specify which session to process.");
         }
     }
 }
@@ -913,11 +934,16 @@ mod tests {
         manifest
     }
 
-    fn resolve(session: Option<&str>, course: Option<&str>, manifest: &Manifest) -> Result<String> {
+    fn resolve(
+        session: Option<&str>,
+        for_course: Option<&str>,
+        manifest: &Manifest,
+    ) -> Result<String> {
         resolve_session_id(
             &ProcessArgs {
                 session: session.map(|s| s.to_string()),
-                course: course.map(|s| s.to_string()),
+                for_course: for_course.map(|s| s.to_string()),
+                course: None,
                 sources: vec![],
                 topic: None,
                 dry_run: false,

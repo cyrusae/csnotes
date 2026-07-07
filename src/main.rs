@@ -44,6 +44,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
 
         Command::Process {
             session,
+            for_course,
             course,
             source,
             topic,
@@ -64,6 +65,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             }
             process::run(process::ProcessArgs {
                 session,
+                for_course,
                 course,
                 sources: source,
                 topic,
@@ -191,7 +193,13 @@ enum Command {
         #[arg(long)]
         session: Option<String>,
 
-        /// Restrict to a specific course.
+        /// Disambiguate --session when the same date exists in multiple courses.
+        /// Example: --session 07-28 --for-course CS101
+        #[arg(long)]
+        for_course: Option<String>,
+
+        /// Assemble a course-wide workspace (all processed sessions + course-tagged sources).
+        /// Example: --course CPSC5002
         #[arg(long)]
         course: Option<String>,
 

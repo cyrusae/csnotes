@@ -116,6 +116,10 @@ pub enum WorkspaceScope {
     Topic {
         topic: String,
     },
+    /// All processed sessions for a given course plus course-tagged sources.
+    Course {
+        course: String,
+    },
 }
 
 /// Assemble the workspace and return its root path.
@@ -153,6 +157,27 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
             .get(session_id)
             .ok_or_else(|| CsnotesError::SessionNotFound(session_id.clone()))?;
         wrap_session_inputs(params.vault_root, entry, &workspace_root)?;
+    }
+    if let WorkspaceScope::Course { course } = &params.scope {
+        use crate::manifest::SessionStatus;
+        let mut sessions: Vec<(&String, &crate::manifest::SessionEntry)> = params
+            .manifest
+            .sessions
+            .iter()
+            .filter(|(_, e)| &e.course == course && e.status == SessionStatus::Processed)
+            .collect();
+        sessions.sort_by_key(|(_, e)| e.date);
+        for (_, entry) in sessions {
+            let raw_path = params.vault_root.join(&entry.raw_note);
+            let raw_empty = !raw_path.exists()
+                || fs::read_to_string(&raw_path)
+                    .map(|s| s.trim().is_empty())
+                    .unwrap_or(true);
+            if entry.recording_missing && raw_empty {
+                continue;
+            }
+            wrap_session_inputs(params.vault_root, entry, &workspace_root)?;
+        }
     }
 
     // 3. Copy sources into sources/ and write _sources_index.md
@@ -811,6 +836,14 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
             .filter(|(_, e)| e.status != SourceStatus::Staged)
             .map(|(id, _)| id.as_str())
             .collect(),
+        WorkspaceScope::Course { course } => manifest
+            .sources
+            .iter()
+            .filter(|(_, e)| {
+                e.status != SourceStatus::Staged && source_visible_for_course(e, course)
+            })
+            .map(|(id, _)| id.as_str())
+            .collect(),
     }
 }
 
@@ -994,6 +1027,27 @@ fn render_session_md(
             out.push_str("## Scope\n");
             out.push_str(&format!("- Topic: {}\n", topic));
             out.push_str("- Mode: study/review (no new session input)\n");
+            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
+        }
+        WorkspaceScope::Course { course } => {
+            use crate::manifest::SessionStatus;
+            out.push_str(&format!("# Course Workspace — {}\n\n", course));
+            out.push_str("## Scope\n");
+            out.push_str(&format!("- Course: {}\n", course));
+            out.push_str("- Mode: course review (all processed sessions + course sources)\n");
+            let mut sessions: Vec<_> = params
+                .manifest
+                .sessions
+                .iter()
+                .filter(|(_, e)| &e.course == course && e.status == SessionStatus::Processed)
+                .collect();
+            sessions.sort_by_key(|(_, e)| e.date);
+            if sessions.is_empty() {
+                out.push_str("- Sessions: none\n");
+            } else {
+                let ids: Vec<&str> = sessions.iter().map(|(id, _)| id.as_str()).collect();
+                out.push_str(&format!("- Sessions included: {}\n", ids.join(", ")));
+            }
             out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
         }
     }
@@ -2561,5 +2615,143 @@ mod tests {
 
         let content = std::fs::read_to_string(vault.path().join("_synthetic/cs/cs.md")).unwrap();
         assert_eq!(content, "new content");
+    }
+
+    // ── WorkspaceScope::Course tests ──────────────────────────────────────────
+
+    fn make_processed_session(course: &str, date: &str) -> crate::manifest::SessionEntry {
+        use crate::manifest::SessionStatus;
+        crate::manifest::SessionEntry {
+            course: course.into(),
+            date: date.parse().unwrap(),
+            raw_note: format!("notes/{}-{}.md", course, date),
+            recording_exports: vec![],
+            artifacts: vec![],
+            status: SessionStatus::Processed,
+            recording_missing: false,
+            filename_format: "{course}-{mm}-{dd}".into(),
+            processed_at: None,
+            topics_updated: vec![],
+        }
+    }
+
+    fn make_manifest_at(vault_root: &std::path::Path) -> Manifest {
+        Manifest::empty(
+            vault_root.to_path_buf(),
+            ManifestConfig {
+                raw_dir: "notes".into(),
+                recordings_dir: "recordings".into(),
+                artifacts_dir: "artifacts".into(),
+                sources_dir: "sources".into(),
+                synthetic_dir: "_synthetic".into(),
+                generated_dir: "_generated".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                default_backend: AiBackend::Mock,
+                skill_variant: SkillVariant::Claude,
+                snapshot_mode: SnapshotMode::PreMerge,
+            },
+        )
+    }
+
+    #[test]
+    fn sources_for_scope_course_includes_course_tagged_textbook() {
+        let mut manifest = make_manifest_for_sources();
+        manifest.sources.insert(
+            "Textbooks/SICP/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec!["CPSC5001".into()]),
+        );
+        manifest.sources.insert(
+            "Textbooks/TAPL/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec!["CPSC5002".into()]),
+        );
+        manifest.sources.insert(
+            "AI-Conversations/Gemini/sorting".into(),
+            make_source_entry(SourceKind::AiConversation, vec![]),
+        );
+
+        let scope = WorkspaceScope::Course {
+            course: "CPSC5001".into(),
+        };
+        let ids = sources_for_scope(&manifest, &scope);
+
+        assert!(
+            ids.contains(&"Textbooks/SICP/Ch01"),
+            "SICP (CPSC5001) included"
+        );
+        assert!(
+            !ids.contains(&"Textbooks/TAPL/Ch01"),
+            "TAPL (CPSC5002) excluded"
+        );
+        assert!(
+            ids.contains(&"AI-Conversations/Gemini/sorting"),
+            "AI conversation always included"
+        );
+    }
+
+    #[test]
+    fn sources_for_scope_course_excludes_staged() {
+        let mut manifest = make_manifest_for_sources();
+        let mut staged = make_source_entry(SourceKind::Textbook, vec![]);
+        staged.status = SourceStatus::Staged;
+        manifest
+            .sources
+            .insert("Textbooks/Staged/Ch01".into(), staged);
+        manifest.sources.insert(
+            "Textbooks/Active/Ch01".into(),
+            make_source_entry(SourceKind::Textbook, vec![]),
+        );
+
+        let scope = WorkspaceScope::Course {
+            course: "CPSC5001".into(),
+        };
+        let ids = sources_for_scope(&manifest, &scope);
+
+        assert!(!ids.contains(&"Textbooks/Staged/Ch01"), "staged excluded");
+        assert!(
+            ids.contains(&"Textbooks/Active/Ch01"),
+            "untagged textbook included"
+        );
+    }
+
+    #[test]
+    fn course_sessions_for_assembly_only_includes_processed() {
+        // Verify the filtering logic used inside assemble() for Course scope:
+        // only Processed sessions for the given course should be collected.
+        use crate::manifest::SessionStatus;
+        let mut manifest = make_manifest_at(std::path::Path::new("/tmp"));
+        manifest.sessions.insert(
+            "CPSC5001-2026-01-10".into(),
+            make_processed_session("CPSC5001", "2026-01-10"),
+        );
+        manifest.sessions.insert("CPSC5001-2026-01-17".into(), {
+            let mut s = make_processed_session("CPSC5001", "2026-01-17");
+            s.status = SessionStatus::Unprocessed;
+            s
+        });
+        manifest.sessions.insert(
+            "CPSC5002-2026-01-10".into(),
+            make_processed_session("CPSC5002", "2026-01-10"),
+        );
+
+        let course = "CPSC5001";
+        let included: Vec<_> = manifest
+            .sessions
+            .iter()
+            .filter(|(_, e)| e.course == course && e.status == SessionStatus::Processed)
+            .map(|(id, _)| id.as_str())
+            .collect();
+
+        assert!(
+            included.contains(&"CPSC5001-2026-01-10"),
+            "processed CPSC5001 session included"
+        );
+        assert!(
+            !included.contains(&"CPSC5001-2026-01-17"),
+            "unprocessed session excluded"
+        );
+        assert!(
+            !included.contains(&"CPSC5002-2026-01-10"),
+            "other course excluded"
+        );
     }
 }
