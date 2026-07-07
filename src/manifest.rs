@@ -226,6 +226,12 @@ pub enum SourceKind {
     AiConversation,
     Paper,
     AssignmentFeedback,
+    /// A worked example, sample program, or problem-set walkthrough.
+    /// Extract the generalizable technique or pattern, not the specific instance.
+    WorkedExample,
+    /// Course syllabus. Use for course structure, topic ordering, and grading
+    /// context; treat as authoritative for scope but not for concept definitions.
+    Syllabus,
     Other,
 }
 
@@ -237,6 +243,8 @@ impl SourceKind {
             Self::AiConversation => "ai_conversation",
             Self::Paper => "paper",
             Self::AssignmentFeedback => "assignment_feedback",
+            Self::WorkedExample => "worked_example",
+            Self::Syllabus => "syllabus",
             Self::Other => "other",
         }
     }
@@ -477,6 +485,8 @@ mod tests {
             SourceKind::AssignmentFeedback.as_str(),
             "assignment_feedback"
         );
+        assert_eq!(SourceKind::WorkedExample.as_str(), "worked_example");
+        assert_eq!(SourceKind::Syllabus.as_str(), "syllabus");
         assert_eq!(SourceKind::Other.as_str(), "other");
     }
 

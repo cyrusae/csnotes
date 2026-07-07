@@ -858,12 +858,15 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
     }
 }
 
-/// A source is visible for a given course when it is not a Textbook, or when
-/// its `courses` list is empty (untagged = always available), or when it
+/// A source is visible for a given course when it is not a Textbook or Syllabus,
+/// or when its `courses` list is empty (untagged = always available), or when it
 /// explicitly lists the course.
 fn source_visible_for_course(entry: &SourceEntry, course: &str) -> bool {
     use crate::manifest::SourceKind;
-    if entry.kind != SourceKind::Textbook {
+    if !matches!(
+        entry.kind,
+        SourceKind::Textbook | SourceKind::Syllabus | SourceKind::WorkedExample
+    ) {
         return true;
     }
     entry.courses.is_empty() || entry.courses.iter().any(|c| c == course)
@@ -1862,6 +1865,30 @@ mod tests {
             assert!(
                 source_visible_for_course(&tagged, "CPSC5002"),
                 "{} should be visible regardless of course tag",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn source_visible_course_mediated_kinds() {
+        for kind in [SourceKind::Syllabus, SourceKind::WorkedExample] {
+            let untagged = make_source_entry(kind, vec![]);
+            assert!(
+                source_visible_for_course(&untagged, "CPSC5001"),
+                "{} untagged should be visible everywhere",
+                kind.as_str()
+            );
+
+            let tagged = make_source_entry(kind, vec!["CPSC5001".into()]);
+            assert!(
+                source_visible_for_course(&tagged, "CPSC5001"),
+                "{} tagged CPSC5001 should be visible for CPSC5001",
+                kind.as_str()
+            );
+            assert!(
+                !source_visible_for_course(&tagged, "CPSC5002"),
+                "{} tagged CPSC5001 should not be visible for CPSC5002",
                 kind.as_str()
             );
         }

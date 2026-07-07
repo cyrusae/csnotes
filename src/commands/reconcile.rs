@@ -741,6 +741,8 @@ fn scan_sources_dir(
         let kind = match top_dir {
             "AI-Conversations" => SourceKind::AiConversation,
             "Textbooks" => SourceKind::Textbook,
+            "WorkedExamples" | "WorkedExample" => SourceKind::WorkedExample,
+            "Syllabi" | "Syllabus" => SourceKind::Syllabus,
             _ => SourceKind::Other,
         };
 
@@ -916,6 +918,8 @@ fn extract_source_meta(content: &str) -> SourceMeta {
 fn kind_from_source_type(s: &str) -> Option<SourceKind> {
     match s {
         "highlights" | "notes" | "summary" => Some(SourceKind::PersonalNotes),
+        "worked_example" => Some(SourceKind::WorkedExample),
+        "syllabus" => Some(SourceKind::Syllabus),
         _ => None,
     }
 }
@@ -1804,6 +1808,101 @@ mod tests {
             manifest.sources["Textbooks/Gaddis/Chapter-03"].kind,
             crate::manifest::SourceKind::PersonalNotes,
             "adding source_type to existing entry should update kind"
+        );
+    }
+
+    #[test]
+    fn scan_sources_worked_examples_folder_infers_kind() {
+        for folder in ["WorkedExamples", "WorkedExample"] {
+            let tmp = TempDir::new().unwrap();
+            let sources_dir = tmp.path().join("sources");
+            write_file(
+                &sources_dir.join(folder),
+                "BinarySearch.md",
+                "# Binary search example\n",
+            );
+            let mut manifest = make_empty_manifest_for_sources(tmp.path());
+            scan_sources_dir(
+                &sources_dir,
+                tmp.path(),
+                &mut manifest,
+                true,
+                &[],
+                &mut vec![],
+            )
+            .unwrap();
+            let key = format!("{}/BinarySearch", folder);
+            assert_eq!(
+                manifest.sources[key.as_str()].kind,
+                crate::manifest::SourceKind::WorkedExample,
+                "folder '{}' should infer WorkedExample",
+                folder
+            );
+        }
+    }
+
+    #[test]
+    fn scan_sources_syllabi_folder_infers_kind() {
+        for folder in ["Syllabi", "Syllabus"] {
+            let tmp = TempDir::new().unwrap();
+            let sources_dir = tmp.path().join("sources");
+            write_file(
+                &sources_dir.join(folder),
+                "CPSC5001.md",
+                "# CPSC 5001 Syllabus\n",
+            );
+            let mut manifest = make_empty_manifest_for_sources(tmp.path());
+            scan_sources_dir(
+                &sources_dir,
+                tmp.path(),
+                &mut manifest,
+                true,
+                &[],
+                &mut vec![],
+            )
+            .unwrap();
+            let key = format!("{}/CPSC5001", folder);
+            assert_eq!(
+                manifest.sources[key.as_str()].kind,
+                crate::manifest::SourceKind::Syllabus,
+                "folder '{}' should infer Syllabus",
+                folder
+            );
+        }
+    }
+
+    #[test]
+    fn scan_sources_source_type_frontmatter_worked_example_and_syllabus() {
+        let tmp = TempDir::new().unwrap();
+        let sources_dir = tmp.path().join("sources");
+        let dir = sources_dir.join("Textbooks").join("Gaddis");
+        write_file(
+            &dir,
+            "example.md",
+            "---\nsource_type: worked_example\n---\n\n# Example\n",
+        );
+        write_file(
+            &dir,
+            "syllabus.md",
+            "---\nsource_type: syllabus\n---\n\n# Syllabus\n",
+        );
+        let mut manifest = make_empty_manifest_for_sources(tmp.path());
+        scan_sources_dir(
+            &sources_dir,
+            tmp.path(),
+            &mut manifest,
+            true,
+            &[],
+            &mut vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/example"].kind,
+            crate::manifest::SourceKind::WorkedExample,
+        );
+        assert_eq!(
+            manifest.sources["Textbooks/Gaddis/syllabus"].kind,
+            crate::manifest::SourceKind::Syllabus,
         );
     }
 
