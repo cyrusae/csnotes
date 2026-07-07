@@ -1,0 +1,10 @@
+{
+  "uuid": "a6f46eb7-c4fc-4a9b-9563-712bba2946b8",
+  "issue_uuid": "427322b2-6272-4bc7-8268-a0a1d6719650",
+  "author": "3owj",
+  "content": "Added WorkedExample and Syllabus SourceKind variants (L57+L59). Syllabus is course-filtered like Textbook; WorkedExample is always-visible like Paper/Other. Tests updated/added for both.",
+  "created_at": "2026-07-07T05:51:22.896030Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAWYS7SaBKGYySHtRlF7xE8zMY9J1gzbTvVaEobC3ZfjSEJcmnPkUjummNs3S1sPayPdPfo1QdE+OE26ydqW8dDQ=="
+}
