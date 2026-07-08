@@ -1,0 +1,10 @@
+{
+  "uuid": "00db4897-2beb-40f9-bc86-e7cde52428b0",
+  "issue_uuid": "1055c69b-aa0a-42ca-aee7-88af71d7ae55",
+  "author": "3owj",
+  "content": "Added long_about to Process subcommand listing three scope modes (session/topic/course); updated no-pending-session bail message to hint at --topic and --course.",
+  "created_at": "2026-07-08T14:06:14.921785Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAMGmnWPjzOPTo7zCX+c6d1FWpiSv7FQPq6zaSMO8bCH21+asJsGYWc0Z9SMEMCriAmcUY+ZsAIirZvTYFJ/2QDA=="
+}
