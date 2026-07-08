@@ -72,6 +72,7 @@ pub fn run(vault_root: Option<PathBuf>, instructions_only: bool) -> Result<()> {
         recordings_dir: "recordings".into(),
         artifacts_dir: "artifacts".into(),
         sources_dir: "sources".into(),
+        resources_dir: "resources".into(),
         synthetic_dir: "_synthetic".into(),
         generated_dir: "_generated".into(),
         csnotes_dir: "_csnotes".into(),
@@ -172,7 +173,9 @@ fn write_instruction_files(dir: &Path, cfg: &VaultConfig, force: bool) -> Result
     // claude.md / gemini.md — variant-specific entry point
     // CourseReview is runtime-only and never stored in config, but handle it gracefully.
     let (entry_name, entry_content) = match cfg.skill_variant {
-        SkillVariant::Claude | SkillVariant::CourseReview => ("claude.md", CLAUDE_MD),
+        SkillVariant::Claude | SkillVariant::CourseReview | SkillVariant::ResourceReview => {
+            ("claude.md", CLAUDE_MD)
+        }
         SkillVariant::Gemini => ("gemini.md", GEMINI_MD),
     };
     write_instruction(dir, entry_name, entry_content, force)?;
@@ -184,6 +187,7 @@ fn write_instruction_files(dir: &Path, cfg: &VaultConfig, force: bool) -> Result
         write_instruction(dir, "gemini.md", GEMINI_MD, force)?;
     }
     write_instruction(dir, "course-review.md", COURSE_REVIEW_MD, force)?;
+    write_instruction(dir, "resource-review.md", RESOURCE_REVIEW_MD, force)?;
     write_instruction(dir, "synthesis.md", SYNTHESIS_MD, force)?;
     write_instruction(dir, "csnotes_reference.md", CSNOTES_REFERENCE_MD, force)?;
     let schema_md = crate::commands::report_schema_cmd::generate();
@@ -668,6 +672,49 @@ ops (if any) follow.
 Run `csnotes check` before exiting if you wrote any atomic notes.
 "##;
 
+const RESOURCE_REVIEW_MD: &str = r##"# csnotes resource review session
+
+You are running in an interactive AI session inside a prepared resource
+workspace.  This is a **self-directed study session** — the student is
+learning from an external resource (online course, tutorial, book, or similar)
+and has taken their own notes.  Your job is to synthesize those notes into the
+student's knowledge vault.
+
+Synthesis is the primary goal.  If something reference-worthy surfaces, write
+atomic notes to `_synthetic/` following the usual conventions.  A brief journal
+entry to `_journal/resources/<resource_id>/review-<date>.md` is secondary —
+write it only when there is something worth capturing about the learning
+experience (lingering confusion, surprising connections, what to revisit).
+
+---
+
+## Workspace layout
+
+```
+_session.md            ← start here: scope, resource info, block IDs
+synthesis.md           ← synthesis conventions (always read this)
+report_schema.md       ← read before writing the session report
+_workspace_meta.json   ← vault path + run_id (do not edit)
+sources/               ← source files (XML-wrapped, read-only)
+_synthetic/            ← writable copy of synthetic notes
+resource_note_*.md     ← the student's notes from this resource (read-only)
+```
+
+---
+
+## Workflow
+
+1. Read `_session.md` for scope, resource metadata, and existing block IDs.
+2. Read `synthesis.md` for atomic note conventions.
+3. Read the resource notes (`resource_note_*.md`) in order.
+4. Read relevant existing synthetic notes in `_synthetic/`.
+5. Write or update atomic notes in `_synthetic/<topic>/<slug>.md`.
+6. Optionally write a brief journal entry (see above).
+7. Write `_session_report.json` (read `report_schema.md` first).
+
+Run `csnotes check` before exiting if you wrote any atomic notes.
+"##;
+
 const CSNOTES_REFERENCE_MD: &str = r##"# csnotes — command reference
 
 Quick reference for all `csnotes` CLI commands.  Run any command with `--help`
@@ -694,9 +741,12 @@ csnotes process --next                # oldest pending (backlog catch-up)
 csnotes process --session 09-03       # specific session by date
 csnotes process --session 09-03 --for-course CPSC5001  # disambiguate same date in multiple courses
 csnotes process --course CPSC5002     # course-wide review workspace (all sessions + sources)
+csnotes process --course CPSC5002 --include-resource ml-refresher  # add resource notes to course workspace
 csnotes process --source SICP/ch01   # process a source file
 csnotes process --source Textbooks/SICP  # expand prefix → all sources under path
 csnotes process --topic <name>        # focused review of an existing topic
+csnotes process --resource Coursera/ML-Refresher  # process a self-study resource
+csnotes process --resource ml-refresher  # fuzzy match (unique folder names)
 csnotes process --backend agy         # override AI backend
 csnotes process --dry-run             # show scope without launching
 csnotes process --resume              # re-enter an interrupted session
@@ -791,17 +841,36 @@ output contract).
 
 ## Voice and style
 
-Write the way you'd debrief a friend who missed class but is smart and cares
-about the material.  Conversational, informal, occasionally irreverent.
-**Not** textbook prose, not neutral-encyclopedic, not "Polymorphism is defined
-as...".  More like "okay so the key thing here is..." or "this is the part
-where it actually matters."
+**Bullets, not prose.**  The default unit of a note is a punchy bullet point,
+grouped under `###` subtopic headings — not flowing paragraphs.  Sentence
+fragments are fine and encouraged; write like handwritten class notes, not
+like an article.  Prose is reserved for the rare concept that genuinely needs
+a connected explanation (a subtle mental model, a "the trap version of this
+idea is..." walkthrough) — and even then, keep it to 2–3 sentences before
+returning to bullets.
 
-If the raw notes contain a joke, a sarcastic aside, or a bit of personality —
-keep it.  It's there for a reason: it made the concept stick in the moment.
+Mechanics:
+- **One idea per bullet.**  Elaboration goes in a nested sub-bullet, not a
+  longer sentence.
+- **Bold the load-bearing words**: pivotal terms on first use, the actual
+  gotcha ("**always executes at least once**", "**wraps, doesn't crash**"),
+  and rules worth memorizing.  If a reader skims only the bold text, they
+  should hit every landmine.
+- Use `→` for cause/effect and "therefore" inside a bullet
+  ("condition checked first → body can run **zero times**").
+- Code blocks carry the examples; the bullets around them point at what the
+  code shows.
 
-Precision still matters.  Conversational doesn't mean vague.  Get the
-technical content right; just don't write like a Wikipedia article.
+**Register: informal/colloquial.**  Debrief-a-friend voice — "the one that
+gets everybody", "duct-tape fix", "don't cross the streams".  Keep jokes,
+snark, and asides from the raw notes; they're mnemonic, not noise.
+Precision still matters: conversational doesn't mean vague.  Get the
+technical content exactly right; just say it in fragments with the key term
+bolded.
+
+**Exception — the embed block.**  The intro paragraph above each `^block-id`
+is transcluded into the index, so it stays a single compact paragraph
+(2–3 sentences max, fragments fine, key terms bolded) rather than a list.
 
 ---
 
@@ -1178,6 +1247,7 @@ mod tests {
             recordings_dir: "recordings".into(),
             artifacts_dir: "artifacts".into(),
             sources_dir: "sources".into(),
+            resources_dir: "resources".into(),
             synthetic_dir: "_synthetic".into(),
             generated_dir: "_generated".into(),
             csnotes_dir: "_csnotes".into(),

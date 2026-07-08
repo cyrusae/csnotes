@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- resource concept: lightweight container for self-directed study material (L63)
 - infer course from folder path for course-mediated sources (L60)
 - add Syllabus SourceKind variant (L59)
 - add WorkedExample SourceKind variant (L57)
@@ -113,6 +114,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- remove code-narration prohibition from synthesis.md (L66)
+- update synthesis.md voice-and-style section with punchy-bullets guidance (L65)
 - update docs for --for-course rename and --course scope flag (L62)
 - split audit.rs into audit/ module (invariants, reindex, discrepancies, fixes) (L51)
 - tests for count_words_in_file (L46)

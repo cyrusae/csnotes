@@ -104,6 +104,8 @@ pub struct WorkspaceParams<'a> {
     pub backend_kind: crate::config::AiBackend,
     /// If true, print what would happen but don't create anything.
     pub dry_run: bool,
+    /// Additional resource IDs to include alongside the primary scope (used with Course scope).
+    pub include_resources: Vec<String>,
 }
 
 pub enum WorkspaceScope {
@@ -121,6 +123,10 @@ pub enum WorkspaceScope {
     /// All processed sessions for a given course plus course-tagged sources.
     Course {
         course: String,
+    },
+    /// Notes from a self-directed study resource (online course, tutorial, book, etc.).
+    Resource {
+        resource_id: String,
     },
 }
 
@@ -183,6 +189,24 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
         }
     }
 
+    // 2b. Copy resource notes (primary Resource scope or --include-resource additions).
+    if let WorkspaceScope::Resource { resource_id } = &params.scope {
+        copy_resource_notes_to_workspace(
+            params.vault_root,
+            &params.config.resources_dir,
+            resource_id,
+            &workspace_root,
+        )?;
+    }
+    for resource_id in &params.include_resources {
+        copy_resource_notes_to_workspace(
+            params.vault_root,
+            &params.config.resources_dir,
+            resource_id,
+            &workspace_root,
+        )?;
+    }
+
     // 3. Copy sources into sources/ and write _sources_index.md
     let large_sources = copy_sources_to_workspace(
         params.vault_root,
@@ -242,6 +266,7 @@ fn copy_instruction_files(
         SkillVariant::Claude => "claude.md",
         SkillVariant::Gemini => "gemini.md",
         SkillVariant::CourseReview => "course-review.md",
+        SkillVariant::ResourceReview => "resource-review.md",
     };
     let dest_name = match backend_kind {
         crate::config::AiBackend::Claude | crate::config::AiBackend::Mock => "CLAUDE.md",
@@ -531,6 +556,79 @@ fn wrap_session_inputs(
         }
         let wrapped = xml_wrap(&content, tag, &extra_attrs);
         let dest = workspace_root.join(format!("input_{}.md", sanitise(&artifact.path)));
+        fs::write(&dest, wrapped)?;
+        make_readonly(&dest)?;
+    }
+
+    Ok(())
+}
+
+/// Walk a resource directory and copy each `.md` note into the workspace,
+/// XML-wrapped as `<resource_note>`. Notes are sorted by frontmatter `date:`
+/// field first, then by filename. Each file becomes a read-only workspace input.
+fn copy_resource_notes_to_workspace(
+    vault_root: &Path,
+    resources_dir: &str,
+    resource_id: &str,
+    workspace_root: &Path,
+) -> Result<()> {
+    let resource_path = vault_root.join(resources_dir).join(resource_id);
+    if !resource_path.exists() {
+        return Ok(());
+    }
+
+    #[derive(serde::Deserialize, Default)]
+    struct ResourceNoteFrontmatter {
+        date: Option<chrono::NaiveDate>,
+    }
+
+    // Collect notes with their sort keys.
+    let mut notes: Vec<(Option<chrono::NaiveDate>, std::path::PathBuf)> = Vec::new();
+    for entry in walkdir::WalkDir::new(&resource_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path().to_path_buf();
+        if path.extension().and_then(|x| x.to_str()) != Some("md") {
+            continue;
+        }
+        let date = crate::frontmatter::read_note(&path)
+            .ok()
+            .and_then(|content| {
+                crate::frontmatter::split_frontmatter(&content)
+                    .and_then(|(yaml, _)| serde_yml::from_str::<ResourceNoteFrontmatter>(yaml).ok())
+                    .and_then(|fm| fm.date)
+            });
+        notes.push((date, path));
+    }
+
+    // Sort: dated notes first (ascending), undated notes after (sorted by path).
+    notes.sort_by(
+        |(date_a, path_a), (date_b, path_b)| match (date_a, date_b) {
+            (Some(a), Some(b)) => a.cmp(b).then_with(|| path_a.cmp(path_b)),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => path_a.cmp(path_b),
+        },
+    );
+
+    for (date, path) in notes {
+        let content = crate::frontmatter::read_note(&path)?;
+        let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
+        let date_attr = date.map(|d| d.to_string()).unwrap_or_default();
+        let attrs: Vec<(&str, &str)> = vec![
+            ("resource", resource_id),
+            ("file", file_stem),
+            ("date", &date_attr),
+        ];
+        let wrapped = xml_wrap(&content, "resource_note", &attrs);
+        let safe_id = sanitise(resource_id);
+        let dest = workspace_root.join(format!(
+            "resource_note_{}_{}.md",
+            safe_id,
+            sanitise(file_stem)
+        ));
         fs::write(&dest, wrapped)?;
         make_readonly(&dest)?;
     }
@@ -841,7 +939,7 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
                 .map(|(id, _)| id.as_str())
                 .collect()
         }
-        WorkspaceScope::Topic { .. } => manifest
+        WorkspaceScope::Topic { .. } | WorkspaceScope::Resource { .. } => manifest
             .sources
             .iter()
             .filter(|(_, e)| e.status != SourceStatus::Staged)
@@ -1067,6 +1165,21 @@ fn render_session_md(
             out.push_str(&format!(
                 "- Journal entry path: `_journal/{}/review-{}.md`\n\n",
                 course, today
+            ));
+        }
+        WorkspaceScope::Resource { resource_id } => {
+            let today = chrono::Local::now().format("%Y-%m-%d");
+            out.push_str(&format!("# Resource Workspace — {}\n\n", resource_id));
+            out.push_str("## Scope\n");
+            out.push_str(&format!("- Resource: {}\n", resource_id));
+            if let Some(entry) = params.manifest.resources.get(resource_id) {
+                out.push_str(&format!("- Kind: {}\n", entry.kind.as_str()));
+            }
+            out.push_str("- Mode: resource review (synthesis primary; journal optional)\n");
+            out.push_str(&format!("- run_id: `{}`\n", params.run_id));
+            out.push_str(&format!(
+                "- Journal entry path (optional): `_journal/resources/{}/review-{}.md`\n\n",
+                resource_id, today
             ));
         }
     }
@@ -2834,6 +2947,7 @@ mod tests {
             skill_variant: SkillVariant::CourseReview,
             backend_kind: AiBackend::Mock,
             dry_run: false,
+            include_resources: vec![],
         };
 
         render_session_md(&params, ws.path(), &[]).unwrap();

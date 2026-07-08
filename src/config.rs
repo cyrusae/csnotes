@@ -37,6 +37,9 @@ pub enum SkillVariant {
     /// Auto-selected when WorkspaceScope::Course is used. Exploration-first;
     /// journal entry always emitted, atomic ops optional.
     CourseReview,
+    /// Auto-selected when WorkspaceScope::Resource is used. Synthesis-first;
+    /// journal entry secondary (emitted when there is something worth capturing).
+    ResourceReview,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +63,8 @@ pub struct VaultConfig {
     pub artifacts_dir: String,
     #[serde(default = "default_sources_dir")]
     pub sources_dir: String,
+    #[serde(default = "default_resources_dir")]
+    pub resources_dir: String,
     #[serde(default = "default_synthetic_dir")]
     pub synthetic_dir: String,
     #[serde(default = "default_generated_dir")]
@@ -136,6 +141,9 @@ fn default_artifacts_dir() -> String {
 }
 fn default_sources_dir() -> String {
     "sources".into()
+}
+fn default_resources_dir() -> String {
+    "resources".into()
 }
 fn default_synthetic_dir() -> String {
     "_synthetic".into()
@@ -223,6 +231,7 @@ impl VaultConfig {
             SkillVariant::Claude => "claude.md",
             SkillVariant::Gemini => "gemini.md",
             SkillVariant::CourseReview => "course-review.md",
+            SkillVariant::ResourceReview => "resource-review.md",
         };
         vault_root
             .join(&self.csnotes_dir)
@@ -571,6 +580,7 @@ mod tests {
             recordings_dir: default_recordings_dir(),
             artifacts_dir: default_artifacts_dir(),
             sources_dir: default_sources_dir(),
+            resources_dir: default_resources_dir(),
             synthetic_dir: default_synthetic_dir(),
             generated_dir: default_generated_dir(),
             csnotes_dir: default_csnotes_dir(),

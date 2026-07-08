@@ -48,6 +48,8 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             course,
             source,
             topic,
+            resource,
+            include_resource,
             dry_run,
             backend,
             fixture,
@@ -69,6 +71,8 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
                 course,
                 sources: source,
                 topic,
+                resource,
+                include_resources: include_resource,
                 dry_run,
                 backend,
                 fixture,
@@ -188,6 +192,11 @@ enum Command {
     },
 
     /// Run an AI synthesis session against pending notes.
+    ///
+    /// Three scope modes:
+    ///   Session (default): process one lecture's raw notes → _synthetic/ updates.
+    ///   Topic (--topic):   review an existing topic without new input.
+    ///   Course (--course): assemble all processed sessions for a course → journal entry.
     Process {
         /// Process a specific session by date (e.g. 2026-07-28 or 07-28).
         #[arg(long)]
@@ -213,6 +222,16 @@ enum Command {
         /// Study/review session focused on an existing topic (no new input).
         #[arg(long)]
         topic: Option<String>,
+
+        /// Process a self-directed study resource by ID or fuzzy name.
+        /// Example: --resource Coursera/ML-Refresher  or  --resource ml-refresher
+        #[arg(long)]
+        resource: Option<String>,
+
+        /// Include a resource's notes alongside a course workspace (fuzzy match supported).
+        /// Example: --course CPSC5002 --include-resource ml-refresher
+        #[arg(long, num_args = 1..)]
+        include_resource: Vec<String>,
 
         /// Print what would happen without launching or mutating anything.
         #[arg(long)]

@@ -123,6 +123,7 @@ fn run_scan(
     let mut new_recordings: Vec<(String, String)> = Vec::new(); // (session_id, path)
     let mut new_sources: Vec<String> = Vec::new(); // source IDs
     let mut new_artifacts: Vec<(String, String)> = Vec::new(); // (session_id, path)
+    let mut new_resources: Vec<String> = Vec::new(); // resource IDs
     let mut space_warnings: Vec<PathBuf> = Vec::new();
 
     // ── Resolve course roots ──────────────────────────────────────────────────
@@ -205,6 +206,12 @@ fn run_scan(
         )?;
     }
 
+    // ── Scan resources_dir ────────────────────────────────────────────────────
+    let resources_dir = vault_root.join(&config.resources_dir);
+    if resources_dir.exists() {
+        scan_resources_dir(&resources_dir, vault_root, manifest, &mut new_resources)?;
+    }
+
     // ── Space warnings ────────────────────────────────────────────────────────
     for path in &space_warnings {
         eprintln!(
@@ -217,6 +224,7 @@ fn run_scan(
         && new_recordings.is_empty()
         && new_sources.is_empty()
         && new_artifacts.is_empty()
+        && new_resources.is_empty()
         && space_warnings.is_empty();
 
     if nothing_new {
@@ -251,6 +259,9 @@ fn run_scan(
         }
         for id in &new_sources {
             println!("  {} {}    {}", "+".green().bold(), "source".dimmed(), id);
+        }
+        for id in &new_resources {
+            println!("  {} {}  {}", "+".green().bold(), "resource".dimmed(), id);
         }
         if !space_warnings.is_empty() {
             println!(
@@ -894,6 +905,80 @@ struct SourceMeta {
     courses: Vec<String>,
     status_hint: Option<SourceStatus>,
     kind_hint: Option<SourceKind>,
+}
+
+/// Walk `resources_dir` for resource roots and register any not already in the manifest.
+///
+/// A resource root is any second-level directory that contains at least one `.md` file
+/// (e.g. `resources/Coursera/ML-Refresher/`). The resource ID is the path relative to
+/// `resources_dir` (e.g. `Coursera/ML-Refresher`). Kind is inferred from the first
+/// path component: `Coursera` → `OnlineCourse`, `Tutorial` → `Tutorial`, `Book` → `Book`.
+fn scan_resources_dir(
+    resources_dir: &Path,
+    vault_root: &Path,
+    manifest: &mut Manifest,
+    new_resources: &mut Vec<String>,
+) -> Result<()> {
+    use crate::manifest::{ResourceEntry, ResourceKind};
+
+    for entry in walkdir::WalkDir::new(resources_dir)
+        .min_depth(1)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("md") {
+            continue;
+        }
+
+        // Resource root = parent of this file, relative to resources_dir.
+        let rel = path.strip_prefix(resources_dir).unwrap_or(path);
+        let root = match rel.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p,
+            _ => continue, // skip files directly in resources_dir root
+        };
+
+        let resource_id = root.to_string_lossy().to_string();
+        // Normalise to forward slashes on all platforms.
+        let resource_id = resource_id.replace('\\', "/");
+
+        if manifest.resources.contains_key(&resource_id) {
+            continue;
+        }
+
+        let kind = match root
+            .components()
+            .next()
+            .and_then(|c| c.as_os_str().to_str())
+            .unwrap_or("")
+        {
+            "Coursera" => ResourceKind::OnlineCourse,
+            "Tutorial" | "Tutorials" => ResourceKind::Tutorial,
+            "Book" | "Books" => ResourceKind::Book,
+            _ => ResourceKind::Other,
+        };
+
+        let rel_path = resources_dir
+            .join(root)
+            .strip_prefix(vault_root)
+            .unwrap_or(resources_dir)
+            .to_string_lossy()
+            .to_string();
+
+        manifest.resources.insert(
+            resource_id.clone(),
+            ResourceEntry {
+                path: rel_path,
+                kind,
+                last_processed_at: None,
+            },
+        );
+        new_resources.push(resource_id);
+    }
+
+    Ok(())
 }
 
 /// Extract metadata from a source file's YAML frontmatter.
@@ -2420,6 +2505,7 @@ mod tests {
             recordings_dir: "recordings".into(),
             artifacts_dir: "artifacts".into(),
             sources_dir: "sources".into(),
+            resources_dir: "resources".into(),
             synthetic_dir: "_synthetic".into(),
             generated_dir: "_generated".into(),
             csnotes_dir: ".csnotes".into(),

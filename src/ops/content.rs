@@ -279,6 +279,7 @@ mod tests {
             },
             sessions: IndexMap::new(),
             sources,
+            resources: IndexMap::new(),
             topics: IndexMap::new(),
             session_in_progress: None,
             flags_path: "_generated/flags.json".into(),

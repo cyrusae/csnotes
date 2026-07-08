@@ -30,6 +30,10 @@ pub struct ProcessArgs {
     /// an exact source ID or a prefix that expands to all matching IDs.
     pub sources: Vec<String>,
     pub topic: Option<String>,
+    /// Resource ID or fuzzy name for a self-directed study resource.
+    pub resource: Option<String>,
+    /// Resource IDs to include alongside a course or other primary scope.
+    pub include_resources: Vec<String>,
     pub dry_run: bool,
     pub backend: Option<AiBackend>,
     pub fixture: Option<String>,
@@ -71,6 +75,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
 
     // ── Resolve scope ─────────────────────────────────────────────────────
     let scope = resolve_scope(&args, &manifest)?;
+    let include_resources = resolve_include_resources(&args.include_resources, &manifest)?;
 
     // ── Auto-reconcile ────────────────────────────────────────────────────
     // (Phase 2: reconcile runs here automatically)
@@ -143,9 +148,11 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         crate::config::AiBackend::Agy => crate::config::SkillVariant::Gemini,
         crate::config::AiBackend::Mock => config.skill_variant, // tests may want either
     };
-    // Course scope always uses the review skill regardless of backend.
+    // Course and Resource scopes use their respective review skills.
     let skill_variant = if args.course.is_some() {
         crate::config::SkillVariant::CourseReview
+    } else if args.resource.is_some() {
+        crate::config::SkillVariant::ResourceReview
     } else {
         skill_variant
     };
@@ -159,6 +166,7 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         skill_variant,
         backend_kind,
         dry_run: args.dry_run,
+        include_resources,
     };
 
     let workspace_root = assemble(&ws_params)?;
@@ -221,6 +229,12 @@ pub fn run(args: ProcessArgs) -> Result<()> {
                     .count();
                 dim_colon("scope   :", &format!("course {}", course));
                 continuation("sessions:", &format!("{} processed", session_count));
+            }
+            WorkspaceScope::Resource { resource_id } => {
+                dim_colon("scope   :", &format!("resource {}", resource_id));
+                if let Some(entry) = manifest.resources.get(resource_id) {
+                    continuation("kind    :", entry.kind.as_str());
+                }
             }
         }
         dim_colon("backend :", &backend_kind.to_string());
@@ -614,9 +628,52 @@ fn resolve_scope(args: &ProcessArgs, manifest: &Manifest) -> Result<WorkspaceSco
             course: course.clone(),
         });
     }
+    if let Some(resource_query) = &args.resource {
+        let resource_id = fuzzy_resolve_resource(resource_query, manifest)?;
+        return Ok(WorkspaceScope::Resource { resource_id });
+    }
 
     let session_id = resolve_session_id(args, manifest)?;
     Ok(WorkspaceScope::Session { session_id })
+}
+
+/// Resolve a resource query (exact ID or fuzzy substring) to a manifest resource ID.
+fn fuzzy_resolve_resource(query: &str, manifest: &Manifest) -> Result<String> {
+    let normalize = |s: &str| s.to_lowercase().replace(['-', '_', '/'], "");
+    let query_norm = normalize(query);
+
+    // Exact match first.
+    if manifest.resources.contains_key(query) {
+        return Ok(query.to_string());
+    }
+
+    let matches: Vec<&str> = manifest
+        .resources
+        .keys()
+        .filter(|id| normalize(id).contains(&query_norm))
+        .map(|s| s.as_str())
+        .collect();
+
+    match matches.len() {
+        0 => anyhow::bail!(
+            "resource '{}' not found (no match in manifest — run `csnotes reconcile` first)",
+            query
+        ),
+        1 => Ok(matches[0].to_string()),
+        _ => anyhow::bail!(
+            "resource '{}' is ambiguous — matches: {}",
+            query,
+            matches.join(", ")
+        ),
+    }
+}
+
+/// Resolve include_resource queries to manifest resource IDs.
+pub fn resolve_include_resources(queries: &[String], manifest: &Manifest) -> Result<Vec<String>> {
+    queries
+        .iter()
+        .map(|q| fuzzy_resolve_resource(q, manifest))
+        .collect()
 }
 
 /// Expand a list of source IDs or path prefixes to concrete manifest IDs.
@@ -690,7 +747,7 @@ fn resolve_session_id(args: &ProcessArgs, manifest: &Manifest) -> Result<String>
 
     // No explicit session: auto-resolve
     match unprocessed.len() {
-        0 => bail!("No unprocessed sessions. Run `csnotes status` to review."),
+        0 => bail!("No unprocessed sessions. Use --topic <name> for a topic review or --course <name> for a course-wide review. Run `csnotes status` to see what's available."),
         1 => Ok(unprocessed.into_iter().next().unwrap()),
         _ => {
             if args.next {
@@ -953,6 +1010,8 @@ mod tests {
                 course: None,
                 sources: vec![],
                 topic: None,
+                resource: None,
+                include_resources: vec![],
                 dry_run: false,
                 backend: None,
                 fixture: None,
@@ -1150,6 +1209,8 @@ mod tests {
             course: Some(course.to_string()),
             sources: vec![],
             topic: None,
+            resource: None,
+            include_resources: vec![],
             dry_run: false,
             backend: None,
             fixture: None,
@@ -1175,6 +1236,8 @@ mod tests {
             course: Some("CPSC5002".to_string()),
             sources: vec![],
             topic: None,
+            resource: None,
+            include_resources: vec![],
             dry_run: false,
             backend: None,
             fixture: None,

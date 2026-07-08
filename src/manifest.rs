@@ -19,6 +19,8 @@ pub struct Manifest {
     pub config: ManifestConfig,
     pub sessions: IndexMap<String, SessionEntry>,
     pub sources: IndexMap<String, SourceEntry>,
+    #[serde(default)]
+    pub resources: IndexMap<String, ResourceEntry>,
     pub topics: IndexMap<String, TopicEntry>,
     pub session_in_progress: Option<InProgressRecord>,
     pub flags_path: String,
@@ -32,6 +34,7 @@ impl Manifest {
             config,
             sessions: IndexMap::new(),
             sources: IndexMap::new(),
+            resources: IndexMap::new(),
             topics: IndexMap::new(),
             session_in_progress: None,
             flags_path: "_generated/flags.json".to_string(),
@@ -260,6 +263,37 @@ pub enum SourceStatus {
     Unprocessed,
     InProgress,
     Processed,
+}
+
+// ── Resource entries ──────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResourceEntry {
+    /// Path to the resource root directory, relative to vault root.
+    pub path: String,
+    pub kind: ResourceKind,
+    pub last_processed_at: Option<DateTime<Utc>>,
+}
+
+/// Inferred from the top-level subdirectory name under `resources/`.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceKind {
+    OnlineCourse,
+    Tutorial,
+    Book,
+    Other,
+}
+
+impl ResourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OnlineCourse => "online_course",
+            Self::Tutorial => "tutorial",
+            Self::Book => "book",
+            Self::Other => "other",
+        }
+    }
 }
 
 // ── Topic entries ─────────────────────────────────────────────────────────────
