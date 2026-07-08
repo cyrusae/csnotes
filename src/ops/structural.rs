@@ -961,6 +961,67 @@ pub fn relink_raw_notes(ops: &[Op], raw_note_roots: &[&Path]) -> Result<usize> {
     Ok(total)
 }
 
+// ── Embeds auto-sync ──────────────────────────────────────────────────────────
+
+/// After ops execute, rebuild the `embeds` frontmatter list for every index
+/// note from the transclusions actually present in its body (`![[stem#^id]]`).
+///
+/// This makes `set_embed` ops optional for frontmatter correctness — Claude
+/// can write `![[…]]` directly and the list stays accurate without a separate
+/// op.  The function is idempotent and does nothing if the list is already
+/// correct.
+pub fn sync_index_embeds_from_body(workspace_root: &Path, synthetic_dir: &str) -> Result<()> {
+    use walkdir::WalkDir;
+
+    let synthetic_root = workspace_root.join(synthetic_dir);
+    if !synthetic_root.exists() {
+        return Ok(());
+    }
+
+    for entry in WalkDir::new(&synthetic_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+    {
+        let path = entry.path();
+        let content = match crate::frontmatter::read_note(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let (yaml, body) = match crate::frontmatter::split_frontmatter(&content) {
+            Some(p) => p,
+            None => continue,
+        };
+        let fm: crate::frontmatter::NoteFrontmatter = match serde_yml::from_str(yaml) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if fm.kind != crate::frontmatter::NoteKind::Index {
+            continue;
+        }
+
+        // Collect unique stems from block-anchor embeds in body order.
+        let mut seen = std::collections::HashSet::new();
+        let stems: Vec<String> = crate::obsidian::extract_embeds(body)
+            .into_iter()
+            .filter(|e| e.is_block_anchor())
+            .map(|e| e.file)
+            .filter(|s| seen.insert(s.clone()))
+            .collect();
+
+        let current = fm.embeds.as_deref().unwrap_or(&[]);
+        if current == stems.as_slice() {
+            continue;
+        }
+
+        crate::frontmatter::update_frontmatter(path, |f| {
+            f.embeds = Some(stems.clone());
+        })?;
+    }
+
+    Ok(())
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

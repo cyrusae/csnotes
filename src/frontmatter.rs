@@ -51,7 +51,9 @@ pub struct NoteFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embeds: Option<Vec<String>>,
 
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub contributing_sessions: Vec<SessionContrib>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub contributing_sources: Vec<SourceContrib>,
 
     /// Which other notes embed this atomic (reverse index; atomic only).
@@ -111,6 +113,9 @@ impl NoteFrontmatter {
     /// frontmatter.  Deduplicates on `(course, date)` for sessions and
     /// `(source_id, location.path)` for sources.
     pub fn merge_provenance(&mut self, delta: &ProvenanceDelta, now: DateTime<Utc>) {
+        if self.kind == NoteKind::Index {
+            return;
+        }
         let mut changed = false;
 
         for contrib in &delta.sessions {
@@ -225,6 +230,19 @@ pub fn parse_frontmatter(content: &str, path: &Path) -> Result<NoteFrontmatter> 
 
 /// Write updated frontmatter back to a file, preserving the body unchanged.
 pub fn write_frontmatter(path: &Path, fm: &NoteFrontmatter, body: &str) -> Result<()> {
+    let owned;
+    let fm: &NoteFrontmatter = if fm.kind == NoteKind::Index
+        && (!fm.contributing_sessions.is_empty() || !fm.contributing_sources.is_empty())
+    {
+        owned = NoteFrontmatter {
+            contributing_sessions: vec![],
+            contributing_sources: vec![],
+            ..fm.clone()
+        };
+        &owned
+    } else {
+        fm
+    };
     let yaml = serde_yml::to_string(fm).map_err(|e| CsnotesError::FrontmatterParse {
         path: path.to_path_buf(),
         reason: e.to_string(),

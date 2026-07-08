@@ -369,6 +369,7 @@ pub fn run_teardown(
             return Err(e);
         }
         cleanup_workspace_snapshot(workspace_root)?;
+        crate::ops::structural::sync_index_embeds_from_body(workspace_root, &config.synthetic_dir)?;
     }
 
     // Step 7: Build updated manifest (always — topics must reflect current state)

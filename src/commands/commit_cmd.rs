@@ -191,6 +191,7 @@ fn commit_ops(
 
     // Content ops (stamp frontmatter on notes the AI wrote).
     execute_content_ops_slice(remaining, workspace_root, now, manifest)?;
+    crate::ops::structural::sync_index_embeds_from_body(workspace_root, &config.synthetic_dir)?;
 
     // Patch report: write normalized ops back into the committed positions and
     // rewrite stale paths in the uncommitted tail.  The invariant suite then
