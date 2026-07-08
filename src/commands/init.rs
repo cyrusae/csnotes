@@ -692,7 +692,8 @@ csnotes diff                          # semantic diff of what the last session c
 csnotes process                       # auto-picks the one unprocessed session
 csnotes process --next                # oldest pending (backlog catch-up)
 csnotes process --session 09-03       # specific session by date
-csnotes process --session 09-03 --course CPSC5001
+csnotes process --session 09-03 --for-course CPSC5001  # disambiguate same date in multiple courses
+csnotes process --course CPSC5002     # course-wide review workspace (all sessions + sources)
 csnotes process --source SICP/ch01   # process a source file
 csnotes process --source Textbooks/SICP  # expand prefix → all sources under path
 csnotes process --topic <name>        # focused review of an existing topic

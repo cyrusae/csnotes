@@ -245,7 +245,8 @@ csnotes status            # see what's pending
 csnotes process           # auto-picks the one unprocessed session
 csnotes process --next               # oldest pending session (backlog catch-up)
 csnotes process --session 09-03              # by date (unique across courses)
-csnotes process --session 09-03 --course CPSC5001  # explicit course+date
+csnotes process --session 09-03 --for-course CPSC5001  # disambiguate when same date in multiple courses
+csnotes process --course CPSC5002            # course-wide review workspace (all sessions + sources)
 csnotes process --backend agy               # override backend for this run
 csnotes process --agy-model gemini-2.5-pro  # override Gemini model
 csnotes process --dry-run                   # show scope and inputs, don't launch
@@ -271,6 +272,15 @@ csnotes process --source SICP/ch01       # synthesise from this source
 # Focused review of an existing topic — no new raw notes required
 csnotes process --topic "sorting-algorithms"
 ```
+
+### Course review sessions
+
+```sh
+# Assemble all processed sessions + course-tagged sources for a course
+csnotes process --course CPSC5002
+```
+
+Launches a `course-review.md`-driven session. The AI writes a journal entry to `_journal/<course>/review-<date>.md` (study narrative: what you discussed, lingering confusion, instructor framing) and optionally emits atomic ops to `_synthetic/` when something reference-worthy surfaces. The journal entry is always the primary deliverable.
 
 ### Flags
 

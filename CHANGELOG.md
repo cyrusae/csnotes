@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- infer course from folder path for course-mediated sources (L60)
+- add Syllabus SourceKind variant (L59)
+- add WorkedExample SourceKind variant (L57)
+- Add CourseReview skill variant for interactive study sessions (L53)
+- Add course-scoped workspace scope (prerequisite for study command) (L52)
 - add 'summary' as source_type value mapping to PersonalNotes (L50)
 - audit clean output: show topic/atomic summary and open-session flag (L48)
 - pre-flight: warn on suspiciously-short session input files (L45)
@@ -62,6 +67,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- strengthen file layout rule in course-review.md to cover tool-based moves (L56)
+- revert vague file layout rule in course-review.md (L55)
+- Fix CourseReview dest_name and generic course-review.md (L54)
 - reconcile: existing Staged source not demoted when frontmatter status removed (L49)
 - audit --show-discrepancies prints 'Vault is clean' even when discrepancies exist (L47)
 - commit: missing relink pass before invariant check breaks rename batches (L29)
@@ -105,6 +113,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- update docs for --for-course rename and --course scope flag (L62)
+- split audit.rs into audit/ module (invariants, reindex, discrepancies, fixes) (L51)
 - tests for count_words_in_file (L46)
 - add csnotes_reference.md instruction file + README flag docs (L43)
 - reconcile: add Phase 3 synthetic vault rescan to keep topics map fresh (L37)
