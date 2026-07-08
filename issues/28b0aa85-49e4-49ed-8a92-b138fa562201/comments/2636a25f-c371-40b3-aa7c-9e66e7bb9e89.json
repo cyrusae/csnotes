@@ -1,0 +1,10 @@
+{
+  "uuid": "2636a25f-c371-40b3-aa7c-9e66e7bb9e89",
+  "issue_uuid": "28b0aa85-49e4-49ed-8a92-b138fa562201",
+  "author": "3owj",
+  "content": "Implemented resource concept: WorkspaceScope::Resource, SkillVariant::ResourceReview, ResourceEntry/ResourceKind in manifest, scan_resources_dir in reconcile, --resource/--include-resource flags in process+main, resource-review.md template in init, CSNOTES_REFERENCE_MD updated. resources_dir config key added. All 512 tests pass.",
+  "created_at": "2026-07-08T14:20:38.036558Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAcPAGWdRf99RSiM4k8VNAY+xyDaAS0Wrf3+5FFtmoQsDDgByj6fRTdtrU3aN5BH9GqBxcDw2utpM+atU68XZmBA=="
+}
