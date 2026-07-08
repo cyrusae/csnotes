@@ -1,0 +1,10 @@
+{
+  "uuid": "25a4017a-434a-4b37-a32e-22198af8829f",
+  "issue_uuid": "283ab06d-6d6d-4fab-a14a-cc4cb1f7dea1",
+  "author": "3owj",
+  "content": "Replaced vague Voice and style section in SYNTHESIS_MD with punchy-bullets spec: bullets-not-prose default, one-idea-per-bullet, bold load-bearing words, arrow for cause/effect, colloquial register, embed-block exception.",
+  "created_at": "2026-07-08T14:24:45.227965Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA5e85RtPRSTFhvUXkxMDPvllgutKh1jn+DA5P11imlf2kzS718ooxoJ0WYrOWf69aNpcchP13rzwhrdHkFje/DQ=="
+}
