@@ -1,0 +1,10 @@
+{
+  "uuid": "8f05903a-b900-446b-a017-a016f0305b40",
+  "issue_uuid": "6e72b3f3-cfb8-455b-8243-de2d7b30ab78",
+  "author": "3owj",
+  "content": "index notes: contributing_sessions/sources no longer serialized when empty, cleared on write, merge_provenance is a no-op for index kind. embeds: auto-synced from body after teardown ops in both process and commit pipelines.",
+  "created_at": "2026-07-08T15:30:32.767140Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAIJqqaU+4kR2XTzaZ1kds1+e3bh7D9M/w3hZFrwRAFdcODMK/Go/SE+Ubl4QxgtzGzoDMSkU/XXbUi8DG9O2pDQ=="
+}
