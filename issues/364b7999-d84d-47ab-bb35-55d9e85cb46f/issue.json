@@ -2,11 +2,12 @@
   "uuid": "364b7999-d84d-47ab-bb35-55d9e85cb46f",
   "display_id": null,
   "title": "journal create_note workflow: 5 defects from first review session",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-07-29T20:13:09.853732Z",
-  "updated_at": "2026-07-29T20:13:10.020821Z",
+  "updated_at": "2026-07-29T20:16:41.606299Z",
+  "closed_at": "2026-07-29T20:16:41.606299Z",
   "labels": [
     "bug"
   ]
