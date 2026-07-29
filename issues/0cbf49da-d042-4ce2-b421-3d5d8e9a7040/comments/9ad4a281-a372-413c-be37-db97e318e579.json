@@ -1,0 +1,10 @@
+{
+  "uuid": "9ad4a281-a372-413c-be37-db97e318e579",
+  "issue_uuid": "0cbf49da-d042-4ce2-b421-3d5d8e9a7040",
+  "author": "3owj",
+  "content": "Added INVARIANT_FAILED_MARKER constant to workspace.rs. run_teardown writes the marker when invariant suite fails; clears it when teardown passes invariants. recover --resume checks for the marker: if present, clears it and re-launches AI (so Claude can run csnotes check, fix violations, and re-exit) rather than looping on teardown. Normal crash-mid-teardown path (no marker) unchanged.",
+  "created_at": "2026-07-29T20:51:14.815643Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAfFUnma1X90A46xPNAxrbJduZLE2F6qO59bWkRZIKXHZgA+haI6DBxfTfoyyEXJ+nKmFMjwEN8vk/MALexpFKBw=="
+}
