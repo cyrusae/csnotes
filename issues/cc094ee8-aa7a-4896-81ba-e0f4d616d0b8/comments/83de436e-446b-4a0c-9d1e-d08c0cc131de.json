@@ -1,0 +1,10 @@
+{
+  "uuid": "83de436e-446b-4a0c-9d1e-d08c0cc131de",
+  "issue_uuid": "cc094ee8-aa7a-4896-81ba-e0f4d616d0b8",
+  "author": "3owj",
+  "content": "README: added Resources section to Usage guide with directory layout, kind inference, and command examples; updated vault layout diagram to include resources/ and _journal/; updated csnotes process flags table with --resource, --include-resource, --for-course. init.rs CSNOTES_REFERENCE_MD: added Resources section with directory layout, frontmatter date sorting, command examples, and resources_dir config note; added resources/ to Key files table.",
+  "created_at": "2026-07-29T20:36:58.068675Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAzKkqkMVrNf53MpPl0BUfnhFKXMoA10wGT4hvubjiKP6EYrdd7L5Wc9wnfvPMnkZ7zERWMOa8jq0UIYReQ/a6AA=="
+}
