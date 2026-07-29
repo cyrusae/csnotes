@@ -66,6 +66,7 @@ pub fn rebuild_topics(
                     topic.atomic_notes.push(rel_path);
                 }
             }
+            NoteKind::Journal => {} // journal entries live in _journal/, not indexed here
         }
 
         for contrib in fm.contributing_sessions {

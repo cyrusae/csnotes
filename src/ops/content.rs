@@ -45,6 +45,16 @@ pub fn execute_create_note(
 ) -> Result<()> {
     let note_path = safe_join(workspace_root, &op.path)?;
 
+    // Journal entries: the AI wrote the full file verbatim (including any
+    // frontmatter it chose).  We leave it untouched; merge_back copies it to
+    // the vault.  No csnotes frontmatter is stamped.
+    if op.kind == NoteKind::Journal {
+        if !note_path.exists() {
+            bail!(CsnotesError::CreateNotePathMissing(op.path.clone()));
+        }
+        return Ok(());
+    }
+
     // Read the existing body (the AI wrote this).
     let body = if note_path.exists() {
         let raw = crate::frontmatter::read_note(&note_path)?;
@@ -54,10 +64,7 @@ pub fn execute_create_note(
             None => raw,
         }
     } else {
-        // Create a minimal skeleton — the AI should have written the file,
-        // but we handle the missing-file case gracefully here; the
-        // precondition pass will have already caught a genuine violation.
-        bail!(CsnotesError::UpdateNotePathMissing(op.path.clone()));
+        bail!(CsnotesError::CreateNotePathMissing(op.path.clone()));
     };
 
     // Build frontmatter from scratch.
@@ -67,6 +74,7 @@ pub fn execute_create_note(
             NoteFrontmatter::new_atomic(&op.topic, &op.title, block_id, now)
         }
         NoteKind::Index => NoteFrontmatter::new_index(&op.topic, &op.title, now),
+        NoteKind::Journal => unreachable!(),
     };
 
     // Merge AI-declared provenance first so it takes priority over harvested.

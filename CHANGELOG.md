@@ -69,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- journal create_note workflow: 5 defects from first review session (L68)
+- journal create_note workflow: 5 defects from first review session (L68)
 - strengthen file layout rule in course-review.md to cover tool-based moves (L56)
 - revert vague file layout rule in course-review.md (L55)
 - Fix CourseReview dest_name and generic course-review.md (L54)

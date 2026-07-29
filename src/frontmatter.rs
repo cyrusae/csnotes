@@ -32,6 +32,10 @@ pub const FRONTMATTER_SCHEMA_VERSION: u32 = 1;
 pub enum NoteKind {
     Atomic,
     Index,
+    /// Narrative review entry in `_journal/`.  Not a reference note; no
+    /// csnotes frontmatter is stamped.  The AI writes the file verbatim and
+    /// declares this op so the teardown pipeline copies it to the vault.
+    Journal,
 }
 
 // ── NoteFrontmatter ───────────────────────────────────────────────────────────

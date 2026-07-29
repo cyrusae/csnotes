@@ -331,12 +331,16 @@ BLOCKED = [
         "Declare a structural op (rename_atomic, move_atomic, rename_topic, etc.)\n"
         "in _session_report.json — the CLI executes all file moves.",
     ),
-    # rm on .md files
+    # rm on .md files — path must be a single token (no spaces) to avoid false-
+    # positives on prose like "rm on a .md".  _journal/ is exempt: those files
+    # are AI-written scratch, not vault-tracked notes.
     (
-        r'\brm\b(?:\s+-\w+)*\s+[^\n]*\.md\b',
+        r'\brm\b(?:\s+-\w+)*\s+(?![^\n]*_journal/)(?:[^\s\n]|\\ )+\.md\b',
         "Do not use rm on .md files.\n"
         "Note removal must be declared as a structural op so the CLI can\n"
-        "update wikilinks and maintain vault consistency.",
+        "update wikilinks and maintain vault consistency.\n"
+        "Exception: files under _journal/ (AI-written, not vault-tracked)\n"
+        "may be removed freely.",
     ),
     # rmdir or rm -r/-rf on _synthetic/ subdirectories
     (
@@ -1135,11 +1139,16 @@ fn render_session_md(
             out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
         }
         WorkspaceScope::Topic { topic } => {
+            let today = chrono::Local::now().format("%Y-%m-%d");
             out.push_str(&format!("# Study Session — {}\n\n", topic));
             out.push_str("## Scope\n");
             out.push_str(&format!("- Topic: {}\n", topic));
             out.push_str("- Mode: study/review (no new session input)\n");
-            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
+            out.push_str(&format!("- run_id: `{}`\n", params.run_id));
+            out.push_str(&format!(
+                "- Journal entry path (optional): `_journal/topics/{}/review-{}.md`\n\n",
+                topic, today
+            ));
         }
         WorkspaceScope::Course { course } => {
             use crate::manifest::SessionStatus;
@@ -1471,6 +1480,29 @@ pub fn merge_back(workspace_root: &Path, vault_root: &Path, synthetic_dir: &str)
     // After all files are in place, rebuild the `cross_embedded_in` reverse
     // index so every atomic note knows which index notes embed it.
     rebuild_cross_embedded_in(&vault_synthetic)?;
+
+    // Copy any journal entries the AI wrote during this session.  Journal
+    // files are append-only — we never delete vault entries that are absent
+    // from the workspace (old entries from prior sessions must be preserved).
+    let ws_journal = workspace_root.join("_journal");
+    if ws_journal.exists() {
+        let vault_journal = vault_root.join("_journal");
+        for entry in walkdir::WalkDir::new(&ws_journal)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let rel = entry.path().strip_prefix(&ws_journal).unwrap();
+            let dest = vault_journal.join(rel);
+            if entry.file_type().is_dir() {
+                fs::create_dir_all(&dest)?;
+            } else {
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(entry.path(), &dest)?;
+            }
+        }
+    }
 
     Ok(())
 }

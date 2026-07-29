@@ -28,7 +28,7 @@ pub fn generate() -> String {
         Relationship::Nuanced,
     ]);
 
-    let note_kind_values = enum_values(&[NoteKind::Atomic, NoteKind::Index]);
+    let note_kind_values = enum_values(&[NoteKind::Atomic, NoteKind::Index, NoteKind::Journal]);
 
     let scope_kind_values = enum_values(&[
         ScopeKind::Session,

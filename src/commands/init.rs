@@ -612,17 +612,26 @@ cement understanding of the course material.
 
 ## Phase 3 — Write the journal entry
 
-**Always emit this op**, even if nothing reference-worthy surfaced:
+**Always do this**, even if nothing reference-worthy surfaced:
+
+1. Write the journal entry to the path shown in `_session.md` (`Journal entry
+   path` line).  The file goes in `_journal/`, not `_synthetic/` — write it
+   with your file tool directly.  Any frontmatter you include is kept as-is;
+   no csnotes frontmatter is stamped on journal files.
+
+2. Declare the op in the session report (see Phase 5):
 
 ```json
 {
   "op": "create_note",
+  "kind": "journal",
   "path": "_journal/<course>/review-<date>.md",
-  "content": "..."
+  "title": "Review — <date>",
+  "topic": "_journal",
+  "provenance": {"sessions": [], "sources": []},
+  "change_summary": "Review session journal entry"
 }
 ```
-
-Use the exact path from `_session.md` (the `Journal entry path` line).
 
 The journal entry captures the **study narrative** — what you discussed, what
 the student was fuzzy on, what clicked during the session, any course-specific

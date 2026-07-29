@@ -53,24 +53,35 @@ pub fn precondition_pass_ops(ops: &[Op], workspace_root: &Path) -> Result<()> {
         match op {
             Op::CreateNote(op) => {
                 let path = safe_join(workspace_root, &op.path)?;
-                if path.exists() {
-                    if let Ok(content) = crate::frontmatter::read_note(&path) {
-                        if crate::frontmatter::split_frontmatter(&content).is_some() {
-                            return Err(CsnotesError::CreateNotePathExists(op.path.clone()).into());
-                        }
+                if op.kind == crate::frontmatter::NoteKind::Journal {
+                    // Journal entries: AI writes the full file; CLI just copies
+                    // it to the vault during merge-back without stamping frontmatter.
+                    if !path.exists() {
+                        return Err(CsnotesError::CreateNotePathMissing(op.path.clone()).into());
                     }
                 } else {
-                    return Err(CsnotesError::UpdateNotePathMissing(op.path.clone()).into());
-                }
+                    // Atomic/index: AI writes the body (no frontmatter); CLI stamps it.
+                    if path.exists() {
+                        if let Ok(content) = crate::frontmatter::read_note(&path) {
+                            if crate::frontmatter::split_frontmatter(&content).is_some() {
+                                return Err(
+                                    CsnotesError::CreateNotePathExists(op.path.clone()).into()
+                                );
+                            }
+                        }
+                    } else {
+                        return Err(CsnotesError::CreateNotePathMissing(op.path.clone()).into());
+                    }
 
-                if let Some(block_id) = &op.block_id {
-                    check_block_id_anchor(workspace_root, &op.path, block_id)?;
-                }
+                    if let Some(block_id) = &op.block_id {
+                        check_block_id_anchor(workspace_root, &op.path, block_id)?;
+                    }
 
-                for target in &op.embed_in {
-                    let target_path = safe_join(workspace_root, target)?;
-                    if !target_path.exists() {
-                        return Err(CsnotesError::EmbedInTargetMissing(target.clone()).into());
+                    for target in &op.embed_in {
+                        let target_path = safe_join(workspace_root, target)?;
+                        if !target_path.exists() {
+                            return Err(CsnotesError::EmbedInTargetMissing(target.clone()).into());
+                        }
                     }
                 }
             }

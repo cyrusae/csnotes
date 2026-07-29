@@ -55,6 +55,9 @@ pub enum CsnotesError {
     #[error("create_note precondition failed: '{0}' already exists in workspace")]
     CreateNotePathExists(String),
 
+    #[error("create_note precondition failed: '{0}' not found in workspace (write the file before declaring the op)")]
+    CreateNotePathMissing(String),
+
     #[error("update_note precondition failed: '{0}' not found in workspace")]
     UpdateNotePathMissing(String),
 
