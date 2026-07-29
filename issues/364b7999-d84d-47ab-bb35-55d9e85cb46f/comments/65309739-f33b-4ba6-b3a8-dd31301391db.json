@@ -1,0 +1,10 @@
+{
+  "uuid": "65309739-f33b-4ba6-b3a8-dd31301391db",
+  "issue_uuid": "364b7999-d84d-47ab-bb35-55d9e85cb46f",
+  "author": "3owj",
+  "content": "D1: journal path now emitted for Topic scope in _session.md. D2: course-review.md Phase 3 fixed — no more inline content field, shows kind:journal op + write-file-first contract. D3: create_note precondition now branches on kind — journal only needs file to exist; atomic/index keep old logic. D4: CreateNotePathMissing error variant added, used instead of UpdateNotePathMissing for absent file in create_note. merge_back: also copies _journal/ from workspace to vault (append-only, no stale removal). NoteKind::Journal added to enum; reindex/report_schema_cmd updated.",
+  "created_at": "2026-07-29T20:16:41.474644Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA/Dy/TqsrSm+G/bOlD/e+n1vLyGuJUL3yjdpFU4Pq9Ci+8GDrmOtehfzlKYBUU5Y1CLhzahbUq8qQHfpoENoiCA=="
+}
