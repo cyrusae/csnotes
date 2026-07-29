@@ -117,6 +117,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- README + vault reference docs: add resources section (L69)
 - remove code-narration prohibition from synthesis.md (L66)
 - update synthesis.md voice-and-style section with punchy-bullets guidance (L65)
 - update docs for --for-course rename and --course scope flag (L62)

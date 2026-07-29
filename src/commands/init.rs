@@ -820,6 +820,43 @@ csnotes flags resolve <id>            # mark a flag resolved
 csnotes flags resolve <id> --follow-up "..."  # record a note at resolution
 ```
 
+## Resources
+
+Self-directed study notes (Coursera courses, tutorial videos, books) live in
+`resources/` at the vault root.  Use type-named subdirectories so the kind is
+inferred automatically:
+
+```
+resources/
+  Coursera/
+    ML-Refresher/       ← kind: OnlineCourse  (resource ID: Coursera/ML-Refresher)
+      notes-week1.md
+      notes-week2.md
+  Tutorial/
+    Rust-Async/         ← kind: Tutorial      (resource ID: Tutorial/Rust-Async)
+      notes.md
+  Book/
+    CLRS/               ← kind: Book          (resource ID: Book/CLRS)
+      ch01-notes.md
+  anything-else/        ← kind: Other
+```
+
+Notes inside a resource folder can have any filename.  Add `date: YYYY-MM-DD`
+in frontmatter to sort them chronologically in the workspace; undated notes
+sort after dated ones by filename.
+
+```sh
+# After adding notes:
+csnotes reconcile                                    # registers new resource folder
+csnotes process --resource ml-refresher              # fuzzy match (unique folder names)
+csnotes process --resource Coursera/ML-Refresher     # exact ID
+
+# Include resource notes alongside a course workspace:
+csnotes process --course CPSC5002 --include-resource ml-refresher
+```
+
+The `resources_dir` config key changes the folder name (default: `resources`).
+
 ## Setup
 
 ```sh
@@ -838,6 +875,7 @@ csnotes init --instructions-only      # refresh instruction files without touchi
 | `_csnotes/instructions/` | AI instruction files (updated by `--instructions-only`) |
 | `_generated/` | CLI-generated outputs: extracts, flags, session reports |
 | `_synthetic/` | AI-maintained synthesis notes |
+| `resources/` | Self-directed study notes (Coursera, tutorials, books) |
 "##;
 
 const SYNTHESIS_MD: &str = r##"# csnotes — synthesis philosophy

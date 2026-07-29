@@ -282,6 +282,37 @@ csnotes process --course CPSC5002
 
 Launches a `course-review.md`-driven session. The AI writes a journal entry to `_journal/<course>/review-<date>.md` (study narrative: what you discussed, lingering confusion, instructor framing) and optionally emits atomic ops to `_synthetic/` when something reference-worthy surfaces. The journal entry is always the primary deliverable.
 
+### Self-directed study resources
+
+For notes from non-course sources — Coursera refreshers, tutorial videos, books — create a `resources/` directory at the vault root (peer to your course folders). Use type-named subdirectories so the kind is inferred automatically:
+
+```
+resources/
+  Coursera/
+    ML-Refresher/       ← kind: OnlineCourse  (resource ID: Coursera/ML-Refresher)
+      notes-week1.md
+      notes-week2.md
+  Tutorial/
+    Rust-Async/         ← kind: Tutorial      (resource ID: Tutorial/Rust-Async)
+      notes.md
+  Book/
+    CLRS/               ← kind: Book          (resource ID: Book/CLRS)
+      ch01-notes.md
+```
+
+Notes inside a resource folder can have any filename. Add `date: YYYY-MM-DD` in frontmatter to sort them chronologically in the workspace; undated notes sort after dated ones by filename.
+
+```sh
+csnotes reconcile                                    # register new resource folder
+csnotes process --resource ml-refresher              # fuzzy match on folder name
+csnotes process --resource Coursera/ML-Refresher     # exact resource ID
+
+# Include resource notes alongside a course workspace:
+csnotes process --course CPSC5002 --include-resource ml-refresher
+```
+
+The `resources_dir` config key changes the root folder name (default: `resources`). Subtype names (`Coursera`, `Tutorial`, `Book`) are what determine kind — anything else becomes `Other`.
+
 ### Flags
 
 ```sh
@@ -391,15 +422,30 @@ sources/                        ← vault-level, not per-course
     ch01.md                     ← source ID: SICP/ch01
   dragon-book.md                ← source ID: dragon-book
 
+resources/                      ← self-directed study notes (Coursera, books, tutorials)
+  Coursera/
+    ML-Refresher/               ← resource ID: Coursera/ML-Refresher (kind: OnlineCourse)
+      notes-week1.md
+  Tutorial/
+    Rust-Async/                 ← resource ID: Tutorial/Rust-Async (kind: Tutorial)
+      notes.md
+  Book/
+    CLRS/                       ← resource ID: Book/CLRS (kind: Book)
+      ch01-notes.md
+
 _synthetic/                     ← vault-level, AI-managed
   sorting-algorithms/
     index.md
     quicksort.md
     mergesort.md
   …
+
+_journal/                       ← AI-written review narratives (not reference notes)
+  CPSC5002/
+    review-2026-09-15.md        ← written by AI during course review sessions
 ```
 
-The subdirectory names (`notes`, `recordings`, `artifacts`) are the values of `raw_dir`, `recordings_dir`, and `artifacts_dir` in `csnotes.toml`. `sources/` and `_synthetic/` are always at the vault root.
+The subdirectory names (`notes`, `recordings`, `artifacts`) are the values of `raw_dir`, `recordings_dir`, and `artifacts_dir` in `csnotes.toml`. `sources/`, `resources/`, and `_synthetic/` are always at the vault root.
 
 If `active_courses` is empty, the fallback is a flat layout with `raw_dir`, `recordings_dir`, and `artifacts_dir` directly at the vault root — useful for single-course or test setups.
 
@@ -481,15 +527,19 @@ csnotes recover --resume
 ```sh
 csnotes process                            # auto-picks the one unprocessed session
 csnotes process --next                     # oldest pending session (backlog catch-up)
-csnotes process --session 09-03           # specific session by date
-csnotes process --session 09-03 --course CPSC5001
-csnotes process --source SICP/ch01        # process a source file instead of a session
-csnotes process --source Textbooks/SICP  # expand prefix → all sources under that path
-csnotes process --topic "sorting-algorithms"  # review session on an existing topic
-csnotes process --backend agy             # override AI backend for this run
+csnotes process --session 09-03            # specific session by date
+csnotes process --session 09-03 --for-course CPSC5001  # disambiguate same date in multiple courses
+csnotes process --source SICP/ch01         # process a source file instead of a session
+csnotes process --source Textbooks/SICP    # expand prefix → all sources under that path
+csnotes process --topic "sorting-algorithms"    # review session on an existing topic
+csnotes process --course CPSC5002               # course-wide review (all sessions + sources)
+csnotes process --resource ml-refresher         # process a self-study resource (fuzzy match)
+csnotes process --resource Coursera/ML-Refresher  # exact resource ID
+csnotes process --course CPSC5002 --include-resource ml-refresher  # resource notes in course workspace
+csnotes process --backend agy              # override AI backend for this run
 csnotes process --agy-model gemini-2.5-pro
-csnotes process --dry-run                 # show scope without launching
-csnotes process --resume                  # re-enter an interrupted session
+csnotes process --dry-run                  # show scope without launching
+csnotes process --resume                   # re-enter an interrupted session
 ```
 
 ### `csnotes status` flags
