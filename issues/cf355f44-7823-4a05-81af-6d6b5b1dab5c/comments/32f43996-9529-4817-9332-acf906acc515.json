@@ -1,0 +1,10 @@
+{
+  "uuid": "32f43996-9529-4817-9332-acf906acc515",
+  "issue_uuid": "cf355f44-7823-4a05-81af-6d6b5b1dab5c",
+  "author": "3owj",
+  "content": "Added --all flag to csnotes process. run_all() snapshots unprocessed session IDs from manifest in date order, then calls run() for each in sequence. --for-course acts as a course filter in --all mode. Stops on first failure, workspace preserved for csnotes recover. Incompatible with --session, --next, --course, --topic, --resource via clap conflicts_with_all.",
+  "created_at": "2026-08-10T20:29:42.313521Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAgeDXSYpcT+8LRN0rXOz7mcelFJjAOnfxoWD78p4BDHtoeotH37jiGENR81hQ0TYOTeRKHoXbbBPxg+wGa42VDA=="
+}
