@@ -23,6 +23,7 @@ use crate::workspace::{
 pub struct ProcessArgs {
     pub session: Option<String>,
     /// Disambiguator: `{course}-{date}` session ID prefix when date alone is ambiguous.
+    /// With `--all`, filters to sessions for this course only.
     pub for_course: Option<String>,
     /// Scope flag: assemble a course-wide workspace (all processed sessions + sources).
     pub course: Option<String>,
@@ -44,6 +45,8 @@ pub struct ProcessArgs {
     pub claude_model: Option<String>,
     /// Auto-select the oldest pending session instead of erroring on ambiguity.
     pub next: bool,
+    /// Process all unprocessed sessions in chronological order.
+    pub all: bool,
 }
 
 pub fn run(args: ProcessArgs) -> Result<()> {
@@ -201,6 +204,15 @@ pub fn run(args: ProcessArgs) -> Result<()> {
                     }
                 }
             }
+            WorkspaceScope::MultiSession { session_ids } => {
+                dim_colon(
+                    "scope   :",
+                    &format!("{} sessions (batch)", session_ids.len()),
+                );
+                for id in session_ids {
+                    continuation("session :", id);
+                }
+            }
             WorkspaceScope::Source { source_ids } => {
                 dim_colon("scope   :", &format!("source(s) [{}]", source_ids.len()));
                 for source_id in source_ids {
@@ -335,11 +347,60 @@ pub fn run_teardown(
         });
     }
 
+    // Load workspace meta once — used for committed_ops cursor and multi-session validation.
+    let meta = WorkspaceMeta::load(workspace_root).ok();
+
+    // Step 3.5: Multi-session scope completeness check.
+    // If the workspace was assembled for multiple sessions, every one of them
+    // must appear in report.scope.sessions.  A partial list leaves sessions
+    // permanently Unprocessed and causes confusing duplicate work on the next run.
+    if let Some(ref meta) = meta {
+        if !meta.expected_sessions.is_empty() {
+            use std::collections::HashSet;
+            let reported: HashSet<&str> =
+                report.scope.sessions.iter().map(|s| s.as_str()).collect();
+            let missing: Vec<&str> = meta
+                .expected_sessions
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|s| !reported.contains(s))
+                .collect();
+            if !missing.is_empty() {
+                eprintln!(
+                    "{}",
+                    "Multi-session scope mismatch — workspace preserved."
+                        .red()
+                        .bold()
+                );
+                eprintln!(
+                    "  {} session{} missing from report scope.sessions:",
+                    missing.len(),
+                    if missing.len() == 1 { "" } else { "s" }
+                );
+                for id in &missing {
+                    eprintln!("    {}", id);
+                }
+                eprintln!();
+                eprintln!(
+                    "Re-enter the workspace, add all missing IDs to scope.sessions, and exit:"
+                );
+                eprintln!("  {}", "csnotes recover --resume".bold());
+                let _ = std::fs::write(
+                    workspace_root.join(crate::workspace::INVARIANT_FAILED_MARKER),
+                    "",
+                );
+                bail!(
+                    "multi-session scope incomplete: {} session{} not reported",
+                    missing.len(),
+                    if missing.len() == 1 { "" } else { "s" }
+                );
+            }
+        }
+    }
+
     // Check how many ops were already committed by `csnotes commit`.
     // When committed_through == total ops we can skip execution entirely.
-    let committed_through = WorkspaceMeta::load(workspace_root)
-        .map(|m| m.committed_ops.len())
-        .unwrap_or(0);
+    let committed_through = meta.as_ref().map(|m| m.committed_ops.len()).unwrap_or(0);
     let all_committed = committed_through >= report.operations.len();
     let remaining = &report.operations[committed_through.min(report.operations.len())..];
 
@@ -403,8 +464,18 @@ pub fn run_teardown(
                 "Your work is safe. Re-enter the workspace, fix the violations, and exit again:"
             );
             eprintln!("  {}", "csnotes recover --resume".bold());
+            // Write marker so recover --resume re-launches the AI instead of
+            // looping on teardown (which would hit the same violations forever).
+            let _ = std::fs::write(
+                workspace_root.join(crate::workspace::INVARIANT_FAILED_MARKER),
+                "",
+            );
             bail!("invariant suite failed");
         }
+
+        // Past the invariant suite — clear any prior failure marker.
+        let _ =
+            std::fs::remove_file(workspace_root.join(crate::workspace::INVARIANT_FAILED_MARKER));
 
         audit.print(); // Print any soft warnings
 
@@ -612,6 +683,34 @@ pub(crate) fn collect_raw_note_roots(
 // ── Scope resolution ──────────────────────────────────────────────────────────
 
 fn resolve_scope(args: &ProcessArgs, manifest: &Manifest) -> Result<WorkspaceScope> {
+    if args.all {
+        let mut sessions: Vec<(String, chrono::NaiveDate)> = manifest
+            .sessions
+            .iter()
+            .filter(|(_, e)| e.status == SessionStatus::Unprocessed)
+            .filter(|(_, e)| {
+                args.for_course
+                    .as_deref()
+                    .is_none_or(|course| e.course == course)
+            })
+            .map(|(id, e)| (id.clone(), e.date))
+            .collect();
+        sessions.sort_by_key(|(_, d)| *d);
+        let session_ids: Vec<String> = sessions.into_iter().map(|(id, _)| id).collect();
+        if session_ids.is_empty() {
+            let course_note = args
+                .for_course
+                .as_deref()
+                .map(|c| format!(" for course '{}'", c))
+                .unwrap_or_default();
+            anyhow::bail!(
+                "No unprocessed sessions{}. Run `csnotes status` to see what's available.",
+                course_note
+            );
+        }
+        return Ok(WorkspaceScope::MultiSession { session_ids });
+    }
+
     if !args.sources.is_empty() {
         let source_ids = expand_source_ids(&args.sources, manifest)?;
         return Ok(WorkspaceScope::Source { source_ids });
@@ -1019,6 +1118,7 @@ mod tests {
                 agy_model: None,
                 claude_model: None,
                 next: false,
+                all: false,
             },
             manifest,
         )
@@ -1218,6 +1318,7 @@ mod tests {
             agy_model: None,
             claude_model: None,
             next: false,
+            all: false,
         }
     }
 
@@ -1245,6 +1346,7 @@ mod tests {
             agy_model: None,
             claude_model: None,
             next: false,
+            all: false,
         };
         assert!(resolve_scope(&args, &m).is_err());
     }

@@ -69,6 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- recover --resume infinite loop when invariant suite fails (L70)
 - journal create_note workflow: 5 defects from first review session (L68)
 - journal create_note workflow: 5 defects from first review session (L68)
 - strengthen file layout rule in course-review.md to cover tool-based moves (L56)

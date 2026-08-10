@@ -34,6 +34,11 @@ use crate::obsidian::collect_all_block_ids;
 
 pub const WORKSPACE_META_FILENAME: &str = "_workspace_meta.json";
 
+/// Marker file written when the invariant suite fails during teardown.
+/// Presence tells `recover --resume` to re-launch the AI rather than
+/// re-running teardown (which would loop forever on the same violation).
+pub const INVARIANT_FAILED_MARKER: &str = ".csnotes_invariant_failed";
+
 /// Sidecar written into every workspace at assemble time.
 /// Consumed by `csnotes commit` to locate the vault root without relying on
 /// the calling shell's working directory, and to track progressive commit state.
@@ -48,6 +53,12 @@ pub struct WorkspaceMeta {
     /// the cursor into `report.operations`.
     #[serde(default)]
     pub committed_ops: Vec<crate::report::Op>,
+    /// Session IDs that must appear in `report.scope.sessions`.
+    /// Populated only for `WorkspaceScope::MultiSession` workspaces; empty
+    /// for single-session and all other scope types.
+    /// Teardown uses this to detect a partial report and re-enter the AI.
+    #[serde(default)]
+    pub expected_sessions: Vec<String>,
 }
 
 impl WorkspaceMeta {
@@ -112,6 +123,12 @@ pub enum WorkspaceScope {
     Session {
         session_id: String,
     },
+    /// Two or more unprocessed sessions assembled into one workspace.
+    /// All inputs are present; the AI processes them together in one pass.
+    /// The report must list every session ID in `scope.sessions`.
+    MultiSession {
+        session_ids: Vec<String>,
+    },
     /// One or more source files to ingest (dedicated source-processing session).
     /// Accepts exact source IDs or path prefixes expanded at call time.
     Source {
@@ -166,6 +183,16 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
             .get(session_id)
             .ok_or_else(|| CsnotesError::SessionNotFound(session_id.clone()))?;
         wrap_session_inputs(params.vault_root, entry, &workspace_root)?;
+    }
+    if let WorkspaceScope::MultiSession { session_ids } = &params.scope {
+        for session_id in session_ids {
+            let entry = params
+                .manifest
+                .sessions
+                .get(session_id)
+                .ok_or_else(|| CsnotesError::SessionNotFound(session_id.clone()))?;
+            wrap_session_inputs(params.vault_root, entry, &workspace_root)?;
+        }
     }
     if let WorkspaceScope::Course { course } = &params.scope {
         use crate::manifest::SessionStatus;
@@ -239,10 +266,15 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
 
     // 7. Write _workspace_meta.json so `csnotes commit` can locate the vault
     //    and track progressive commit state without shell-cwd assumptions.
+    let expected_sessions = match &params.scope {
+        WorkspaceScope::MultiSession { session_ids } => session_ids.clone(),
+        _ => Vec::new(),
+    };
     WorkspaceMeta {
         vault_root: params.vault_root.to_path_buf(),
         run_id: params.run_id.to_string(),
         committed_ops: Vec::new(),
+        expected_sessions,
     }
     .save(&workspace_root)?;
 
@@ -943,6 +975,26 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
                 .map(|(id, _)| id.as_str())
                 .collect()
         }
+        WorkspaceScope::MultiSession { session_ids } => {
+            let courses: Vec<&str> = session_ids
+                .iter()
+                .filter_map(|id| {
+                    manifest
+                        .sessions
+                        .get(id.as_str())
+                        .map(|e| e.course.as_str())
+                })
+                .collect();
+            manifest
+                .sources
+                .iter()
+                .filter(|(_, e)| {
+                    e.status != SourceStatus::Staged
+                        && courses.iter().any(|c| source_visible_for_course(e, c))
+                })
+                .map(|(id, _)| id.as_str())
+                .collect()
+        }
         WorkspaceScope::Topic { .. } | WorkspaceScope::Resource { .. } => manifest
             .sources
             .iter()
@@ -1117,6 +1169,71 @@ fn render_session_md(
                         })
                         .collect();
                     out.push_str(&format!("- Artifacts: {}\n", names.join(", ")));
+                }
+            }
+            out.push('\n');
+        }
+        WorkspaceScope::MultiSession { session_ids } => {
+            let n = session_ids.len();
+            out.push_str(&format!("# Session Briefing — {} sessions\n\n", n));
+            out.push_str("## Scope\n");
+            out.push_str(&format!(
+                "- Sessions being processed: {}\n",
+                session_ids.join(", ")
+            ));
+            out.push_str(&format!("- run_id: `{}`\n\n", params.run_id));
+
+            // Provide the exact scope block so the AI can copy it verbatim.
+            // This overrides the single-session example in report_schema.md.
+            let sessions_json = session_ids
+                .iter()
+                .map(|id| format!("\"{}\"", id))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(
+                "**Copy this scope block verbatim into your report** \
+                          (do not substitute a single session ID):\n\
+                          ```json\n\"scope\": {\n  \"kind\": \"mixed\",\n  \
+                          \"sessions\": [",
+            );
+            out.push_str(&sessions_json);
+            out.push_str("],\n  \"sources\": []\n}\n```\n\n");
+
+            out.push_str("## Inputs in This Workspace\n");
+            for session_id in session_ids {
+                if let Some(e) = params.manifest.sessions.get(session_id) {
+                    out.push_str(&format!("\n### {} ({})\n", session_id, e.date));
+                    out.push_str("- Raw notes: `<raw_student_notes>` tag\n");
+                    if e.recording_missing {
+                        out.push_str(
+                            "- Recording: **not available** — synthesise from raw notes only\n",
+                        );
+                    } else if e.recording_exports.is_empty() {
+                        out.push_str("- Recording: none\n");
+                    } else {
+                        let kinds: Vec<_> = e
+                            .recording_exports
+                            .iter()
+                            .map(|p| format!("{:?}", p.kind).to_lowercase())
+                            .collect();
+                        out.push_str(&format!("- Recording: {}\n", kinds.join(", ")));
+                    }
+                    if e.artifacts.is_empty() {
+                        out.push_str("- Artifacts: none\n");
+                    } else {
+                        let names: Vec<_> = e
+                            .artifacts
+                            .iter()
+                            .map(|a| {
+                                Path::new(&a.path)
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_string()
+                            })
+                            .collect();
+                        out.push_str(&format!("- Artifacts: {}\n", names.join(", ")));
+                    }
                 }
             }
             out.push('\n');

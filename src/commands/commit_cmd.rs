@@ -252,6 +252,7 @@ fn commit_ops(
         vault_root: meta.vault_root.clone(),
         run_id: meta.run_id.clone(),
         committed_ops: new_committed_ops,
+        expected_sessions: meta.expected_sessions.clone(),
     }
     .save(workspace_root)?;
 

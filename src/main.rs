@@ -57,6 +57,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
             claude_model,
             resume,
             next,
+            all,
         } => {
             if resume {
                 return recover::run(recover::RecoverArgs {
@@ -79,6 +80,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
                 agy_model,
                 claude_model,
                 next,
+                all,
             })
         }
 
@@ -263,6 +265,12 @@ enum Command {
         /// Useful for working through a backlog without specifying --session each time.
         #[arg(long)]
         next: bool,
+
+        /// Process all unprocessed sessions in chronological order.
+        /// Combine with --for-course to restrict to one course.
+        /// Incompatible with --session, --next, --course, --topic, --resource, --source.
+        #[arg(long, conflicts_with_all = ["session", "next", "course", "topic", "resource"])]
+        all: bool,
     },
 
     /// Show processing status for sessions, sources, topics, and flags.

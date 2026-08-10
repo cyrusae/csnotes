@@ -100,7 +100,15 @@ pub fn run(args: RecoverArgs) -> Result<()> {
                 false
             };
 
-            if report_ready {
+            // If the last teardown attempt failed at the invariant suite, the
+            // AI needs to re-enter to fix the violations — re-running teardown
+            // would loop forever on the same errors.
+            let needs_ai_fixup = rec
+                .workspace_path
+                .join(crate::workspace::INVARIANT_FAILED_MARKER)
+                .exists();
+
+            if report_ready && !needs_ai_fixup {
                 // Report already written and valid — skip re-entry, just run teardown.
                 println!("Session report found. Running teardown...");
                 crate::commands::process::run_teardown(
@@ -111,11 +119,25 @@ pub fn run(args: RecoverArgs) -> Result<()> {
                     &mut manifest,
                 )
             } else {
+                if needs_ai_fixup {
+                    // Clear the marker before re-entry so that if the AI exits
+                    // cleanly and teardown succeeds, it isn't left behind.
+                    // run_teardown re-creates it if invariants fail again.
+                    let _ = std::fs::remove_file(
+                        rec.workspace_path
+                            .join(crate::workspace::INVARIANT_FAILED_MARKER),
+                    );
+                    eprintln!(
+                        "Previous teardown failed at invariant checks. \
+                         Re-entering session so you can fix the violations."
+                    );
+                    eprintln!("Run `csnotes check` to see the violations, fix them, then exit.\n");
+                }
                 // No report yet (or malformed) — re-enter the AI session, then tear down.
                 if !report_path.exists() {
                     println!("No session report found. Re-entering AI session...");
+                    println!("Write `_session_report.json` before exiting.\n");
                 }
-                println!("Write `_session_report.json` before exiting.\n");
 
                 let backend_kind = rec.backend.unwrap_or(config.default_backend);
                 let skill_variant = rec.skill_variant.unwrap_or(config.skill_variant);
@@ -244,6 +266,7 @@ pub(crate) fn run_reset(
             vault_root: meta.vault_root,
             run_id: meta.run_id,
             committed_ops: Vec::new(),
+            expected_sessions: meta.expected_sessions,
         }
         .save(&rec.workspace_path)?;
     }
@@ -360,6 +383,7 @@ mod tests {
                 sections: vec![],
                 change_summary: "prior commit".into(),
             })],
+            expected_sessions: vec![],
         }
         .save(ws.path())
         .unwrap();
@@ -411,6 +435,7 @@ mod tests {
             vault_root: vault.path().to_path_buf(),
             run_id: "test-run".into(),
             committed_ops: vec![],
+            expected_sessions: vec![],
         }
         .save(ws.path())
         .unwrap();
@@ -444,6 +469,7 @@ mod tests {
             vault_root: vault.path().to_path_buf(),
             run_id: "test-run".into(),
             committed_ops: vec![],
+            expected_sessions: vec![],
         }
         .save(ws.path())
         .unwrap();
