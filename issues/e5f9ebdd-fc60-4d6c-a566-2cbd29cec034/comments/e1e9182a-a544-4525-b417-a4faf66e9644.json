@@ -1,0 +1,10 @@
+{
+  "uuid": "e1e9182a-a544-4525-b417-a4faf66e9644",
+  "issue_uuid": "e5f9ebdd-fc60-4d6c-a566-2cbd29cec034",
+  "author": "3owj",
+  "content": "Replaced sequential run_all() with WorkspaceScope::MultiSession. --all in resolve_scope() collects unprocessed sessions sorted by date and returns MultiSession{session_ids}. Assembly wraps all sessions' inputs (raw notes, recordings, artifacts) into one workspace. render_session_md lists each session with its inputs and a report requirement note. sources_for_scope unions sources visible for any session's course. Dry-run display lists all session IDs. One AI launch, report scope.sessions lists all IDs, update_session_status marks all processed. --for-course filters to one course's sessions.",
+  "created_at": "2026-08-10T21:04:58.591281Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABArL+4OHIfp3RE7gTS8dhNCX/sirFUxJEhfnI2Vp/O5mqmtJKYHjemhI6uMpMpIa5FiNi9QwyJjpw4id1wJkSmDA=="
+}
