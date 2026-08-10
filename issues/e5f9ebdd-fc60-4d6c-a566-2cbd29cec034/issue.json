@@ -1,0 +1,10 @@
+{
+  "uuid": "e5f9ebdd-fc60-4d6c-a566-2cbd29cec034",
+  "display_id": null,
+  "title": "process --all: single multi-session workspace instead of sequential single sessions",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-08-10T21:02:10.288097Z",
+  "updated_at": "2026-08-10T21:02:10.288097Z"
+}
