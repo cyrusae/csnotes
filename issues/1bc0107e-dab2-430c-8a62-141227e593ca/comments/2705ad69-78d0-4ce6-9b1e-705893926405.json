@@ -1,0 +1,10 @@
+{
+  "uuid": "2705ad69-78d0-4ce6-9b1e-705893926405",
+  "issue_uuid": "1bc0107e-dab2-430c-8a62-141227e593ca",
+  "author": "3owj",
+  "content": "Fixed three MultiSession teardown gaps: (1) Added expected_sessions: Vec<String> to WorkspaceMeta, populated at assemble time for MultiSession scope, preserved through commit/reset cycles. (2) Added validation in run_teardown (step 3.5) that all expected_sessions appear in report.scope.sessions — missing ones write the INVARIANT_FAILED_MARKER and bail, routing to recover --resume for fix. (3) Strengthened MultiSession render_session_md: replaced soft prose note with exact copy-pasteable scope JSON block using kind=mixed and pre-filled session IDs, overriding the single-session example in report_schema.md.",
+  "created_at": "2026-08-10T21:15:01.551932Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAv+NdP+z5gu5aacicfYkv2BWQCaYBAkwq/abBMgUDU1IDbZ38gI3dJ+EkR5AUBvjailBw3rfGHMx3mW5ej97yDw=="
+}
