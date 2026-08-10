@@ -1,6 +1,6 @@
 {
   "uuid": "a7d81479-f8df-4f9b-920a-ba7b2099d2c6",
-  "display_id": null,
+  "display_id": 117,
   "title": "rename_topic: index file not renamed to match new topic slug",
   "status": "closed",
   "priority": "medium",

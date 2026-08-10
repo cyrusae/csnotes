@@ -1,6 +1,6 @@
 {
   "uuid": "092fc07c-46c6-4eee-8d5e-c5f3f87ff340",
-  "display_id": null,
+  "display_id": 127,
   "title": "status --json: compact machine-readable summary for AI agent context",
   "status": "closed",
   "priority": "low",

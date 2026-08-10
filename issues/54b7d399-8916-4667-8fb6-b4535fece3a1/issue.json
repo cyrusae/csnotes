@@ -1,6 +1,6 @@
 {
   "uuid": "54b7d399-8916-4667-8fb6-b4535fece3a1",
-  "display_id": null,
+  "display_id": 114,
   "title": "commit: renames half-execute leaving workspace in inconsistent state",
   "status": "closed",
   "priority": "high",

@@ -1,6 +1,6 @@
 {
   "uuid": "f7cb894b-6a97-4b43-a739-58e1f4287bfc",
-  "display_id": null,
+  "display_id": 99,
   "title": "rewrite claude.md and synthesis.md: structural ops contract, source priority, debrief reframe",
   "status": "closed",
   "priority": "high",

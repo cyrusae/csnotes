@@ -1,6 +1,6 @@
 {
   "uuid": "971980ab-18b6-4d14-89c2-b6e73b9891db",
-  "display_id": null,
+  "display_id": 146,
   "title": "infer course from folder path for course-mediated sources",
   "status": "closed",
   "priority": "medium",

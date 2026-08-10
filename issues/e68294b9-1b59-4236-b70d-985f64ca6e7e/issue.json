@@ -1,6 +1,6 @@
 {
   "uuid": "e68294b9-1b59-4236-b70d-985f64ca6e7e",
-  "display_id": null,
+  "display_id": 90,
   "title": "add csnotes report-schema command; generate schema doc from Rust types",
   "status": "closed",
   "priority": "medium",

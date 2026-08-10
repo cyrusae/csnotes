@@ -1,6 +1,6 @@
 {
   "uuid": "e57d3212-8dca-4559-9036-70709d25958a",
-  "display_id": null,
+  "display_id": 110,
   "title": "regenerate report_schema.md to include structural ops section",
   "status": "closed",
   "priority": "high",

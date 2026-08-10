@@ -1,6 +1,6 @@
 {
   "uuid": "15495cb5-5ec1-45de-8ea6-6482cd0be51c",
-  "display_id": null,
+  "display_id": 88,
   "title": "process --claude-model flag for per-session model override",
   "status": "closed",
   "priority": "medium",

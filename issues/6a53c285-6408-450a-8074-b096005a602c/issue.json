@@ -1,6 +1,6 @@
 {
   "uuid": "6a53c285-6408-450a-8074-b096005a602c",
-  "display_id": null,
+  "display_id": 112,
   "title": "workspace hook command uses relative path, breaks on cd",
   "status": "closed",
   "priority": "high",

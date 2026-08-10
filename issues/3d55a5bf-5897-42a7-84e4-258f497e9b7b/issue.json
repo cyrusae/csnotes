@@ -1,6 +1,6 @@
 {
   "uuid": "3d55a5bf-5897-42a7-84e4-258f497e9b7b",
-  "display_id": null,
+  "display_id": 101,
   "title": "csnotes check validates structural op preconditions (rename_topic, move_atomic, etc)",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "dfe260aa-e8a6-4845-ab1d-f2d6e3d9b844",
-  "display_id": null,
+  "display_id": 100,
   "title": "PreToolUse hook blocking mv/cp of .md files in workspace",
   "status": "closed",
   "priority": "medium",

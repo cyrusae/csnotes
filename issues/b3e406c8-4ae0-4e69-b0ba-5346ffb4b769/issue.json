@@ -1,6 +1,6 @@
 {
   "uuid": "b3e406c8-4ae0-4e69-b0ba-5346ffb4b769",
-  "display_id": null,
+  "display_id": 109,
   "title": "fix stale discard language + add csnotes commit workflow to claude.md/gemini.md",
   "status": "closed",
   "priority": "high",

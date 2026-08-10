@@ -1,6 +1,6 @@
 {
   "uuid": "bc419362-e14c-42b5-ae24-80184d6b00f0",
-  "display_id": null,
+  "display_id": 148,
   "title": "update docs for --for-course rename and --course scope flag",
   "status": "closed",
   "priority": "low",

@@ -1,6 +1,6 @@
 {
   "uuid": "797db469-042d-41c4-a76c-b15d6907ee3f",
-  "display_id": null,
+  "display_id": 116,
   "title": "check: re-validates committed ops against post-commit state",
   "status": "closed",
   "priority": "high",

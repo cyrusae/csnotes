@@ -1,6 +1,6 @@
 {
   "uuid": "fe23bb1d-baf3-44ac-bd65-0d593b62d4f7",
-  "display_id": null,
+  "display_id": 103,
   "title": "research: Claude Code hook config resolution (global vs project-scoped, workspace temp dir behavior)",
   "status": "closed",
   "priority": "medium",

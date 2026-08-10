@@ -1,6 +1,6 @@
 {
   "uuid": "f7643bb9-318d-49a5-a319-d386fd07e289",
-  "display_id": null,
+  "display_id": 125,
   "title": "rename_atomic leaves broken embed anchors: #^old-slug not rewritten to #^new-slug",
   "status": "closed",
   "priority": "medium",

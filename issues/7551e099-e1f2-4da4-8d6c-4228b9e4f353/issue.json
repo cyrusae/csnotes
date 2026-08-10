@@ -1,6 +1,6 @@
 {
   "uuid": "7551e099-e1f2-4da4-8d6c-4228b9e4f353",
-  "display_id": null,
+  "display_id": 96,
   "title": "reconcile reads source_type frontmatter to refine SourceKind",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "0cbf49da-d042-4ce2-b421-3d5d8e9a7040",
-  "display_id": null,
+  "display_id": 156,
   "title": "recover --resume infinite loop when invariant suite fails",
   "status": "closed",
   "priority": "high",

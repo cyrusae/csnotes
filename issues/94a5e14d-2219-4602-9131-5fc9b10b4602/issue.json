@@ -1,6 +1,6 @@
 {
   "uuid": "94a5e14d-2219-4602-9131-5fc9b10b4602",
-  "display_id": null,
+  "display_id": 94,
   "title": "stop discarding workspace on teardown op failures",
   "status": "closed",
   "priority": "high",

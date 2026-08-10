@@ -1,6 +1,6 @@
 {
   "uuid": "4c96f889-e773-41cc-8343-1a2b1a9ef6f1",
-  "display_id": null,
+  "display_id": 133,
   "title": "audit --show-discrepancies prints 'Vault is clean' even when discrepancies exist",
   "status": "closed",
   "priority": "medium",

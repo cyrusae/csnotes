@@ -1,6 +1,6 @@
 {
   "uuid": "6ed0f672-317c-435c-822c-32aee80418a5",
-  "display_id": null,
+  "display_id": 118,
   "title": "embed_in: check hard-fails if embed block not manually written to index",
   "status": "closed",
   "priority": "medium",

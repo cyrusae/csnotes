@@ -1,6 +1,6 @@
 {
   "uuid": "904b4bcf-f8a3-4758-8ba4-f77ba8f55804",
-  "display_id": null,
+  "display_id": 121,
   "title": "merge_back: additive-only, old folders not deleted after rename_topic",
   "status": "closed",
   "priority": "medium",

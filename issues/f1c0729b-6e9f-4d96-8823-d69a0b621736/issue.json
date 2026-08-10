@@ -1,6 +1,6 @@
 {
   "uuid": "f1c0729b-6e9f-4d96-8823-d69a0b621736",
-  "display_id": null,
+  "display_id": 128,
   "title": "status --topic <name>: detailed per-topic view (replaces show-mappings idea)",
   "status": "closed",
   "priority": "low",

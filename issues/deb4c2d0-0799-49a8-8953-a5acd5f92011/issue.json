@@ -1,6 +1,6 @@
 {
   "uuid": "deb4c2d0-0799-49a8-8953-a5acd5f92011",
-  "display_id": null,
+  "display_id": 95,
   "title": "SourceStatus::Staged with frontmatter sync and workspace assembly gating",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "3fa8d3fb-2125-451e-8d4f-643331309152",
-  "display_id": null,
+  "display_id": 135,
   "title": "reconcile: existing Staged source not demoted when frontmatter status removed",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "8beed0ed-37ab-45ce-b76f-a85081fe1344",
-  "display_id": null,
+  "display_id": 89,
   "title": "fix pdftotext arg order and skill_variant propagation to workspace",
   "status": "closed",
   "priority": "high",

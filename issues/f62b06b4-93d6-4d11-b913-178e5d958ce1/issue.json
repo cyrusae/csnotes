@@ -1,6 +1,6 @@
 {
   "uuid": "f62b06b4-93d6-4d11-b913-178e5d958ce1",
-  "display_id": null,
+  "display_id": 139,
   "title": "Add CourseReview skill variant for interactive study sessions",
   "description": "Adds a study-oriented skill variant to process. Exploratory-first, vault changes optional.\n\n## Design\n\n- Invocation: csnotes process --course CPSC5002 (no new flag; CourseReview auto-selected when scope is Course)\n- Two output layers:\n  1. Journal accompaniment: always emitted as CreateNote to _journal/{course}/review-{date}.md — captures ephemeral context (lab confusion, instructor framing) that belongs in study narrative but not long-term reference vault\n  2. Optional atomic ops: CreateNote/UpdateNote to _synthetic/ only when something reference-worthy surfaces; zero atomic ops is valid\n- Session header embeds expected journal path so the AI knows where to write it\n\n## Implementation\n- SkillVariant::CourseReview added to config.rs\n- journal_dir config key (default _journal) in VaultConfig\n- instruction_source_path() returns course-review.md for CourseReview\n- process.rs auto-selects CourseReview when args.course is Some\n- render_session_md Course arm embeds journal path\n- New _csnotes/instructions/course-review.md\n\n## Depends on L52 (done)",
   "status": "closed",

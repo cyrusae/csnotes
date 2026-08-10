@@ -1,6 +1,6 @@
 {
   "uuid": "3cb96726-647f-477f-9c3e-43538250a576",
-  "display_id": null,
+  "display_id": 111,
   "title": "reconcile --reset loses processed status for re-discovered sessions and sources",
   "status": "closed",
   "priority": "high",

@@ -1,6 +1,6 @@
 {
   "uuid": "2f0f48e1-9545-474f-9b90-e654969fed1b",
-  "display_id": null,
+  "display_id": 87,
   "title": "init --instructions-only should overwrite existing instruction files",
   "status": "closed",
   "priority": "medium",

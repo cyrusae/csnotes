@@ -1,6 +1,6 @@
 {
   "uuid": "cb0ef116-030a-4407-bf4a-2eecc07a4bf6",
-  "display_id": null,
+  "display_id": 124,
   "title": "teardown structural ops not atomic: no workspace snapshot taken before execution",
   "status": "closed",
   "priority": "high",

@@ -1,6 +1,6 @@
 {
   "uuid": "f2846c57-f8b2-415f-8d58-d44b032fb145",
-  "display_id": null,
+  "display_id": 126,
   "title": "audit --show-discrepancies: diff manifest topics vs filesystem",
   "status": "closed",
   "priority": "medium",

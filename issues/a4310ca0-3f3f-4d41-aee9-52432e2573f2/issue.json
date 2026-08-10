@@ -1,6 +1,6 @@
 {
   "uuid": "a4310ca0-3f3f-4d41-aee9-52432e2573f2",
-  "display_id": null,
+  "display_id": 106,
   "title": "update CLAUDE.md/GEMINI.md commit section: append-only rule, CLI owns committed history",
   "status": "closed",
   "priority": "medium",

@@ -1,6 +1,6 @@
 {
   "uuid": "22967639-7f16-42c4-9519-c4d58b17af54",
-  "display_id": null,
+  "display_id": 147,
   "title": "course instruction overlays for type-specific review patterns",
   "description": "Add optional instruction overlays for math (and future) course types. Instead of forking course-review.md / synthesis.md entirely, allow a course to specify instruction_overlay: math in its config. The overlay lives in instructions/overlays/ and is appended to the base prompt at build time, covering only what's different (LaTeX handling, worked-example extraction, proof-summary format). Base instructions remain the single source of truth for shared behavior. Depends on L58 (math instruction evaluation).",
   "status": "open",

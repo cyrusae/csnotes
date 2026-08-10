@@ -1,6 +1,6 @@
 {
   "uuid": "d0e58bf6-c8dd-4582-b127-ad778ae69702",
-  "display_id": null,
+  "display_id": 107,
   "title": "csnotes process --next: auto-select oldest pending session for backlog catch-up",
   "status": "closed",
   "priority": "high",

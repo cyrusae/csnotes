@@ -1,6 +1,6 @@
 {
   "uuid": "c7af45c7-e7be-4b25-a837-8a663650ace9",
-  "display_id": null,
+  "display_id": 120,
   "title": "docs: two-wave workflow section misleads about commit+rename mental model",
   "status": "closed",
   "priority": "medium",
