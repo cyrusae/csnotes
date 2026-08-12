@@ -422,6 +422,10 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
             ensure_no_spaces(value, "sources_dir")?;
             config.sources_dir = value.to_string();
         }
+        "resources_dir" => {
+            ensure_no_spaces(value, "resources_dir")?;
+            config.resources_dir = value.to_string();
+        }
         "default_backend" => {
             config.default_backend = match value {
                 "claude" => crate::config::AiBackend::Claude,
@@ -449,6 +453,26 @@ fn apply_set(config: &mut VaultConfig, key: &str, value: &str) -> Result<()> {
                 _ => bail!("scan_ai_conversations must be true or false"),
             };
         }
+        "active_courses" => bail!(
+            "'active_courses' cannot be set directly. \
+             Use `csnotes config --add-course <name>` to add a course \
+             or `csnotes config --archive <name>` to remove one."
+        ),
+        "synthetic_dir" | "generated_dir" | "csnotes_dir" => bail!(
+            "'{}' controls vault layout and is dangerous to change after init. \
+             Edit `csnotes.toml` directly only if you know what you're doing.",
+            key
+        ),
+        "recording_qualifiers" | "courses_without_recordings" | "sources_ignore_dirs" => bail!(
+            "'{}' is a list and cannot be set via --set. \
+             Edit `csnotes.toml` directly to manage this list.",
+            key
+        ),
+        "skill_variant" | "snapshot_mode" => bail!(
+            "'{}' is an internal setting not exposed via --set. \
+             Edit `csnotes.toml` directly to change it.",
+            key
+        ),
         _ => bail!(crate::error::CsnotesError::InvalidConfigKey {
             key: key.to_string()
         }),

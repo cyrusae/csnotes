@@ -425,7 +425,8 @@ Directory settings (no spaces allowed in values):
   raw_dir=<dir>           vault subdir for raw notes
   recordings_dir=<dir>    vault subdir for recording exports
   artifacts_dir=<dir>     vault subdir for artifacts
-  sources_dir=<dir>       vault subdir for source files"
+  sources_dir=<dir>       vault subdir for source files
+  resources_dir=<dir>     vault subdir for self-directed study resources"
         )]
         set: Option<String>,
         /// Print current configuration.
