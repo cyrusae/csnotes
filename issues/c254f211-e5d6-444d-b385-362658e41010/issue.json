@@ -1,0 +1,10 @@
+{
+  "uuid": "c254f211-e5d6-444d-b385-362658e41010",
+  "display_id": null,
+  "title": "config --set: add resources_dir, helpful messages for read-only/list/internal fields",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-08-12T14:41:34.878182Z",
+  "updated_at": "2026-08-12T14:41:34.878182Z"
+}
