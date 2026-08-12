@@ -1,6 +1,6 @@
 {
   "uuid": "e5f9ebdd-fc60-4d6c-a566-2cbd29cec034",
-  "display_id": null,
+  "display_id": 158,
   "title": "process --all: single multi-session workspace instead of sequential single sessions",
   "status": "open",
   "priority": "medium",

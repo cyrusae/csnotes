@@ -1,6 +1,6 @@
 {
   "uuid": "cf355f44-7823-4a05-81af-6d6b5b1dab5c",
-  "display_id": null,
+  "display_id": 157,
   "title": "process --all flag: batch-process all unprocessed sessions in chronological order",
   "status": "open",
   "priority": "medium",
