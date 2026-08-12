@@ -1,0 +1,10 @@
+{
+  "uuid": "7de10fe8-43ad-49e2-b90c-111eb1dcc30f",
+  "issue_uuid": "c254f211-e5d6-444d-b385-362658e41010",
+  "author": "3owj",
+  "content": "Added resources_dir to apply_set (gap vs other *_dir fields) and to --set help text. Added named match arms for synthetic_dir/generated_dir/csnotes_dir (dangerous), recording_qualifiers/courses_without_recordings/sources_ignore_dirs (lists), skill_variant/snapshot_mode (internal enums) — all with actionable error messages instead of generic 'invalid or read-only'.",
+  "created_at": "2026-08-12T14:42:18.903502Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAEFwREG6fgILA3H+NGSel6Mm3KmXrddo58Q/aHdJ8EOwNcNCaKq76CwPJaaWfBuVoQ1+bkoNZgZzN/jXrrcWHAg=="
+}
