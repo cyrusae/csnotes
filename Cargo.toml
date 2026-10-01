@@ -49,7 +49,7 @@ indexmap = { version = "2", features = ["serde"] }
 
 # Slide extraction (PDF/PPTX → text for workspace ingestion)
 zip       = { version = "8", default-features = false, features = ["deflate"] }
-quick-xml = "0.40"
+quick-xml = "0.42"
 
 [dev-dependencies]
 proptest = "1"
