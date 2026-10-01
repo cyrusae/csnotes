@@ -36,7 +36,7 @@ anyhow    = "1"
 thiserror = "2"
 
 # Markdown AST (heading scheme derivation for sources)
-comrak = { version = "0.52", default-features = false }
+comrak = { version = "0.55", default-features = false }
 
 # Regex (Obsidian syntax extraction)
 regex = "1"
