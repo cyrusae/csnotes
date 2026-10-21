@@ -1,0 +1,10 @@
+{
+  "uuid": "9ac825f9-bad8-499a-84f2-d6dab684cd25",
+  "issue_uuid": "2ff7a6b2-c3ba-4ff9-ac4c-5e59aa733b9f",
+  "author": "3owj",
+  "content": "Phase 0 of _docs/PI-PLAN.md: instructions now include_str! from _csnotes/instructions (L1). Uncommitted. Remaining Phase 0 user tasks: refresh live vault (diff first, --instructions-only force-overwrites), cross-family rewrite pass.",
+  "created_at": "2026-10-21T16:06:50.181905Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABArfdS+f1cQN/n05Au0RIewqNs2g8z3QEzMhyDrs2B2JLlbf0f/ap7zLk6+ylJLU1jZD/t5DbeXAw3Wjds71r4BQ=="
+}
