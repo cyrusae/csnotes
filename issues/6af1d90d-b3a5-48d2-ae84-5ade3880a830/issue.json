@@ -8,8 +8,11 @@
   "parent_uuid": "55312579-9304-4c71-8ff5-65b0a2f455d7",
   "created_by": "3owj",
   "created_at": "2026-10-21T22:37:54.766494Z",
-  "updated_at": "2026-10-21T22:37:54.894203Z",
+  "updated_at": "2026-10-21T22:38:02.179187Z",
   "labels": [
     "feature"
+  ],
+  "blockers": [
+    "21fe7ae2-2efe-4adb-8fc6-aec20cf9e096"
   ]
 }
