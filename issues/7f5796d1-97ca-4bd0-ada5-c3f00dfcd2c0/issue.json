@@ -1,0 +1,12 @@
+{
+  "uuid": "7f5796d1-97ca-4bd0-ada5-c3f00dfcd2c0",
+  "display_id": null,
+  "title": "Pi Phase 1: timeboxed spike (go/no-go)",
+  "description": "PI-PLAN.md Phase 1. Timebox ~3h, after the midterm. Gates in order: R2 (Claude subscription OAuth works in Pi AND is allowed under current terms; else decide a/b/c per R2), then R1 (only confined extension tools allowlisted; with the extension broken there are NO file tools). Also: confined read returns images + primary model sees _images/ slides; npx-pinned launch (R3) works offline once cached; rest of the Phase 1 checklist. Output: go/no-go + notes appended to PI-PLAN.md.",
+  "status": "open",
+  "priority": "low",
+  "parent_uuid": "55312579-9304-4c71-8ff5-65b0a2f455d7",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T22:37:53.986752Z",
+  "updated_at": "2026-10-21T22:37:53.986752Z"
+}
