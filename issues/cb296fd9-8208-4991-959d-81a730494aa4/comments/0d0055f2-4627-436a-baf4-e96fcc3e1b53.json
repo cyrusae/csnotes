@@ -1,0 +1,10 @@
+{
+  "uuid": "0d0055f2-4627-436a-baf4-e96fcc3e1b53",
+  "issue_uuid": "cb296fd9-8208-4991-959d-81a730494aa4",
+  "author": "3owj",
+  "content": "Fixed all 6 (all in test code): useless_format, suspicious_open_options (truncate(false) to match prod lock), needless_borrow, useless_vec, items_after_test_module x2 (moved notify/helpers above tests in reconcile.rs/process.rs). Root cause: pre-commit ran clippy without --all-targets; now added to both steps.",
+  "created_at": "2026-10-21T21:46:27.971790Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAjU0Z6jMaFyqQ7HodrNa//Gim1o2A7eL0KRlsBvVP7mD5dZfVQ133QlzFDSb8HAPyjZBZGO426rduVrZqkcQABw=="
+}
