@@ -1,6 +1,6 @@
 {
   "uuid": "f834a29b-05f4-4646-bd51-466dc1bc1679",
-  "display_id": null,
+  "display_id": 160,
   "title": "config --set active_courses: better error pointing to --add-course/--archive",
   "status": "open",
   "priority": "low",
