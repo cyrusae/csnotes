@@ -1,0 +1,10 @@
+{
+  "uuid": "2a7be792-b8b6-4b6a-b277-c886d42b9427",
+  "issue_uuid": "8526b9ad-d46c-4a74-bcd0-af59b4cc2ff3",
+  "author": "3owj",
+  "content": "Done (uncommitted): 'csnotes sources' inventory (bare command; --course/--unused/--dormant/--untagged/--json), Usage = Staged/Dormant/Used/Unused, source_credits() walks _synthetic frontmatter at query time, summarize() shared with status. status shows one summary line; status --json keeps sources_unprocessed and adds 'sources' summary. README + CHANGELOG updated.",
+  "created_at": "2026-10-21T21:36:00.131387Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAO3X8JxRLU+77fQ7U3zyCstfZvl8Z+E+Ph90AqaV+dfDRHprb7jAUuH6/vg3Oiyg0nhkj7difhBDvtQDf7HEWAw=="
+}
