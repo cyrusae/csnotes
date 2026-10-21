@@ -963,8 +963,8 @@ mod tests {
             csnotes_report_schema: 1,
             run_id: "test-run".to_string(),
             backend: "mock".to_string(),
-            started_at: Utc::now(),
-            completed_at: Utc::now(),
+            started_at: None,
+            completed_at: None,
             scope: ReportScope {
                 kind: ScopeKind::Session,
                 sessions: vec!["CS101-01-01".to_string()],

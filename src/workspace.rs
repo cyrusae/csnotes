@@ -239,11 +239,13 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
         params.vault_root,
         params.manifest,
         &params.scope,
+        &params.config.active_courses,
         &workspace_root,
     )?;
     write_sources_index(
         params.manifest,
         &params.scope,
+        &params.config.active_courses,
         &workspace_root,
         &large_sources,
     )?;
@@ -352,6 +354,7 @@ Exit 0 = allow.  Exit 2 = block (Claude sees stderr as the reason).
 """
 import json
 import re
+import shlex
 import sys
 
 
@@ -387,19 +390,66 @@ BLOCKED = [
         "Do not use git mv.\n"
         "Declare rename_atomic or move_atomic in _session_report.json instead.",
     ),
-    # sed --in-place / sed -i (in-place file mutation bypasses frontmatter contract)
-    (
-        r'\bsed\b[^\n]*(?:--in-place|-i\b)',
-        "Do not edit files in-place with sed -i.\n"
-        "Use the Edit tool to modify file content so changes are tracked.",
-    ),
-    # perl -pi -e (same class of in-place mutation)
-    (
-        r'\bperl\b[^\n]*-pi\b',
-        "Do not edit files in-place with perl -pi.\n"
-        "Use the Edit tool to modify file content so changes are tracked.",
-    ),
 ]
+
+IN_PLACE_GUIDANCE = (
+    "Do not edit files in-place with {tool} -i.\n"
+    "Use the Edit tool to modify file content so changes are tracked.\n"
+    "(Read-only use such as `{tool} -n 10,20p file` is fine.)"
+)
+
+# Short-option cluster containing `i`: -i, -i.bak, -ni, -Ei, -pi, -pie, ...
+_IN_PLACE_SHORT = re.compile(r'^-[A-Za-z]*i')
+# Separators that end one simple command and start another.
+_SEPARATORS = {"|", "||", "&", "&&", ";", "(", ")", "\n"}
+
+
+def in_place_editor(command):
+    """Return 'sed' or 'perl' if the command runs one of them with an
+    in-place flag, else None.
+
+    Only the arguments of the sed/perl invocation itself are inspected, so
+    `sed -n 5p f | grep -i x` and filenames containing `-i-` are allowed.
+    If the command can't be tokenized (unbalanced quotes), fall back to a
+    conservative regex so the guard fails closed.
+    """
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        if re.search(r'\b(?:sed|perl)\b[^\n]*(?:--in-place|\s-[A-Za-z]*i)', command):
+            return "sed" if re.search(r'\bsed\b', command) else "perl"
+        return None
+
+    tool = None
+    for tok in tokens:
+        if tok in _SEPARATORS:
+            tool = None
+            continue
+        name = tok.rsplit("/", 1)[-1]
+        if name in ("sed", "gsed", "perl"):
+            tool = "perl" if name == "perl" else "sed"
+            continue
+        if tool is None:
+            continue
+        if tok == "--":
+            tool = None  # end of options
+        elif tok.startswith("--in-place"):
+            return tool
+        elif not tok.startswith("--") and _IN_PLACE_SHORT.match(tok):
+            return tool
+    return None
+
+
+def block(guidance):
+    print(
+        f"csnotes workspace guard — BLOCKED\n\n{guidance}\n\n"
+        "Run `csnotes check` to validate the workspace, or exit the\n"
+        "session and re-enter with `csnotes recover --resume`.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 
 
 def main():
@@ -412,13 +462,11 @@ def main():
 
     for pattern, guidance in BLOCKED:
         if re.search(pattern, command):
-            print(
-                f"csnotes workspace guard — BLOCKED\n\n{guidance}\n\n"
-                "Run `csnotes check` to validate the workspace, or exit the\n"
-                "session and re-enter with `csnotes recover --resume`.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            block(guidance)
+
+    tool = in_place_editor(command)
+    if tool:
+        block(IN_PLACE_GUIDANCE.format(tool=tool))
 
     sys.exit(0)
 
@@ -726,9 +774,10 @@ fn copy_sources_to_workspace(
     vault_root: &Path,
     manifest: &Manifest,
     scope: &WorkspaceScope,
+    active_courses: &[String],
     workspace_root: &Path,
 ) -> Result<HashMap<String, SidecarMeta>> {
-    let ids: Vec<&str> = sources_for_scope(manifest, scope);
+    let ids: Vec<&str> = sources_for_scope(manifest, scope, active_courses);
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -900,10 +949,11 @@ fn render_sidecar_md(source_id: &str, s: &ConversationSidecar) -> String {
 fn write_sources_index(
     manifest: &Manifest,
     scope: &WorkspaceScope,
+    active_courses: &[String],
     workspace_root: &Path,
     sidecars: &HashMap<String, SidecarMeta>,
 ) -> Result<()> {
-    let ids: Vec<&str> = sources_for_scope(manifest, scope);
+    let ids: Vec<&str> = sources_for_scope(manifest, scope, active_courses);
     let mut out = String::from("# Sources Index\n\n");
     if ids.is_empty() {
         out.push_str("_No sources registered for this session._\n");
@@ -946,7 +996,15 @@ fn write_sources_index(
 }
 
 /// Returns the source IDs that belong in a workspace for the given scope.
-fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> Vec<&'a str> {
+/// Source IDs to include for `scope`.  Staged sources are never included
+/// (except when named explicitly).  Session/course scopes filter by course
+/// tag; course-less scopes (topic, resource) leave out dormant sources —
+/// those tagged only with courses no longer in `active_courses`.
+fn sources_for_scope<'a>(
+    manifest: &'a Manifest,
+    scope: &'a WorkspaceScope,
+    active_courses: &[String],
+) -> Vec<&'a str> {
     use crate::manifest::SourceStatus;
     match scope {
         WorkspaceScope::Source { source_ids } => source_ids
@@ -998,7 +1056,7 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
         WorkspaceScope::Topic { .. } | WorkspaceScope::Resource { .. } => manifest
             .sources
             .iter()
-            .filter(|(_, e)| e.status != SourceStatus::Staged)
+            .filter(|(_, e)| e.status != SourceStatus::Staged && !e.is_dormant(active_courses))
             .map(|(id, _)| id.as_str())
             .collect(),
         WorkspaceScope::Course { course } => manifest
@@ -1012,18 +1070,10 @@ fn sources_for_scope<'a>(manifest: &'a Manifest, scope: &'a WorkspaceScope) -> V
     }
 }
 
-/// A source is visible for a given course when it is not a Textbook or Syllabus,
-/// or when its `courses` list is empty (untagged = always available), or when it
-/// explicitly lists the course.
+/// A source is visible for a given course when it is untagged or lists that
+/// course.  Applies to every source kind (AI conversations included).
 fn source_visible_for_course(entry: &SourceEntry, course: &str) -> bool {
-    use crate::manifest::SourceKind;
-    if !matches!(
-        entry.kind,
-        SourceKind::Textbook | SourceKind::Syllabus | SourceKind::WorkedExample
-    ) {
-        return true;
-    }
-    entry.courses.is_empty() || entry.courses.iter().any(|c| c == course)
+    entry.visible_for_course(course)
 }
 
 // ── Vault file index ──────────────────────────────────────────────────────────
@@ -2117,16 +2167,29 @@ mod tests {
     }
 
     #[test]
-    fn source_visible_non_textbook_always_included() {
+    fn source_visible_course_tags_apply_to_every_kind() {
         for kind in [
             SourceKind::AiConversation,
             SourceKind::Paper,
             SourceKind::Other,
+            SourceKind::PersonalNotes,
+            SourceKind::AssignmentFeedback,
         ] {
             let tagged = make_source_entry(kind, vec!["CPSC5001".into()]);
             assert!(
-                source_visible_for_course(&tagged, "CPSC5002"),
-                "{} should be visible regardless of course tag",
+                source_visible_for_course(&tagged, "CPSC5001"),
+                "{}",
+                kind.as_str()
+            );
+            assert!(
+                !source_visible_for_course(&tagged, "CPSC5005"),
+                "{} tagged CPSC5001 must not leak into CPSC5005",
+                kind.as_str()
+            );
+            let untagged = make_source_entry(kind, vec![]);
+            assert!(
+                source_visible_for_course(&untagged, "CPSC5005"),
+                "{}",
                 kind.as_str()
             );
         }
@@ -2154,6 +2217,105 @@ mod tests {
                 kind.as_str()
             );
         }
+    }
+
+    fn manifest_with_old_and_new_course_sources() -> Manifest {
+        use crate::manifest::{SessionEntry, SessionStatus};
+        let mut manifest = make_manifest_for_sources();
+        manifest.sessions.insert(
+            "CPSC5002-08-19".into(),
+            SessionEntry {
+                course: "CPSC5002".into(),
+                date: chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap(),
+                raw_note: "notes/CPSC5002-08-19.md".into(),
+                recording_exports: vec![],
+                artifacts: vec![],
+                status: SessionStatus::Unprocessed,
+                recording_missing: false,
+                filename_format: "{course}-{mm}-{dd}".into(),
+                processed_at: None,
+                topics_updated: vec![],
+            },
+        );
+        manifest.sources.insert(
+            "AI/Java-boxing".into(),
+            make_source_entry(SourceKind::AiConversation, vec!["CPSC5002".into()]),
+        );
+        manifest.sources.insert(
+            "AI/Cpp-scope".into(),
+            make_source_entry(SourceKind::AiConversation, vec!["CPSC5005".into()]),
+        );
+        manifest.sources.insert(
+            "Other/BigO".into(),
+            make_source_entry(SourceKind::Other, vec![]),
+        );
+        manifest
+    }
+
+    #[test]
+    fn is_dormant_rules() {
+        let active = vec!["CPSC5005".to_string()];
+        let old = make_source_entry(
+            SourceKind::Textbook,
+            vec!["CPSC5001".into(), "CPSC5002".into()],
+        );
+        let mixed = make_source_entry(
+            SourceKind::Textbook,
+            vec!["CPSC5002".into(), "CPSC5005".into()],
+        );
+        let untagged = make_source_entry(SourceKind::Textbook, vec![]);
+        assert!(old.is_dormant(&active));
+        assert!(
+            !mixed.is_dormant(&active),
+            "one active course keeps it awake"
+        );
+        assert!(!untagged.is_dormant(&active));
+        assert!(
+            !old.is_dormant(&[]),
+            "flat vaults (no active_courses) have no dormancy"
+        );
+    }
+
+    #[test]
+    fn sources_for_scope_topic_excludes_dormant() {
+        let manifest = manifest_with_old_and_new_course_sources();
+        let active = vec!["CPSC5005".to_string()];
+        let scope = WorkspaceScope::Topic {
+            topic: "java".into(),
+        };
+        let mut ids = sources_for_scope(&manifest, &scope, &active);
+        ids.sort();
+        assert_eq!(ids, vec!["AI/Cpp-scope", "Other/BigO"]);
+
+        // Re-activating the course brings its sources back.
+        let active = vec!["CPSC5005".to_string(), "CPSC5002".to_string()];
+        assert_eq!(sources_for_scope(&manifest, &scope, &active).len(), 3);
+    }
+
+    #[test]
+    fn sources_for_scope_old_course_session_still_sees_its_sources() {
+        // Processing a leftover CPSC5002 session after the course was retired
+        // must still include CPSC5002-tagged sources (dormancy is only for
+        // course-less scopes), and must not include CPSC5005's.
+        let manifest = manifest_with_old_and_new_course_sources();
+        let scope = WorkspaceScope::Session {
+            session_id: "CPSC5002-08-19".into(),
+        };
+        let mut ids = sources_for_scope(&manifest, &scope, &["CPSC5005".to_string()]);
+        ids.sort();
+        assert_eq!(ids, vec!["AI/Java-boxing", "Other/BigO"]);
+    }
+
+    #[test]
+    fn sources_for_scope_explicit_source_includes_dormant() {
+        let manifest = manifest_with_old_and_new_course_sources();
+        let scope = WorkspaceScope::Source {
+            source_ids: vec!["AI/Java-boxing".into()],
+        };
+        assert_eq!(
+            sources_for_scope(&manifest, &scope, &["CPSC5005".to_string()]),
+            vec!["AI/Java-boxing"]
+        );
     }
 
     #[test]
@@ -2192,7 +2354,7 @@ mod tests {
         let scope = WorkspaceScope::Session {
             session_id: "CPSC5001-01-01".into(),
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
 
         assert!(
             ids.contains(&"Textbooks/SICP/Ch01"),
@@ -2227,7 +2389,7 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/SICP/Ch01".into(), "Textbooks/SICP/Ch02".into()],
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
         assert_eq!(ids, vec!["Textbooks/SICP/Ch01", "Textbooks/SICP/Ch02"]);
     }
 
@@ -2263,7 +2425,7 @@ mod tests {
         let scope = WorkspaceScope::Session {
             session_id: "CPSC5001-01-01".into(),
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
         assert!(
             !ids.contains(&"Textbooks/Zybooks/Ch07"),
             "staged source must be excluded"
@@ -2290,7 +2452,7 @@ mod tests {
         let scope = WorkspaceScope::Topic {
             topic: "algorithms".into(),
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
         assert!(
             !ids.contains(&"Textbooks/Zybooks/Ch07"),
             "staged source must be excluded"
@@ -2310,7 +2472,7 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/Zybooks/Ch07".into()],
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
         assert!(
             ids.is_empty(),
             "staged source must be excluded even when explicitly listed"
@@ -2344,7 +2506,7 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["sicp-ch01".into()],
         };
-        copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        copy_sources_to_workspace(vault.path(), &manifest, &scope, &[], ws.path()).unwrap();
 
         let dest = ws.path().join("sources/sicp-ch01.md");
         assert!(
@@ -2386,7 +2548,7 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["ghost".into()],
         };
-        copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        copy_sources_to_workspace(vault.path(), &manifest, &scope, &[], ws.path()).unwrap();
 
         assert!(
             !ws.path().join("sources/ghost.md").exists(),
@@ -2400,7 +2562,7 @@ mod tests {
         let ws = TempDir::new().unwrap();
         let manifest = make_manifest_for_sources();
         let scope = WorkspaceScope::Source { source_ids: vec![] };
-        copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+        copy_sources_to_workspace(vault.path(), &manifest, &scope, &[], ws.path()).unwrap();
         assert!(
             !ws.path().join("sources").exists(),
             "sources/ dir should not be created when there is nothing to write"
@@ -2429,7 +2591,7 @@ mod tests {
         let scope = WorkspaceScope::Source {
             source_ids: vec!["Textbooks/SICP/Ch01".into()],
         };
-        write_sources_index(&manifest, &scope, tmp.path(), &HashMap::new()).unwrap();
+        write_sources_index(&manifest, &scope, &[], tmp.path(), &HashMap::new()).unwrap();
 
         let content = std::fs::read_to_string(tmp.path().join("_sources_index.md")).unwrap();
         assert!(content.contains("Textbooks/SICP/Ch01"));
@@ -2514,7 +2676,7 @@ mod tests {
             source_ids: vec!["AI-Conversations/Gemini/chat".into()],
         };
         let sidecars =
-            copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+            copy_sources_to_workspace(vault.path(), &manifest, &scope, &[], ws.path()).unwrap();
 
         assert!(
             sidecars.contains_key("AI-Conversations/Gemini/chat"),
@@ -2573,7 +2735,7 @@ mod tests {
             source_ids: vec!["AI-Conversations/Gemini/chat".into()],
         };
         let sidecars =
-            copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+            copy_sources_to_workspace(vault.path(), &manifest, &scope, &[], ws.path()).unwrap();
 
         assert!(sidecars.is_empty(), "no sidecar meta when json is absent");
         assert!(
@@ -2619,7 +2781,7 @@ mod tests {
             source_ids: vec!["Textbooks/SICP/Ch01".into()],
         };
         let sidecars =
-            copy_sources_to_workspace(vault.path(), &manifest, &scope, ws.path()).unwrap();
+            copy_sources_to_workspace(vault.path(), &manifest, &scope, &[], ws.path()).unwrap();
 
         assert!(
             sidecars.is_empty(),
@@ -2652,7 +2814,7 @@ mod tests {
                 overall_summary: "Setting up a defensive Java environment".into(),
             },
         );
-        write_sources_index(&manifest, &scope, tmp.path(), &sidecars).unwrap();
+        write_sources_index(&manifest, &scope, &[], tmp.path(), &sidecars).unwrap();
 
         let content = std::fs::read_to_string(tmp.path().join("_sources_index.md")).unwrap();
         assert!(
@@ -2977,7 +3139,7 @@ mod tests {
         let scope = WorkspaceScope::Course {
             course: "CPSC5001".into(),
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
 
         assert!(
             ids.contains(&"Textbooks/SICP/Ch01"),
@@ -3009,7 +3171,7 @@ mod tests {
         let scope = WorkspaceScope::Course {
             course: "CPSC5001".into(),
         };
-        let ids = sources_for_scope(&manifest, &scope);
+        let ids = sources_for_scope(&manifest, &scope, &[]);
 
         assert!(!ids.contains(&"Textbooks/Staged/Ch01"), "staged excluded");
         assert!(
@@ -3110,5 +3272,74 @@ mod tests {
             expected,
             session_md
         );
+    }
+
+    // ── Guard hook script ─────────────────────────────────────────────────────
+
+    /// Run the guard on `command`; returns the exit code, or None when
+    /// python3 isn't available (test is then skipped).
+    fn run_guard(command: &str) -> Option<i32> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let tmp = TempDir::new().unwrap();
+        let script = tmp.path().join("csnotes_guard.py");
+        std::fs::write(&script, HOOK_GUARD_SCRIPT).unwrap();
+        let mut child = Command::new("python3")
+            .arg("-I")
+            .arg(&script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let input = serde_json::json!({ "tool_input": { "command": command } });
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.to_string().as_bytes())
+            .unwrap();
+        child.wait().ok()?.code()
+    }
+
+    #[test]
+    fn guard_allows_read_only_sed_and_unrelated_dash_i() {
+        for cmd in [
+            "sed -n 548,600p recordings/CPSC5005-10-01-transcript.md | grep -i heap",
+            "sed -n 1,5p sources/Java-i-o.md",
+            "sed -n 5p _session.md && rg -i foo .",
+            "perl -ne 'print if /-i/' x.md",
+            "grep -i foo _synthetic/java/x.md",
+        ] {
+            let Some(code) = run_guard(cmd) else { return };
+            assert_eq!(code, 0, "should allow: {cmd}");
+        }
+    }
+
+    #[test]
+    fn guard_blocks_in_place_edits() {
+        for cmd in [
+            "sed -i '' s/a/b/ x.md",
+            "sed -i.bak s/a/b/ x.md",
+            "sed -E -i s/a/b/ x.md",
+            "sed -ni p x.md",
+            "/usr/bin/sed --in-place=.bak s/a/b/ x.md",
+            "find . -name '*.md' -exec sed -i s/a/b/ {} +",
+            "cat x | sed -i s/a/b/ y.md",
+            "perl -pi -e s/a/b/ x.md",
+            "perl -i -pe s/a/b/ x.md",
+            "sed -i \"s/a/b x.md", // unbalanced quote → regex fallback
+        ] {
+            let Some(code) = run_guard(cmd) else { return };
+            assert_eq!(code, 2, "should block: {cmd}");
+        }
+    }
+
+    #[test]
+    fn guard_still_blocks_mv_on_notes() {
+        let Some(code) = run_guard("mv _synthetic/java/a.md _synthetic/java/b.md") else {
+            return;
+        };
+        assert_eq!(code, 2);
     }
 }

@@ -23,8 +23,13 @@ pub struct SessionReport {
     pub csnotes_report_schema: u32,
     pub run_id: String,
     pub backend: String,
-    pub started_at: DateTime<Utc>,
-    pub completed_at: DateTime<Utc>,
+    /// Informational only and optional: the CLI never validates these, and
+    /// `csnotes diff` falls back to the report file's mtime.  Agents should
+    /// omit them rather than hand-maintain them across late edits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
     pub scope: ReportScope,
     pub operations: Vec<Op>,
     pub review_flags: Vec<ReviewFlag>,
@@ -307,6 +312,24 @@ mod tests {
         assert!(matches!(report.operations[0], Op::UpdateNote(_)));
         assert_eq!(report.review_flags.len(), 1);
         assert_eq!(report.review_flags[0].kind, FlagKind::NeedsConfirmation);
+        assert!(
+            report.completed_at.is_some(),
+            "legacy timestamps still parse"
+        );
+    }
+
+    #[test]
+    fn report_without_timestamps_parses() {
+        let mut v: serde_json::Value = serde_json::from_str(SAMPLE_REPORT).unwrap();
+        let obj = v.as_object_mut().unwrap();
+        obj.remove("started_at");
+        obj.remove("completed_at");
+        let report: SessionReport = serde_json::from_value(v).unwrap();
+        assert!(report.started_at.is_none());
+        assert!(report.completed_at.is_none());
+        // And they stay absent when the CLI re-saves the report.
+        let out = serde_json::to_string(&report).unwrap();
+        assert!(!out.contains("completed_at"));
     }
 
     #[test]

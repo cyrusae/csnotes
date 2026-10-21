@@ -68,8 +68,6 @@ directly; the report tells it what you did and why.
   "csnotes_report_schema": {schema_version},
   "run_id": "<copy from _session.md exactly>",
   "backend": "<claude | gemini>",
-  "started_at": "<ISO 8601 UTC>",
-  "completed_at": "<ISO 8601 UTC>",
   "scope": {{
     "kind": "session",
     "sessions": ["<session-id>"],
@@ -82,6 +80,10 @@ directly; the report tells it what you did and why.
 
 **`run_id`** must be copied verbatim from `_session.md`.  A mismatch causes
 the CLI to discard the workspace.
+
+**Timestamps** — don't include `started_at` / `completed_at`.  They're
+optional, unused by validation, and you don't need to update them after late
+edits.  (Older reports that include them still parse.)
 
 **`backend`** — use `"claude"` for Claude Code sessions, `"gemini"` for
 Gemini/Agy sessions.

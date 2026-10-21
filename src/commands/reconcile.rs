@@ -983,33 +983,53 @@ fn scan_resources_dir(
 
 /// Extract metadata from a source file's YAML frontmatter.
 /// Returns defaults when there is no frontmatter or fields are absent.
+///
+/// Each field is read independently from the parsed YAML, so one value
+/// csnotes doesn't understand (e.g. a hand-written `status: "completed"`)
+/// can't make the whole block — courses, tags, summary — silently vanish.
+/// `tags` and `courses` accept either a list or a single string.
 fn extract_source_meta(content: &str) -> SourceMeta {
-    let Some((yaml, _)) = crate::frontmatter::split_frontmatter(content) else {
-        return SourceMeta {
-            summary: None,
-            tags: vec![],
-            courses: vec![],
-            status_hint: None,
-            kind_hint: None,
-        };
+    let empty = SourceMeta {
+        summary: None,
+        tags: vec![],
+        courses: vec![],
+        status_hint: None,
+        kind_hint: None,
     };
-    #[derive(serde::Deserialize, Default)]
-    struct SourceFrontmatter {
-        summary: Option<String>,
-        #[serde(default)]
-        tags: Vec<String>,
-        #[serde(default)]
-        courses: Vec<String>,
-        status: Option<SourceStatus>,
-        source_type: Option<String>,
-    }
-    let meta: SourceFrontmatter = serde_yml::from_str(yaml).unwrap_or_default();
+    let Some((yaml, _)) = crate::frontmatter::split_frontmatter(content) else {
+        return empty;
+    };
+    let Ok(serde_yml::Value::Mapping(map)) = serde_yml::from_str::<serde_yml::Value>(yaml) else {
+        return empty;
+    };
+    let get = |key: &str| map.get(key);
+    let string_list = |key: &str| -> Vec<String> {
+        match get(key) {
+            Some(serde_yml::Value::Sequence(items)) => items
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect(),
+            Some(serde_yml::Value::String(s)) if !s.trim().is_empty() => {
+                vec![s.trim().to_string()]
+            }
+            _ => vec![],
+        }
+    };
     SourceMeta {
-        summary: meta.summary,
-        tags: meta.tags,
-        courses: meta.courses,
-        status_hint: meta.status,
-        kind_hint: meta.source_type.as_deref().and_then(kind_from_source_type),
+        summary: get("summary").and_then(|v| v.as_str()).map(str::to_string),
+        tags: string_list("tags"),
+        courses: string_list("courses"),
+        // Only "not read yet" is frontmatter-driven (→ Staged).  Any other
+        // value ("completed", "done", ...) is the student's own bookkeeping
+        // and leaves the pipeline-owned status alone.
+        status_hint: match get("status").and_then(|v| v.as_str()) {
+            Some("staged" | "incomplete" | "unread") => Some(SourceStatus::Staged),
+            _ => None,
+        },
+        kind_hint: get("source_type")
+            .and_then(|v| v.as_str())
+            .and_then(kind_from_source_type),
     }
 }
 
@@ -2955,6 +2975,48 @@ mod tests {
             "already-registered PDF should not be added again"
         );
         assert_eq!(manifest.sources.len(), 1);
+    }
+    // ── extract_source_meta robustness ───────────────────────────────────────
+
+    #[test]
+    fn source_meta_survives_unknown_status_value() {
+        // Real-world frontmatter: `status: "completed"` used to fail the whole
+        // deserialize and silently drop courses/summary/tags.
+        let content =
+            "---\ntitle: \"Intro\"\nchapter: 1\nstatus: \"completed\"\nsummary: \"Ch 1\"\n\
+                       courses:\n  - CPSC5001\n  - CPSC5002\ntags: [java]\n---\nBody\n";
+        let meta = extract_source_meta(content);
+        assert_eq!(meta.courses, vec!["CPSC5001", "CPSC5002"]);
+        assert_eq!(meta.summary.as_deref(), Some("Ch 1"));
+        assert_eq!(meta.tags, vec!["java"]);
+        assert_eq!(meta.status_hint, None, "'completed' must not drive status");
+    }
+
+    #[test]
+    fn source_meta_staged_aliases() {
+        for v in ["staged", "incomplete", "unread"] {
+            let content = format!("---\nstatus: {v}\n---\n");
+            assert_eq!(
+                extract_source_meta(&content).status_hint,
+                Some(SourceStatus::Staged),
+                "{v}"
+            );
+        }
+    }
+
+    #[test]
+    fn source_meta_accepts_single_string_courses() {
+        let meta = extract_source_meta("---\ncourses: CPSC5005\n---\n");
+        assert_eq!(meta.courses, vec!["CPSC5005"]);
+    }
+
+    #[test]
+    fn source_meta_tolerates_wrong_typed_fields() {
+        let meta =
+            extract_source_meta("---\nsummary: 42\ncourses: [CPSC5005, 7]\ntags: {a: b}\n---\n");
+        assert_eq!(meta.summary, None);
+        assert_eq!(meta.courses, vec!["CPSC5005"]);
+        assert!(meta.tags.is_empty());
     }
 }
 

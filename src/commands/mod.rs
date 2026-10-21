@@ -10,4 +10,5 @@ pub mod process;
 pub mod reconcile;
 pub mod recover;
 pub mod report_schema_cmd;
+pub mod sources_cmd;
 pub mod status;

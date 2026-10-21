@@ -110,8 +110,11 @@ Notes live in `_synthetic/<topic>/<slug>.md`.  Topic and slug: lowercase-hyphena
 
 **Format rules (short version):**
 - No frontmatter — the CLI stamps all `---` fences.  Write body only.
-- Every atomic note must end with `^<slug>` on its own line (same as filename
-  without `.md`).  Without this anchor the note can't be transcluded.
+- Every atomic note puts `^<slug>` on its own line **directly after the intro
+  paragraph** (the one-paragraph summary under the `##` heading), followed by a
+  blank line.  The index embeds `![[slug#^slug]]`, and Obsidian transcludes
+  the block just before the anchor — an anchor at the end of the note embeds
+  the last bullet list instead of the summary.  Use the filename without `.md`.
 - Wikilinks: `[[slug]]`, `[[topic/slug]]`, or `[[slug|display text]]`.
   Both bare-slug and topic-prefixed forms resolve correctly.  Targets may be
   notes in `_synthetic/` (created now or pre-existing) **or** any other vault
@@ -153,7 +156,7 @@ exit cleanly or discard it explicitly.
 
 Then confirm manually:
 
-- Every atomic note body ends with its block anchor on the last line.
+- Every atomic note has its `^<slug>` anchor right after the intro paragraph.
 - Every wikilink target exists in `_synthetic/` or the vault file list.
 - `_session_report.json` is written with the correct `run_id` (from `_session.md`).
 - Every file you created or edited has a corresponding operation in the report.

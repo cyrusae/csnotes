@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use commands::{
     audit_cmd, check_cmd, commit_cmd, config_cmd, diff, extract, flags_cmd, init, process,
-    reconcile, recover, report_schema_cmd, status,
+    reconcile, recover, report_schema_cmd, sources_cmd, status,
 };
 use config::AiBackend;
 
@@ -96,6 +96,43 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
                 flags_cmd::run(flags_cmd::FlagsSubcommand::Resolve { id, follow_up })
             }
             FlagsSubcommand::Show { id } => flags_cmd::run(flags_cmd::FlagsSubcommand::Show { id }),
+        },
+
+        Command::Sources {
+            subcommand,
+            course,
+            unused,
+            dormant,
+            untagged,
+            json,
+        } => match subcommand {
+            None => sources_cmd::run(sources_cmd::SourcesSubcommand::List(
+                sources_cmd::ListArgs {
+                    course,
+                    unused,
+                    dormant,
+                    untagged,
+                    json,
+                },
+            )),
+            Some(SourcesSubcommand::Tag {
+                patterns,
+                courses,
+                replace,
+                remove,
+                dry_run,
+            }) => sources_cmd::run(sources_cmd::SourcesSubcommand::Tag(sources_cmd::TagArgs {
+                patterns,
+                courses,
+                mode: if replace {
+                    sources_cmd::TagMode::Replace
+                } else if remove {
+                    sources_cmd::TagMode::Remove
+                } else {
+                    sources_cmd::TagMode::Add
+                },
+                dry_run,
+            })),
         },
 
         Command::Extract {
@@ -295,6 +332,33 @@ enum Command {
         subcommand: FlagsSubcommand,
     },
 
+    /// List registered sources by course, with how many notes credit each.
+    ///
+    /// Without a subcommand: the inventory.  Groups sources by course tag
+    /// (active courses first, then untagged, then dormant — tagged only with
+    /// retired courses, collapsed unless --dormant).  "Used" = credited in a
+    /// note's frontmatter or ingested by `process --source`.
+    #[command(args_conflicts_with_subcommands = true)]
+    Sources {
+        #[command(subcommand)]
+        subcommand: Option<SourcesSubcommand>,
+        /// Only sources visible to this course (tagged with it, or untagged).
+        #[arg(long)]
+        course: Option<String>,
+        /// Only sources nothing has drawn on yet.
+        #[arg(long)]
+        unused: bool,
+        /// Only dormant sources, listed in full.
+        #[arg(long)]
+        dormant: bool,
+        /// Only untagged sources.
+        #[arg(long)]
+        untagged: bool,
+        /// Emit JSON instead of human-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Extract action items, deadlines, and questions from raw notes.
     Extract {
         #[arg(long)]
@@ -341,7 +405,10 @@ enum Command {
         /// Rebuild csnotes.json from frontmatter + filesystem.
         #[arg(long)]
         reindex: bool,
-        /// Show mechanical repairs without writing anything (dry-run).
+        /// Show mechanical repairs without writing anything (dry-run):
+        /// missing block anchors, anchors stranded at the end of a note
+        /// (moved to after the intro paragraph so index embeds show the
+        /// summary), and uncredited source wikilinks.
         /// Combine with --apply to execute.
         #[arg(long)]
         fix: bool,
@@ -445,6 +512,42 @@ Directory settings (no spaces allowed in values):
         /// Execute the rename plan shown by --migrate.
         #[arg(long)]
         apply: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SourcesSubcommand {
+    /// Tag sources with the course(s) they belong to.
+    ///
+    /// Tagged sources only appear in workspaces for those courses.  Writes
+    /// `courses:` into each Markdown source's frontmatter (so it survives
+    /// `reconcile --reset`) and updates csnotes.json immediately.
+    ///
+    /// PATTERN is a source ID, a folder prefix (`Textbooks/Starting-Out-with-Java`),
+    /// or a glob where `*` stays within one path segment
+    /// (`'AI-Conversations/*/Java-*'` — quote it so the shell doesn't expand it).
+    ///
+    /// Examples:
+    ///   csnotes sources tag Textbooks/Starting-Out-with-Java --course CPSC5001 --course CPSC5002
+    ///   csnotes sources tag 'AI-Conversations/*/Cpp-*' --course CPSC5005 --dry-run
+    ///   csnotes sources tag Other/BigO-from-online --replace          # untag
+    #[command(verbatim_doc_comment)]
+    Tag {
+        /// Source IDs, folder prefixes, or globs.
+        #[arg(required = true)]
+        patterns: Vec<String>,
+        /// Course to tag with (repeatable).
+        #[arg(long = "course", short = 'c')]
+        courses: Vec<String>,
+        /// Replace existing tags instead of adding (no --course = untag).
+        #[arg(long, conflicts_with = "remove")]
+        replace: bool,
+        /// Remove the given course(s) instead of adding.
+        #[arg(long)]
+        remove: bool,
+        /// Show what would change without writing anything.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

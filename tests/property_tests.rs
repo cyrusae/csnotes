@@ -80,6 +80,7 @@ fn setup_process_vault() -> TempDir {
 
 fn run_reconcile(root: &Path) -> bool {
     Command::new(BINARY)
+        .stdin(std::process::Stdio::null()) // prompts must see EOF
         .arg("reconcile")
         .current_dir(root)
         .status()
@@ -242,6 +243,7 @@ fn recover_discard_clears_stale_in_progress() {
     fs::write(root.join("csnotes.json"), &manifest).unwrap();
 
     let status = Command::new(BINARY)
+        .stdin(std::process::Stdio::null()) // prompts must see EOF
         .args(["recover", "--discard"])
         .current_dir(root)
         .status()
@@ -267,6 +269,7 @@ fn reindex_is_stable_after_clean_process() {
     let root = tmp.path();
 
     let status = Command::new(BINARY)
+        .stdin(std::process::Stdio::null()) // prompts must see EOF
         .args(["process", "--backend", "mock", "--fixture", "default"])
         .current_dir(root)
         .status()
@@ -279,6 +282,7 @@ fn reindex_is_stable_after_clean_process() {
     let before = read_manifest(root);
 
     let status = Command::new(BINARY)
+        .stdin(std::process::Stdio::null()) // prompts must see EOF
         .args(["audit", "--reindex"])
         .current_dir(root)
         .status()

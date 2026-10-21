@@ -380,6 +380,8 @@ pub fn invariant_suite(
                                     id,
                                     id
                                 ));
+                            } else {
+                                warn_trailing_anchor(&mut result, entry.path(), &content, id);
                             }
                         }
                     }
@@ -453,6 +455,8 @@ pub fn check_workspace(workspace_root: &Path, synthetic_dir: &str) -> Result<Aud
                                 id,
                                 id
                             ));
+                        } else {
+                            warn_trailing_anchor(&mut result, entry.path(), &content, id);
                         }
                     }
                 }
@@ -523,6 +527,8 @@ pub fn audit_vault(
                                 id,
                                 id
                             ));
+                        } else {
+                            warn_trailing_anchor(&mut result, entry.path(), &content, id);
                         }
                     }
                 }
@@ -570,6 +576,21 @@ pub fn audit_vault(
     }
 
     Ok(result)
+}
+
+/// Soft-warn when an atomic's anchor sits at the end of the note (see
+/// [`crate::obsidian::anchor_is_trailing`]): the index embed would show the
+/// note's last block instead of its intro.
+fn warn_trailing_anchor(result: &mut AuditResult, path: &Path, content: &str, block_id: &str) {
+    if crate::obsidian::anchor_is_trailing(content, block_id) {
+        result.soft_warnings.push(format!(
+            "atomic note '{}': anchor '^{}' is at the end of the note, so the index \
+             embeds the last block instead of the intro — move it to the line right \
+             after the intro paragraph",
+            path.display(),
+            block_id
+        ));
+    }
 }
 
 // ── Vault stem index ──────────────────────────────────────────────────────────
@@ -807,7 +828,6 @@ mod tests {
         RenameTopicOp, ReportScope, ScopeKind, SessionReport, SetEmbedOp, SplitTarget,
         SplitTopicOp, UpdateNoteOp,
     };
-    use chrono::Utc;
     use tempfile::TempDir;
 
     fn write(dir: &std::path::Path, name: &str, body: &str) {
@@ -844,8 +864,8 @@ mod tests {
             csnotes_report_schema: 1,
             run_id: "test-run".into(),
             backend: "mock".into(),
-            started_at: Utc::now(),
-            completed_at: Utc::now(),
+            started_at: None,
+            completed_at: None,
             scope: ReportScope {
                 kind: ScopeKind::Session,
                 sessions: vec![],

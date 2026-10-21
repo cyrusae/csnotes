@@ -266,6 +266,37 @@ csnotes reconcile                        # registers it
 csnotes process --source SICP/ch01       # synthesise from this source
 ```
 
+### Course tags and the source inventory
+
+Sources are reference material, not a backlog: every session sees the sources
+visible to its course, and notes credit what they used.  A source's `courses:`
+frontmatter controls where it shows up:
+
+- **Untagged** — visible to every course.
+- **Tagged** — visible only to sessions/course reviews for those courses
+  (applies to every kind of source, AI conversations included).
+- **Dormant** — tagged only with courses no longer in `active_courses`.  Kept
+  out of topic/resource reviews and backlog counts, but still linkable and
+  credited.  Put the course back in `active_courses` and its sources return.
+
+```sh
+csnotes sources                          # inventory: by course, with "credited by N notes"
+csnotes sources --unused                 # nothing has drawn on these yet
+csnotes sources --course CPSC5005        # what a CPSC5005 session can see
+csnotes sources --dormant                # retired courses' material, listed in full
+
+# Tag by ID, folder prefix, or glob (* stays within one path segment; quote it)
+csnotes sources tag Textbooks/Starting-Out-with-Java -c CPSC5001 -c CPSC5002
+csnotes sources tag 'AI-Conversations/*/Cpp-*' -c CPSC5005 --dry-run
+csnotes sources tag Other/BigO-from-online --replace     # untag
+```
+
+`sources tag` writes `courses:` into each Markdown source's frontmatter (so it
+survives `reconcile --reset`) and updates `csnotes.json` immediately.
+PDF/PPTX/DOCX sources have no frontmatter, so their tags live in the manifest
+only.  `csnotes status` shows a one-line source summary; `csnotes sources` has
+the detail.
+
 ### Topic review sessions
 
 ```sh
@@ -510,7 +541,9 @@ csnotes recover --resume
 | `csnotes init` | Scaffold a new vault (directories, instruction files, `csnotes.toml`). Use `--instructions-only` to refresh just the instruction files. |
 | `csnotes process` | Run an AI synthesis session against pending notes. Auto-reconciles first. |
 | `csnotes reconcile` | Scan all directories and register new sessions, sources, and artifacts in the manifest. |
-| `csnotes status` | Show unprocessed sessions, unprocessed sources, topic health, open flags, and any in-progress warning. `--json` emits compact JSON. `--topic <name>` shows detailed view for one topic. |
+| `csnotes status` | Show unprocessed sessions, a one-line source summary (used / unused / dormant), topic health, open flags, and any in-progress warning. `--json` emits compact JSON. `--topic <name>` shows detailed view for one topic. |
+| `csnotes sources` | Source inventory grouped by course tag, with how many notes credit each. `--unused`, `--dormant`, `--untagged`, `--course <C>`, `--json`. |
+| `csnotes sources tag <pattern>… -c <course>` | Tag sources (ID, folder prefix, or `*` glob) with courses. `--replace`, `--remove`, `--dry-run`. |
 | `csnotes diff` | Semantic diff of what the last session created, updated, or restructured. |
 | `csnotes extract` | Pull action items, deadlines, and questions out of raw notes into `_generated/extracts/`. |
 | `csnotes flags list` | List open review flags. `--all` includes threads and changelog flags. |

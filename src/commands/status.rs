@@ -24,13 +24,17 @@ pub fn run(args: StatusArgs) -> Result<()> {
         return print_topic(name, &manifest);
     }
 
+    let credits = crate::commands::sources_cmd::source_credits(&vault_root, &config.synthetic_dir);
+    let source_summary =
+        crate::commands::sources_cmd::summarize(&manifest, &credits, &config.active_courses);
+
     if args.json {
-        let payload = build_json(&manifest, &flag_store);
+        let payload = build_json(&manifest, &flag_store, source_summary);
         println!("{}", serde_json::to_string(&payload)?);
         return Ok(());
     }
 
-    print_human(&manifest, &config, &flag_store)
+    print_human(&manifest, &config, &flag_store, &source_summary)
 }
 
 // ── JSON output ───────────────────────────────────────────────────────────────
@@ -41,7 +45,12 @@ pub struct StatusJson {
     pub sessions_total: usize,
     pub sessions_processed: usize,
     pub sessions_pending: Vec<String>,
+    /// Sources whose manifest status is `unprocessed` (never the subject of a
+    /// `process --source` run).  Kept for compatibility; `sources` below is
+    /// the more useful view.
     pub sources_unprocessed: Vec<String>,
+    /// Used / unused / dormant / staged counts, as in `csnotes sources`.
+    pub sources: crate::commands::sources_cmd::Summary,
     pub topics_total: usize,
     pub topics: Vec<TopicSummary>,
     pub open_actionable_flags: usize,
@@ -55,7 +64,11 @@ pub struct TopicSummary {
     pub open_flags: u32,
 }
 
-fn build_json(manifest: &Manifest, flag_store: &FlagStore) -> StatusJson {
+fn build_json(
+    manifest: &Manifest,
+    flag_store: &FlagStore,
+    sources: crate::commands::sources_cmd::Summary,
+) -> StatusJson {
     let sessions_pending: Vec<String> = manifest
         .sessions
         .iter()
@@ -93,6 +106,7 @@ fn build_json(manifest: &Manifest, flag_store: &FlagStore) -> StatusJson {
         sessions_processed,
         sessions_pending,
         sources_unprocessed,
+        sources,
         topics_total: manifest.topics.len(),
         topics,
         open_actionable_flags: flag_store.count_open_actionable(),
@@ -180,7 +194,12 @@ fn print_topic(name: &str, manifest: &Manifest) -> Result<()> {
 
 // ── Human-readable output ─────────────────────────────────────────────────────
 
-fn print_human(manifest: &Manifest, config: &VaultConfig, flag_store: &FlagStore) -> Result<()> {
+fn print_human(
+    manifest: &Manifest,
+    config: &VaultConfig,
+    flag_store: &FlagStore,
+    sources: &crate::commands::sources_cmd::Summary,
+) -> Result<()> {
     // ── Header ────────────────────────────────────────────────────────────
     let vault_root = find_vault_root(&std::env::current_dir()?)?;
     println!(
@@ -256,22 +275,27 @@ fn print_human(manifest: &Manifest, config: &VaultConfig, flag_store: &FlagStore
     }
 
     // ── Sources ───────────────────────────────────────────────────────────
-    let unprocessed_sources: Vec<_> = manifest
-        .sources
-        .iter()
-        .filter(|(_, e)| matches!(e.status, crate::manifest::SourceStatus::Unprocessed))
-        .collect();
-
-    if !unprocessed_sources.is_empty() {
+    // A one-line summary only: sources are reference material, not a
+    // backlog.  `csnotes sources` has the inventory.
+    if sources.total > 0 {
         println!();
         println!(
-            "{}  {} unprocessed",
+            "{}  {} used · {} unused · {} dormant{}  {}",
             "Sources".bold(),
-            unprocessed_sources.len().to_string().yellow(),
+            sources.used.to_string().green(),
+            if sources.unused == 0 {
+                "0".to_string()
+            } else {
+                sources.unused.to_string().yellow().to_string()
+            },
+            sources.dormant.to_string().dimmed(),
+            if sources.staged == 0 {
+                String::new()
+            } else {
+                format!(" · {} staged", sources.staged.to_string().dimmed())
+            },
+            "→ csnotes sources".dimmed(),
         );
-        for (id, _) in &unprocessed_sources {
-            println!("  {} {}", "•".yellow(), id.yellow());
-        }
     }
 
     // ── Topics ────────────────────────────────────────────────────────────
@@ -406,7 +430,7 @@ mod tests {
     fn build_json_empty_manifest() {
         let manifest = empty_manifest();
         let flags = FlagStore::default();
-        let out = build_json(&manifest, &flags);
+        let out = build_json(&manifest, &flags, Default::default());
         assert!(!out.session_in_progress);
         assert_eq!(out.sessions_total, 0);
         assert_eq!(out.sessions_processed, 0);
@@ -425,7 +449,7 @@ mod tests {
             ("algorithms".to_string(), topic_entry(7)),
         ]);
         let flags = FlagStore::default();
-        let out = build_json(&manifest, &flags);
+        let out = build_json(&manifest, &flags, Default::default());
         assert_eq!(out.topics_total, 2);
         let java = out.topics.iter().find(|t| t.name == "java").unwrap();
         assert_eq!(java.atomic_count, 3);
@@ -453,7 +477,7 @@ mod tests {
     fn build_json_serializes_to_valid_json() {
         let manifest = empty_manifest();
         let flags = FlagStore::default();
-        let out = build_json(&manifest, &flags);
+        let out = build_json(&manifest, &flags, Default::default());
         let json = serde_json::to_string(&out).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(parsed.get("sessions_total").is_some());

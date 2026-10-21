@@ -7,7 +7,7 @@
 /// Fixture files live in `tests/fixtures/<name>/`.
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
 
@@ -95,6 +95,7 @@ fn run_process(vault_root: &Path, fixture: &str) -> std::process::ExitStatus {
     Command::new(env!("CARGO_BIN_EXE_csnotes"))
         .args(["process", "--backend", "mock", "--fixture", fixture])
         .current_dir(vault_root)
+        .stdin(Stdio::null()) // prompts must see EOF, not hang on a live stdin
         .status()
         .expect("failed to spawn csnotes binary")
 }
@@ -200,6 +201,7 @@ fn reconcile_registers_session_and_recording() {
     let status = Command::new(env!("CARGO_BIN_EXE_csnotes"))
         .arg("reconcile")
         .current_dir(root)
+        .stdin(Stdio::null()) // prompts must see EOF, not hang on a live stdin
         .status()
         .expect("failed to spawn csnotes");
     assert!(status.success(), "reconcile should succeed");
@@ -319,6 +321,7 @@ Good content. ^good-note-id
     let status = Command::new(env!("CARGO_BIN_EXE_csnotes"))
         .args(["recover", "--discard"])
         .current_dir(root)
+        .stdin(Stdio::null()) // prompts must see EOF, not hang on a live stdin
         .status()
         .expect("failed to spawn csnotes");
     assert!(status.success(), "recover --discard should succeed");

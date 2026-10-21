@@ -217,6 +217,27 @@ pub struct SourceEntry {
     pub courses: Vec<String>,
 }
 
+impl SourceEntry {
+    /// Visible to a workspace for `course`: untagged sources are visible
+    /// everywhere; tagged ones only for the courses they list.  Applies to
+    /// every source kind.
+    pub fn visible_for_course(&self, course: &str) -> bool {
+        self.courses.is_empty() || self.courses.iter().any(|c| c == course)
+    }
+
+    /// Dormant: tagged, but with no course in `active_courses` (the courses
+    /// it belongs to have all been retired).  Dormant sources stay out of
+    /// course-less workspaces (topic/resource review) and backlog counts, but
+    /// remain linkable and credited.  Derived from config each time, never
+    /// stored, so re-activating a course revives its sources.  A vault with
+    /// no `active_courses` (flat layout) has no dormant sources.
+    pub fn is_dormant(&self, active_courses: &[String]) -> bool {
+        !active_courses.is_empty()
+            && !self.courses.is_empty()
+            && !self.courses.iter().any(|c| active_courses.contains(c))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {

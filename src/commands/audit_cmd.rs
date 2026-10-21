@@ -61,10 +61,13 @@ pub fn run(args: AuditArgs) -> Result<()> {
 
         // Note violations that are NOT auto-fixable
         if !audit.hard_violations.is_empty() {
-            let fixable = fixes.len();
+            let fixable = fixes
+                .iter()
+                .filter(|f| f.action.fixes_hard_violation())
+                .count();
             let total = audit.hard_violations.len();
-            // The fixable violations are a subset of hard_violations (anchor
-            // mismatches).  Any remaining violations need manual work.
+            // Only missing-anchor repairs resolve hard violations; the others
+            // fix warnings or metadata.  Any remaining violations need manual work.
             if total > fixable {
                 println!();
                 println!(

@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- audit --fix: move trailing block anchors to after the intro paragraph (L6)
+- `csnotes sources` inventory (use counts from note credits, dormant groups) and one-line source summary in `status`; `status --json` gains a `sources` object
+- Source dormancy + course-tag filtering for all source kinds (L9)
+- csnotes sources tag <prefix> <course...>: write course tags (L10)
 - index note frontmatter: drop contributing fields, auto-sync embeds (L67)
 - resource concept: lightweight container for self-directed study material (L63)
 - infer course from folder path for course-mediated sources (L60)
@@ -69,6 +73,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- Agent feedback: sed guard false positives, CLI-stamped report timestamps, anchor placement rule (L5)
+- Source frontmatter with an unrecognised value (e.g. `status: "completed"`) no longer silently drops `courses`, `summary`, and `tags`; fields are now read independently
+- Course tags now filter every source kind; previously AI conversations and other non-textbook sources went into every course's workspaces regardless of tags
 - recover --resume infinite loop when invariant suite fails (L70)
 - journal create_note workflow: 5 defects from first review session (L68)
 - journal create_note workflow: 5 defects from first review session (L68)

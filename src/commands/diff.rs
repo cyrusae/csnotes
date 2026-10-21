@@ -43,12 +43,22 @@ pub fn run(args: DiffArgs) -> Result<()> {
     let report: SessionReport = serde_json::from_str(&content)?;
 
     // ── Header ────────────────────────────────────────────────────────────────
+    // `completed_at` is optional; fall back to when the report was last written.
+    let completed = report.completed_at.or_else(|| {
+        std::fs::metadata(&report_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .map(chrono::DateTime::<chrono::Utc>::from)
+    });
     let session_label = report.scope.sessions.join(", ");
-    println!(
-        "Session: {}  ({})",
-        session_label,
-        report.completed_at.format("%Y-%m-%d %H:%M UTC")
-    );
+    match completed {
+        Some(t) => println!(
+            "Session: {}  ({})",
+            session_label,
+            t.format("%Y-%m-%d %H:%M UTC")
+        ),
+        None => println!("Session: {}", session_label),
+    }
     println!("Backend: {}  run_id: {}", report.backend, report.run_id);
 
     let synthetic_dir = &config.synthetic_dir;
