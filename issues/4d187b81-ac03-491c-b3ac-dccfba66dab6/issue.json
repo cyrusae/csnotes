@@ -1,0 +1,11 @@
+{
+  "uuid": "4d187b81-ac03-491c-b3ac-dccfba66dab6",
+  "display_id": null,
+  "title": "Loading spinners for slow operations",
+  "description": "Goal: nothing that can take more than a moment should look frozen (avoid reflexive ctrl+c).\n\nPlan (~half day):\n- Add indicatif; one helper in src/ui.rs, e.g. let _s = ui::spinner(\"scanning sources…\"); RAII guard that clears on drop.\n- Only draw when stderr is a TTY and color/term allow it (respect ui::color_supported / NO_COLOR / TERM=dumb); only appear after ~250ms so fast ops don't flicker.\n- Route println/eprintln during a spinner through ProgressBar::suspend (or println on the bar) to avoid garbled lines.\n- Never active while the AI backend owns the terminal (run_interactive in backend.rs).\n\nCall sites: ManifestLock wait (see lock-wait issue), workspace assembly in process, teardown/merge, pdftotext/pandoc in slides.rs, reconcile scan (rarely slow, but cheap to wrap).\n\nTests: helper is a no-op when not a TTY (CI output unchanged).",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T16:19:00.698461Z",
+  "updated_at": "2026-10-21T16:19:00.698461Z"
+}
