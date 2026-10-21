@@ -3,11 +3,12 @@
   "display_id": null,
   "title": "ManifestLock: say so when waiting on another csnotes process",
   "description": "ManifestLock::acquire (src/manifest.rs ~L373) does a blocking flock(LOCK_EX), so if another csnotes process holds .csnotes.lock (e.g. an open process session in another pane) the command hangs silently and looks frozen.\n\nFix: try flock(LOCK_EX | LOCK_NB) first; on EWOULDBLOCK print a dim stderr line like 'waiting for another csnotes process to release the vault lock… (ctrl+c to abort)' then fall back to blocking LOCK_EX. Covers all 10 acquire() call sites at once. Pairs with the spinner issue (spinner can wrap the blocking wait).\n\nTest: hold the lock in-thread via a second fd, assert acquire() from another thread emits the message / succeeds after release.\n\nContext: 2026-10-21 reconcile 'lag' investigation. Couldn't reproduce (reconcile ~0.05s on real vault); likely causes were first-run Gatekeeper scan of fresh binary, this silent lock wait, or iCloud-evicted files in ~/Documents/Vault/SU.",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-10-21T16:19:00.435006Z",
-  "updated_at": "2026-10-21T16:19:00.570253Z",
+  "updated_at": "2026-10-21T21:44:07.377521Z",
+  "closed_at": "2026-10-21T21:44:07.377521Z",
   "labels": [
     "ux"
   ]
