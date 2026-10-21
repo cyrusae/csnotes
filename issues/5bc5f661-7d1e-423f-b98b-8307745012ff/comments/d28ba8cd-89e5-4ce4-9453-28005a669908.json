@@ -1,0 +1,10 @@
+{
+  "uuid": "d28ba8cd-89e5-4ce4-9453-28005a669908",
+  "issue_uuid": "5bc5f661-7d1e-423f-b98b-8307745012ff",
+  "author": "3owj",
+  "content": "Done. Two-pass dedup: plain pass finds boilerplate, second pass exempts sparse (<8 content words) slides. PDF: pdftoppm -singlefile per visual page. PPTX: embedded raster pictures via slide rels (no soffice); picture-less sparse PPTX slides are unflagged. Image artifacts copied to _images/ with pointer input. Cap 30/workspace (counted from _images/), session inputs before sources; sources get markers only. _session.md gets an Images section. Verified on real CPSC5005 decks: 43 images across 7 decks, BST deletion-case and recursion-tree diagrams captured.",
+  "created_at": "2026-10-21T22:06:33.337150Z",
+  "kind": "resolution",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAW9344RUXgBgeDaE0JJMddBvKioywuQnvEj6PiMIkn3+oERXlvx4sX8vPxEWmoWcdY15xZXlsKeDy+UEdFUTEDA=="
+}
