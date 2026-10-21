@@ -1,0 +1,10 @@
+{
+  "uuid": "5e6fab7e-711a-40f6-a46a-eb4a10e7d92b",
+  "issue_uuid": "5bc9205b-8eda-4d85-9271-3defabd34dcb",
+  "author": "3owj",
+  "content": "Done (uncommitted): ManifestLock::acquire tries LOCK_EX|LOCK_NB first; on EWOULDBLOCK prints a dim stderr notice then blocks. acquire_with(on_wait) for tests; 2 tests (uncontended silent; contended reports + acquires after release). Verified with a python flock holder against a vault copy.",
+  "created_at": "2026-10-21T21:44:07.239008Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAR2qtrFsNJbFg6p5MLLKEEtb5vR/hCl6p+vwE5PLS1PSPmXuD3YmfhUa/BNP326/+mOZfxe7KbC++XQx3DFTeBQ=="
+}
