@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - safe_path validation for AI-produced paths + regression tests (L1)
 
 ### Added
+- Mostly-visual slides are kept, marked, and sent to the AI as images (`pdftoppm` for PDF pages, embedded pictures for PPTX); image artifacts are copied into the workspace (L3)
 - audit --fix: move trailing block anchors to after the intro paragraph (L6)
 - `csnotes sources` inventory (use counts from note credits, dormant groups) and one-line source summary in `status`; `status --json` gains a `sources` object
 - Source dormancy + course-tag filtering for all source kinds (L9)
@@ -73,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- Course review: fill image cap newest session first (L9)
 - status: [N pending] on topics is a false positive for the session that wrote them (L4)
 - Agent feedback: sed guard false positives, CLI-stamped report timestamps, anchor placement rule (L5)
 - Source frontmatter with an unrecognised value (e.g. `status: "completed"`) no longer silently drops `courses`, `summary`, and `tags`; fields are now read independently

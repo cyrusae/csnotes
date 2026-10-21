@@ -16,6 +16,8 @@ report_schema.md       ← read before writing the session report
 _workspace_meta.json   ← vault path + run_id (do not edit)
 input_raw_*.md         ← student's raw notes (XML-wrapped, read-only)
 input_recording_*.md   ← recording transcript/summary (XML-wrapped, read-only)
+input_*.md             ← slides and other artifacts (XML-wrapped, read-only)
+_images/               ← images of mostly-visual slides + image artifacts (read-only)
 sources/               ← source files (XML-wrapped, read-only)
 _synthetic/            ← your writable working copy of the vault's synthetic notes
 _session_report.json   ← you write this before exiting
@@ -79,6 +81,12 @@ but you'll need to restore the missing ops before committing again.
 Read `_session.md`.  It tells you the scope, what inputs are present, any open
 flags from previous sessions, and the full list of existing block IDs grouped
 by topic.  Then read the input files.
+
+Slides with little text are usually diagrams, plots or code screenshots.  They
+are marked ``_[Mostly visual — view `_images/…`]_`` in the slide text: **open the
+image before the debrief** — that's where the slide's content is.  A slide
+marked `no image available` had a picture you can't see; ask the student about
+it if it looks important.
 
 ---
 

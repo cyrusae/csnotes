@@ -517,15 +517,14 @@ fn recording_kind(qualifier: &str, config: &VaultConfig) -> RecordingKind {
 
 // ── Artifact scanning ─────────────────────────────────────────────────────────
 
-/// Text-readable file extensions we'll wrap and pass to the AI.
-/// Binary formats (PDF, images, office docs) are skipped — they can't be
-/// read as UTF-8 and the AI can't use them directly.
 /// Extensions accepted during artifact scanning.  Includes binary presentation
 /// formats (pdf, pptx, ppt) that are extracted via the slides pipeline at
-/// workspace-assembly time rather than read directly as text.
+/// workspace-assembly time rather than read directly as text, and image
+/// formats that are copied into the workspace for the model to view.
 const ACCEPTED_ARTIFACT_EXTENSIONS: &[&str] = &[
     // Binary slide formats (extracted by workspace via pdftotext / PPTX parser)
-    "pdf", "pptx", "ppt", // Markup / documentation
+    "pdf", "pptx", "ppt", // Images (copied to the workspace's _images/)
+    "png", "jpg", "jpeg", "gif", "webp", // Markup / documentation
     "md", "txt", "html", "htm", "tex", // Code
     "py", "java", "rs", "js", "ts", "jsx", "tsx", "c", "cpp", "h", "hpp", "cc", "cxx", "go", "rb",
     "swift", "kt", "kts", "cs", "fs", "ml", "mli", "hs", "lhs", "r", "rmd", "sql", "sh", "bash",
@@ -1283,6 +1282,35 @@ mod tests {
             manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
             ArtifactKind::Slides,
             "PDF must be classified as Slides"
+        );
+    }
+
+    #[test]
+    fn scan_registers_image_artifact() {
+        // Images are registered so the workspace can copy them into
+        // `_images/` for the model to view.
+        let tmp = TempDir::new().unwrap();
+        let artifacts_dir = tmp.path().join("artifacts");
+        write_file(
+            &artifacts_dir,
+            "CPSC5001-09-03-whiteboard.jpg",
+            "jpeg bytes",
+        );
+
+        let mut manifest = make_manifest_with_session(tmp.path(), "CPSC5001-09-03");
+        let mut new_artifacts = vec![];
+        scan_artifacts_dir(
+            &artifacts_dir,
+            tmp.path(),
+            &mut manifest,
+            &mut new_artifacts,
+        )
+        .unwrap();
+
+        assert_eq!(new_artifacts.len(), 1, "image must be registered");
+        assert_eq!(
+            manifest.sessions["CPSC5001-09-03"].artifacts[0].kind,
+            ArtifactKind::Other
         );
     }
 

@@ -17,6 +17,7 @@ synthesis.md           ← reference if you do write atomic notes
 report_schema.md       ← read before writing the session report
 _workspace_meta.json   ← vault path + run_id (do not edit)
 sources/               ← source files (XML-wrapped, read-only)
+_images/               ← images of mostly-visual slides (marked in the slide text)
 _synthetic/            ← writable copy of all synthetic notes for this course
 _session_report.json   ← you write this before exiting
 ```

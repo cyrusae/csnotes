@@ -9,7 +9,13 @@
 /// 3. **Fuzzy dedup** — slides whose post-strip word-set Jaccard similarity
 ///    to any of the preceding 5 non-skipped slides exceeds 0.85 are dropped.
 ///    This collapses "same code with different parts highlighted" sequences.
-/// 4. **Formatting** — remaining slides are rendered to Markdown and returned
+///    Sparse slides (under `VISUAL_MAX_WORDS` words once boilerplate is
+///    removed) are exempt: they are usually diagrams, plots or screenshots,
+///    so they are kept and flagged `visual` instead.
+/// 4. **Images** — optionally, visual slides get an image the model can look
+///    at: PDF pages are rendered with `pdftoppm`, PPTX slides contribute
+///    their embedded pictures.  Images land in the workspace's `_images/`.
+/// 5. **Formatting** — remaining slides are rendered to Markdown and returned
 ///    as a single string ready for XML-wrapping into the workspace.
 ///
 /// Extraction failures (tool not found, corrupt archive) return a `SlideError`
@@ -18,6 +24,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -56,6 +63,11 @@ pub struct Slide {
     pub number: usize,
     pub lines: Vec<String>,
     pub notes: Option<String>,
+    /// Too little text to stand on its own — probably a diagram, plot or
+    /// screenshot.  Marked in the Markdown so the model knows to look.
+    pub visual: bool,
+    /// Workspace-relative paths of images attached to this slide.
+    pub images: Vec<String>,
 }
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
@@ -70,6 +82,24 @@ const DEDUP_SIMILARITY: f64 = 0.85;
 
 /// How many preceding non-skipped slides to compare against for dedup.
 const DEDUP_WINDOW: usize = 5;
+
+/// A slide with fewer words than this (after boilerplate stripping) is
+/// treated as visual: kept, exempt from dedup, and eligible for an image.
+const VISUAL_MAX_WORDS: usize = 8;
+
+/// Workspace subdirectory that holds slide and artifact images.
+pub const IMAGES_DIR: &str = "_images";
+
+/// Most images copied into one workspace.  Keeps a long image-heavy deck
+/// from flooding the model's context.
+pub const MAX_IMAGES_PER_WORKSPACE: usize = 30;
+
+/// Resolution for rendered PDF pages: legible slide text without huge files.
+const RENDER_DPI: &str = "110";
+
+/// Raster formats a model can view.  Vector formats embedded in PPTX
+/// (EMF/WMF) are skipped.
+pub const VIEWABLE_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
 
 // ── Public entry points ───────────────────────────────────────────────────────
 
@@ -209,49 +239,218 @@ pub fn extract_pptx(path: &Path) -> Result<Vec<RawSlide>> {
 /// boilerplate were stripped first, a slide where every line happens to repeat
 /// across all slides (e.g. three identical code slides shown for emphasis)
 /// would have all its content removed before dedup ever fires.
+///
+/// Sparse slides are never dropped.  Sparseness is judged against the
+/// boilerplate found by a first, plain dedup pass (the original pipeline), so
+/// a slide holding only a title and the deck footer counts as sparse; the
+/// second pass then dedups with sparse slides exempt.
 pub fn process(slides: Vec<RawSlide>) -> Vec<Slide> {
     if slides.is_empty() {
         return Vec::new();
     }
 
-    // Phase 1: fuzzy dedup with a sliding window.
+    // Phase 1: fuzzy dedup with a sliding window, run once without
+    // exemptions purely to find the deck's boilerplate.
     // Repeated footer lines increase pairwise similarity, making it easier to
     // collapse near-identical slides (same code, varying highlights).
-    let mut deduped: Vec<RawSlide> = Vec::with_capacity(slides.len());
+    // Boilerplate frequency is computed over unique slides only, so genuinely
+    // repeated content (code shown 3× for emphasis, deduplicated to 1 slide)
+    // cannot be mistakenly flagged as per-deck boilerplate.
+    let boilerplate = find_boilerplate(&dedup(slides.clone(), |_| false));
+
+    // Phase 2: the real dedup, with sparse (likely visual) slides exempt.
+    let is_sparse = |s: &RawSlide| content_word_count(&s.lines, &boilerplate) < VISUAL_MAX_WORDS;
+    let deduped = dedup(slides, is_sparse);
+
+    // Phase 3: strip boilerplate.
+    deduped
+        .into_iter()
+        .map(|s| {
+            let lines: Vec<String> = s
+                .lines
+                .into_iter()
+                .filter(|l| !boilerplate.contains(&normalise_line(l)))
+                .filter(|l| !l.trim().is_empty())
+                .collect();
+            let visual = content_word_count(&lines, &HashSet::new()) < VISUAL_MAX_WORDS;
+            Slide {
+                number: s.number,
+                lines,
+                notes: s.notes,
+                visual,
+                images: Vec::new(),
+            }
+        })
+        .collect()
+}
+
+/// Drop slides whose word set is a near-duplicate of one of the previous
+/// `DEDUP_WINDOW` kept slides.  `exempt` slides are always kept; other
+/// slides with no words are dropped.
+fn dedup(slides: Vec<RawSlide>, exempt: impl Fn(&RawSlide) -> bool) -> Vec<RawSlide> {
+    let mut kept: Vec<RawSlide> = Vec::with_capacity(slides.len());
     for slide in slides {
+        if exempt(&slide) {
+            kept.push(slide);
+            continue;
+        }
         let sig = word_set_signature(&slide.lines);
         if sig.is_empty() {
-            continue; // silently drop already-empty slides
+            continue;
         }
-        let is_dup = deduped
+        let is_dup = kept
             .iter()
             .rev()
             .take(DEDUP_WINDOW)
             .any(|prev| jaccard(&sig, &word_set_signature(&prev.lines)) >= DEDUP_SIMILARITY);
         if !is_dup {
-            deduped.push(slide);
+            kept.push(slide);
         }
     }
+    kept
+}
 
-    // Phase 2: strip boilerplate from the deduplicated set.
-    // Frequency is now computed over unique slides only, so genuinely repeated
-    // content (code shown 3× for emphasis, deduplicated above to 1 slide)
-    // cannot be mistakenly flagged as per-deck boilerplate.
-    let boilerplate = find_boilerplate(&deduped);
-    deduped
-        .into_iter()
-        .map(|s| Slide {
-            number: s.number,
-            lines: s
-                .lines
-                .into_iter()
-                .filter(|l| !boilerplate.contains(&normalise_line(l)))
-                .filter(|l| !l.trim().is_empty())
-                .collect(),
-            notes: s.notes,
-        })
-        .filter(|s| !s.lines.is_empty())
-        .collect()
+/// Render each visual slide's PDF page to a PNG in `<workspace>/_images/`
+/// and record the path on the slide.  Stops at `budget` images.
+///
+/// Soft-fails: a missing `pdftoppm` warns once per process and leaves the
+/// slides with their text markers; a page that fails to render is skipped.
+pub fn render_pdf_visuals(
+    pdf: &Path,
+    slides: &mut [Slide],
+    workspace_root: &Path,
+    stem: &str,
+    budget: &mut usize,
+) {
+    render_pdf_visuals_with("pdftoppm", pdf, slides, workspace_root, stem, budget);
+}
+
+/// `render_pdf_visuals` with the renderer binary named explicitly, so tests
+/// can exercise the missing-tool path.
+fn render_pdf_visuals_with(
+    tool: &str,
+    pdf: &Path,
+    slides: &mut [Slide],
+    workspace_root: &Path,
+    stem: &str,
+    budget: &mut usize,
+) {
+    static PDFTOPPM_MISSING_WARNED: AtomicBool = AtomicBool::new(false);
+
+    let out_dir = workspace_root.join(IMAGES_DIR);
+    let mut skipped = 0;
+    for slide in slides.iter_mut().filter(|s| s.visual) {
+        if *budget == 0 {
+            skipped += 1;
+            continue;
+        }
+        if std::fs::create_dir_all(&out_dir).is_err() {
+            return;
+        }
+        let name = format!("{}-p{}", stem, slide.number);
+        let page = slide.number.to_string();
+        // -singlefile writes exactly `<prefix>.png` with no page suffix.
+        let status = std::process::Command::new(tool)
+            .args([
+                "-png",
+                "-r",
+                RENDER_DPI,
+                "-singlefile",
+                "-f",
+                &page,
+                "-l",
+                &page,
+            ])
+            .arg(pdf)
+            .arg(out_dir.join(&name))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match status {
+            Ok(st) if st.success() => {
+                slide.images.push(format!("{}/{}.png", IMAGES_DIR, name));
+                *budget -= 1;
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if !PDFTOPPM_MISSING_WARNED.swap(true, Ordering::Relaxed) {
+                    eprintln!(
+                        "warning: pdftoppm not found — visual slides are marked but not \
+                         rendered (install poppler to include slide images)"
+                    );
+                }
+                return;
+            }
+            Err(_) => {}
+        }
+    }
+    warn_budget_exhausted(pdf, skipped);
+}
+
+/// Copy the pictures embedded in each visual PPTX slide into
+/// `<workspace>/_images/` and record their paths.  Stops at `budget` images.
+/// Vector formats and external links are skipped.
+///
+/// Unlike a PDF page, a PPTX slide says what it contains: a sparse slide with
+/// no pictures (a title or section divider) is un-flagged rather than marked
+/// as a visual with no image.
+pub fn extract_pptx_visuals(
+    pptx: &Path,
+    slides: &mut [Slide],
+    workspace_root: &Path,
+    stem: &str,
+    budget: &mut usize,
+) {
+    let Ok(file) = std::fs::File::open(pptx) else {
+        return;
+    };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else {
+        return;
+    };
+    let out_dir = workspace_root.join(IMAGES_DIR);
+    let mut skipped = 0;
+    for slide in slides.iter_mut().filter(|s| s.visual) {
+        let targets = read_pptx_image_targets(&mut archive, slide.number);
+        if targets.is_empty() {
+            slide.visual = false;
+            continue;
+        }
+        for (k, target) in targets.iter().enumerate() {
+            if *budget == 0 {
+                skipped += 1;
+                break;
+            }
+            let ext = target
+                .rsplit_once('.')
+                .map(|(_, e)| e.to_ascii_lowercase())
+                .unwrap_or_default();
+            let mut bytes = Vec::new();
+            let read_ok = archive
+                .by_name(target)
+                .map(|mut e| e.read_to_end(&mut bytes).is_ok())
+                .unwrap_or(false);
+            if !read_ok || std::fs::create_dir_all(&out_dir).is_err() {
+                continue;
+            }
+            let name = format!("{}-s{}-{}.{}", stem, slide.number, k + 1, ext);
+            if std::fs::write(out_dir.join(&name), &bytes).is_ok() {
+                slide.images.push(format!("{}/{}", IMAGES_DIR, name));
+                *budget -= 1;
+            }
+        }
+    }
+    warn_budget_exhausted(pptx, skipped);
+}
+
+fn warn_budget_exhausted(path: &Path, skipped: usize) {
+    if skipped > 0 {
+        eprintln!(
+            "warning: image cap ({}) reached — {} visual slide(s) in '{}' left as text markers",
+            MAX_IMAGES_PER_WORKSPACE,
+            skipped,
+            path.display()
+        );
+    }
 }
 
 /// Format processed slides as a Markdown string for workspace ingestion.
@@ -265,6 +464,17 @@ pub fn to_workspace_markdown(slides: &[Slide]) -> String {
         for line in &slide.lines {
             out.push_str(line);
             out.push('\n');
+        }
+        if slide.visual {
+            if !slide.lines.is_empty() {
+                out.push('\n');
+            }
+            if slide.images.is_empty() {
+                out.push_str("_[Mostly visual — no image available]_\n");
+            } else {
+                let paths: Vec<String> = slide.images.iter().map(|p| format!("`{}`", p)).collect();
+                out.push_str(&format!("_[Mostly visual — view {}]_\n", paths.join(", ")));
+            }
         }
         if let Some(notes) = &slide.notes {
             let trimmed = notes.trim();
@@ -280,25 +490,25 @@ pub fn to_workspace_markdown(slides: &[Slide]) -> String {
 // ── PDF helpers ───────────────────────────────────────────────────────────────
 
 /// Split `pdftotext` output (page-separated by form-feed `\x0c`) into
-/// per-slide `RawSlide` values.
+/// per-slide `RawSlide` values.  Pages without text are kept (with no lines)
+/// so image-only slides survive to be marked visual; only the empty piece
+/// after the final form-feed is dropped.
 fn pages_to_raw_slides(text: String) -> Vec<RawSlide> {
-    text.split('\x0c')
+    let mut pages: Vec<&str> = text.split('\x0c').collect();
+    if pages.last().is_some_and(|p| p.trim().is_empty()) {
+        pages.pop();
+    }
+    pages
+        .into_iter()
         .enumerate()
-        .filter_map(|(i, page)| {
-            let lines: Vec<String> = page
+        .map(|(i, page)| RawSlide {
+            number: i + 1,
+            lines: page
                 .lines()
                 .map(|l| l.trim().to_string())
                 .filter(|l| !l.is_empty())
-                .collect();
-            if lines.is_empty() {
-                None // trailing form-feed produces empty last page
-            } else {
-                Some(RawSlide {
-                    number: i + 1,
-                    lines,
-                    notes: None,
-                })
-            }
+                .collect(),
+            notes: None,
         })
         .collect()
 }
@@ -334,6 +544,90 @@ fn read_pptx_notes_text(archive: &mut zip::ZipArchive<std::fs::File>, n: usize) 
     } else {
         Some(lines.join(" "))
     }
+}
+
+/// List the zip paths of viewable images a PPTX slide references, in
+/// relationship order.  Soft — returns an empty list on any read failure.
+fn read_pptx_image_targets(archive: &mut zip::ZipArchive<std::fs::File>, n: usize) -> Vec<String> {
+    let name = format!("ppt/slides/_rels/slide{}.xml.rels", n);
+    let mut xml = String::new();
+    match archive.by_name(&name) {
+        Ok(mut entry) => {
+            if entry.read_to_string(&mut xml).is_err() {
+                return Vec::new();
+            }
+        }
+        Err(_) => return Vec::new(),
+    }
+    let mut targets: Vec<String> = Vec::new();
+    for target in parse_image_relationships(&xml) {
+        let path = resolve_pptx_target(&target);
+        let ext = path
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if VIEWABLE_IMAGE_EXTENSIONS.contains(&ext.as_str()) && !targets.contains(&path) {
+            targets.push(path);
+        }
+    }
+    targets
+}
+
+/// Pull the `Target` of every internal image `<Relationship>` from a
+/// slide's `.rels` XML.
+fn parse_image_relationships(xml: &str) -> Vec<String> {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    let mut reader = Reader::from_str(xml);
+    let mut out = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e))
+                if e.local_name().as_ref() == b"Relationship" =>
+            {
+                let mut is_image = false;
+                let mut external = false;
+                let mut target = None;
+                for attr in e.attributes().flatten() {
+                    let value = attr
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                        .unwrap_or_default()
+                        .into_owned();
+                    match attr.key.as_ref() {
+                        b"Type" => is_image = value.ends_with("/image"),
+                        b"TargetMode" => external = value == "External",
+                        b"Target" => target = Some(value),
+                        _ => {}
+                    }
+                }
+                if let (true, false, Some(t)) = (is_image, external, target) {
+                    out.push(t);
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Resolve a relationship target (relative to `ppt/slides/`) to a zip path.
+fn resolve_pptx_target(target: &str) -> String {
+    if let Some(abs) = target.strip_prefix('/') {
+        return abs.to_string();
+    }
+    let mut parts: Vec<&str> = vec!["ppt", "slides"];
+    for seg in target.split('/') {
+        match seg {
+            ".." => {
+                parts.pop();
+            }
+            "." | "" => {}
+            s => parts.push(s),
+        }
+    }
+    parts.join("/")
 }
 
 /// Extract the text content of all `<a:t>` elements from a PowerPoint XML
@@ -441,6 +735,15 @@ fn find_boilerplate(slides: &[RawSlide]) -> HashSet<String> {
         .collect()
 }
 
+/// Count the words on a slide, ignoring lines in `boilerplate`.
+fn content_word_count(lines: &[String], boilerplate: &HashSet<String>) -> usize {
+    lines
+        .iter()
+        .filter(|l| !boilerplate.contains(&normalise_line(l)))
+        .map(|l| l.split_whitespace().count())
+        .sum()
+}
+
 /// Build the word multiset signature for a slide's lines (used for Jaccard).
 fn word_set_signature(lines: &[String]) -> HashSet<String> {
     lines
@@ -466,7 +769,7 @@ fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -670,22 +973,108 @@ mod tests {
     }
 
     #[test]
-    fn process_empty_slide_after_strip_is_dropped() {
-        // A slide consisting entirely of boilerplate lines becomes empty after
-        // stripping and should be silently removed.
+    fn process_empty_slide_after_strip_is_kept_as_visual() {
+        // A slide consisting entirely of boilerplate lines is usually an
+        // image-only slide: it must survive, flagged visual, with no text.
         let slides = vec![
-            raw(1, &["Real content here", "© Footer"]),
+            raw(
+                1,
+                &[
+                    "Real content here about raw pointers and references",
+                    "© Footer",
+                ],
+            ),
             raw(2, &["© Footer"]), // becomes empty after stripping
-            raw(3, &["More content", "© Footer"]),
-            raw(4, &["Even more content", "© Footer"]),
+            raw(
+                3,
+                &[
+                    "More content on smart pointers and ownership rules",
+                    "© Footer",
+                ],
+            ),
+            raw(
+                4,
+                &[
+                    "Even more content covering move semantics in depth",
+                    "© Footer",
+                ],
+            ),
         ];
         let result = process(slides);
-        // Slide 2 should be dropped; others kept.
+        assert_eq!(result.len(), 4);
+        let s2 = result.iter().find(|s| s.number == 2).unwrap();
+        assert!(s2.visual, "boilerplate-only slide must be marked visual");
+        assert!(s2.lines.is_empty());
         assert!(
-            result.iter().all(|s| s.number != 2),
-            "empty slide after stripping must be dropped"
+            result.iter().filter(|s| s.number != 2).all(|s| !s.visual),
+            "text-heavy slides must not be marked visual"
         );
-        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn process_keeps_blank_pdf_page() {
+        let slides = vec![
+            raw(
+                1,
+                &["Templates let one function work across many types at once"],
+            ),
+            raw(2, &[]),
+        ];
+        let result = process(slides);
+        assert_eq!(result.len(), 2);
+        assert!(result[1].visual);
+    }
+
+    #[test]
+    fn process_does_not_dedup_sparse_slides() {
+        // Three "Example" title slides (each followed by a diagram) look
+        // identical as text but show different pictures.
+        let slides = vec![
+            raw(1, &["Example", "CPSC 5005 Fall"]),
+            raw(2, &["Example", "CPSC 5005 Fall"]),
+            raw(3, &["Example", "CPSC 5005 Fall"]),
+        ];
+        let result = process(slides);
+        assert_eq!(result.len(), 3, "sparse slides are exempt from dedup");
+        assert!(result.iter().all(|s| s.visual));
+    }
+
+    #[test]
+    fn process_title_plus_footer_counts_as_sparse_before_dedup() {
+        // Title + an 8-word footer clears VISUAL_MAX_WORDS before stripping,
+        // but the provisional boilerplate pass sees through the footer.
+        let footer = "Copyright 2026 Seattle University all rights reserved here";
+        let slides = vec![
+            raw(1, &["Heap layout diagram", footer]),
+            raw(2, &["Heap layout diagram", footer]),
+            raw(
+                3,
+                &[
+                    "Stack frames hold locals, parameters and the return address",
+                    footer,
+                ],
+            ),
+        ];
+        let result = process(slides);
+        assert_eq!(
+            result.iter().filter(|s| s.number <= 2).count(),
+            2,
+            "both title-only slides must survive"
+        );
+        assert!(result.iter().filter(|s| s.number <= 2).all(|s| s.visual));
+    }
+
+    #[test]
+    fn process_still_dedups_text_heavy_slides() {
+        let body = &[
+            "int main() { std::vector<int> v{1, 2, 3};",
+            "for (auto x : v) std::cout << x << std::endl;",
+            "return 0; }",
+        ];
+        let slides = vec![raw(1, body), raw(2, body)];
+        let result = process(slides);
+        assert_eq!(result.len(), 1);
+        assert!(!result[0].visual);
     }
 
     #[test]
@@ -766,6 +1155,8 @@ mod tests {
             number: 3,
             lines: vec!["Quicksort".to_string(), "O(n log n) average".to_string()],
             notes: Some("Mention worst-case O(n²) on sorted input.".to_string()),
+            visual: false,
+            images: vec![],
         }];
         let md = to_workspace_markdown(&slides);
         assert!(md.contains("### Slide 3"));
@@ -780,6 +1171,8 @@ mod tests {
             number: 1,
             lines: vec!["Title".to_string()],
             notes: Some("   ".to_string()), // whitespace-only notes
+            visual: false,
+            images: vec![],
         }];
         let md = to_workspace_markdown(&slides);
         assert!(
@@ -792,5 +1185,201 @@ mod tests {
     fn to_workspace_markdown_empty_slides_returns_placeholder() {
         let md = to_workspace_markdown(&[]);
         assert!(md.contains("No readable slide content"));
+    }
+
+    #[test]
+    fn pages_to_raw_slides_keeps_blank_middle_page() {
+        let text = "Intro\x0c   \n\x0cOutro\x0c".to_string();
+        let slides = pages_to_raw_slides(text);
+        assert_eq!(slides.len(), 3);
+        assert_eq!(slides[1].number, 2);
+        assert!(slides[1].lines.is_empty());
+        assert_eq!(slides[2].number, 3);
+    }
+
+    fn visual_slide(number: usize, lines: &[&str], images: &[&str]) -> Slide {
+        Slide {
+            number,
+            lines: lines.iter().map(|s| s.to_string()).collect(),
+            notes: None,
+            visual: true,
+            images: images.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn to_workspace_markdown_marks_visual_slide_with_image() {
+        let md = to_workspace_markdown(&[visual_slide(4, &["Heap"], &["_images/deck-p4.png"])]);
+        assert!(
+            md.contains("### Slide 4\n\nHeap\n\n_[Mostly visual — view `_images/deck-p4.png`]_")
+        );
+    }
+
+    #[test]
+    fn to_workspace_markdown_marks_visual_slide_without_image() {
+        let md = to_workspace_markdown(&[visual_slide(2, &[], &[])]);
+        assert!(md.contains("### Slide 2\n\n_[Mostly visual — no image available]_"));
+    }
+
+    #[test]
+    fn parse_image_relationships_keeps_internal_images_only() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout2.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="https://example.com/x.png" TargetMode="External"/>
+</Relationships>"#;
+        assert_eq!(parse_image_relationships(xml), vec!["../media/image1.png"]);
+    }
+
+    #[test]
+    fn resolve_pptx_target_handles_relative_and_absolute() {
+        assert_eq!(
+            resolve_pptx_target("../media/image1.png"),
+            "ppt/media/image1.png"
+        );
+        assert_eq!(
+            resolve_pptx_target("/ppt/media/image2.jpeg"),
+            "ppt/media/image2.jpeg"
+        );
+        assert_eq!(resolve_pptx_target("media/x.png"), "ppt/slides/media/x.png");
+    }
+
+    /// Build a three-slide PPTX: slide 1 is text-heavy, slide 2 has only a
+    /// title plus one PNG and one EMF picture, slide 3 is a bare title.
+    fn write_pptx_fixture(path: &Path) {
+        use std::io::Write;
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = zip::write::SimpleFileOptions::default();
+        let slide = |text: &str| {
+            format!(
+                r#"<p:sld><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>{}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"#,
+                text
+            )
+        };
+        let img = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+        let entries: Vec<(String, Vec<u8>)> = vec![
+            (
+                "ppt/slides/slide1.xml".into(),
+                slide("Virtual functions dispatch through the vtable at runtime always").into_bytes(),
+            ),
+            ("ppt/slides/slide2.xml".into(), slide("Class diagram").into_bytes()),
+            ("ppt/slides/slide3.xml".into(), slide("Part two").into_bytes()),
+            (
+                "ppt/slides/_rels/slide2.xml.rels".into(),
+                format!(
+                    r#"<Relationships><Relationship Id="rId2" Type="{img}" Target="../media/image1.png"/><Relationship Id="rId3" Type="{img}" Target="../media/image2.emf"/></Relationships>"#
+                )
+                .into_bytes(),
+            ),
+            ("ppt/media/image1.png".into(), b"\x89PNG fake".to_vec()),
+            ("ppt/media/image2.emf".into(), b"emf".to_vec()),
+        ];
+        for (name, bytes) in entries {
+            zip.start_file(name, opts).unwrap();
+            zip.write_all(&bytes).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn extract_pptx_visuals_copies_raster_images_of_visual_slides() {
+        let dir = tempfile::tempdir().unwrap();
+        let pptx = dir.path().join("deck.pptx");
+        write_pptx_fixture(&pptx);
+        let ws = dir.path().join("ws");
+
+        let mut slides = process(extract_pptx(&pptx).unwrap());
+        assert_eq!(slides.len(), 3);
+        assert!(!slides[0].visual);
+        assert!(slides[1].visual);
+        assert!(slides[2].visual, "sparse before pictures are checked");
+
+        let mut budget = 10;
+        extract_pptx_visuals(&pptx, &mut slides, &ws, "deck", &mut budget);
+        assert!(slides[0].images.is_empty());
+        assert!(
+            !slides[2].visual,
+            "a sparse slide with no pictures is not visual"
+        );
+        assert!(slides[2].images.is_empty());
+        assert_eq!(slides[1].images, vec!["_images/deck-s2-1.png"]);
+        assert_eq!(budget, 9);
+        assert_eq!(
+            std::fs::read(ws.join("_images/deck-s2-1.png")).unwrap(),
+            b"\x89PNG fake"
+        );
+    }
+
+    #[test]
+    fn extract_pptx_visuals_respects_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let pptx = dir.path().join("deck.pptx");
+        write_pptx_fixture(&pptx);
+        let mut slides = process(extract_pptx(&pptx).unwrap());
+        let mut budget = 0;
+        extract_pptx_visuals(&pptx, &mut slides, dir.path(), "deck", &mut budget);
+        assert!(slides[1].images.is_empty());
+        assert!(slides[1].visual, "over the cap, the slide keeps its marker");
+        assert!(!dir.path().join(IMAGES_DIR).exists());
+    }
+
+    #[test]
+    fn render_pdf_visuals_missing_tool_leaves_markers() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut slides = vec![visual_slide(1, &[], &[])];
+        let mut budget = 5;
+        render_pdf_visuals_with(
+            "csnotes-no-such-pdftoppm",
+            &dir.path().join("deck.pdf"),
+            &mut slides,
+            dir.path(),
+            "deck",
+            &mut budget,
+        );
+        assert!(slides[0].images.is_empty());
+        assert_eq!(budget, 5);
+        assert!(to_workspace_markdown(&slides).contains("no image available"));
+    }
+
+    /// A one-page PDF with no text: the shape of an image-only slide.
+    pub(crate) const BLANK_PDF: &str = "%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 150] >> endobj
+trailer << /Root 1 0 R >>
+%%EOF
+";
+
+    pub(crate) fn have(tool: &str) -> bool {
+        std::process::Command::new(tool)
+            .arg("-v")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+    }
+
+    #[test]
+    fn blank_pdf_page_is_rendered_and_marked() {
+        if !have("pdftotext") || !have("pdftoppm") {
+            eprintln!("skipping: poppler not installed");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let pdf = dir.path().join("deck.pdf");
+        std::fs::write(&pdf, BLANK_PDF).unwrap();
+
+        let mut slides = process(extract_pdf(&pdf).unwrap());
+        assert_eq!(slides.len(), 1);
+        assert!(slides[0].visual);
+
+        let mut budget = 3;
+        render_pdf_visuals(&pdf, &mut slides, dir.path(), "deck", &mut budget);
+        assert_eq!(slides[0].images, vec!["_images/deck-p1.png"]);
+        assert_eq!(budget, 2);
+        let png = std::fs::read(dir.path().join("_images/deck-p1.png")).unwrap();
+        assert!(png.starts_with(b"\x89PNG"));
     }
 }

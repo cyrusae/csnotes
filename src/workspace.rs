@@ -12,6 +12,7 @@
 ///     input_raw_*.md                        ← raw notes (XML-wrapped, read-only)
 ///     input_*.md                            ← recordings / artifacts (XML-wrapped, read-only)
 ///     sources/                              ← source files (XML-wrapped, read-only)
+///     _images/                              ← visual-slide renders + image artifacts (read-only)
 ///     _synthetic/                           ← writable working copy
 ///     _vault_stems.json                     ← lowercased stems of all other vault files
 ///
@@ -195,15 +196,7 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
         }
     }
     if let WorkspaceScope::Course { course } = &params.scope {
-        use crate::manifest::SessionStatus;
-        let mut sessions: Vec<(&String, &crate::manifest::SessionEntry)> = params
-            .manifest
-            .sessions
-            .iter()
-            .filter(|(_, e)| &e.course == course && e.status == SessionStatus::Processed)
-            .collect();
-        sessions.sort_by_key(|(_, e)| e.date);
-        for (_, entry) in sessions {
+        for entry in course_sessions_newest_first(params.manifest, course) {
             let raw_path = params.vault_root.join(&entry.raw_note);
             let raw_empty = !raw_path.exists()
                 || fs::read_to_string(&raw_path)
@@ -573,8 +566,9 @@ fn wrap_session_inputs(
     }
 
     // Artifacts — slide formats (PDF/PPTX) are extracted via the slides
-    // pipeline; other text-readable formats are wrapped directly; binary
-    // files (images, etc.) are silently skipped.
+    // pipeline (visual slides get images under `_images/`); image files are
+    // copied to `_images/` with a pointer input; other text-readable formats
+    // are wrapped directly; remaining binary files are silently skipped.
     for artifact in &entry.artifacts {
         let src = vault_root.join(&artifact.path);
         if !src.exists() {
@@ -588,7 +582,8 @@ fn wrap_session_inputs(
 
         // ── Slide extraction for binary presentation formats ──────────────
         if ext == "pdf" || ext == "pptx" {
-            match extract_slides_to_markdown(&src, &ext) {
+            let stem = sanitise(&artifact.path);
+            match extract_slides_to_markdown(&src, &ext, Some((workspace_root, &stem))) {
                 Ok(markdown) => {
                     let wrapped = xml_wrap(
                         &markdown,
@@ -611,6 +606,11 @@ fn wrap_session_inputs(
                     );
                 }
             }
+            continue;
+        }
+
+        if crate::slides::VIEWABLE_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+            copy_image_artifact(&src, &artifact.path, &ext, course, &date, workspace_root)?;
             continue;
         }
 
@@ -645,6 +645,20 @@ fn wrap_session_inputs(
     }
 
     Ok(())
+}
+
+/// Processed sessions of `course`, newest first.  Course-review inputs are
+/// wrapped in this order so the per-workspace image cap goes to the most
+/// recent lectures; an older deck loses its images before a newer one does.
+fn course_sessions_newest_first<'a>(manifest: &'a Manifest, course: &str) -> Vec<&'a SessionEntry> {
+    use crate::manifest::SessionStatus;
+    let mut sessions: Vec<&SessionEntry> = manifest
+        .sessions
+        .values()
+        .filter(|e| e.course == course && e.status == SessionStatus::Processed)
+        .collect();
+    sessions.sort_by_key(|e| std::cmp::Reverse(e.date));
+    sessions
 }
 
 /// Walk a resource directory and copy each `.md` note into the workspace,
@@ -819,7 +833,9 @@ fn write_source_file(
         .unwrap_or("")
         .to_ascii_lowercase();
     if ext == "pdf" || ext == "pptx" {
-        match extract_slides_to_markdown(&src, &ext) {
+        // Sources get visual markers but no images: a textbook's blank and
+        // figure pages would exhaust the image cap meant for lecture slides.
+        match extract_slides_to_markdown(&src, &ext, None) {
             Ok(markdown) => {
                 let kind_str = entry.kind.as_str();
                 let wrapped = xml_wrap(
@@ -1360,6 +1376,17 @@ fn render_session_md(
         }
     }
 
+    let image_count = count_workspace_images(workspace_root);
+    if image_count > 0 {
+        out.push_str("## Images\n");
+        out.push_str(&format!(
+            "- {} image(s) in `{}/` — mostly-visual slides and image artifacts. \
+             Slides marked `_[Mostly visual — view …]_` point at theirs; look before the debrief.\n\n",
+            image_count,
+            crate::slides::IMAGES_DIR
+        ));
+    }
+
     // Existing synthetic notes — per-topic with block IDs, pending sessions,
     // and topic-scoped flags inline.
     out.push_str("## Existing Synthetic Notes\n");
@@ -1895,17 +1922,116 @@ fn sanitise(path: &str) -> String {
 
 /// Run the full slide extraction pipeline for a PDF or PPTX file and return
 /// the rendered Markdown string.  `ext` must be `"pdf"` or `"pptx"`.
+///
+/// With `images = Some((workspace_root, stem))`, visual slides also get
+/// images written to `<workspace_root>/_images/<stem>-…`, within whatever
+/// remains of the per-workspace image cap.
 fn extract_slides_to_markdown(
     path: &Path,
     ext: &str,
+    images: Option<(&Path, &str)>,
 ) -> std::result::Result<String, crate::slides::SlideError> {
     let raw = if ext == "pdf" {
         crate::slides::extract_pdf(path)?
     } else {
         crate::slides::extract_pptx(path)?
     };
-    let processed = crate::slides::process(raw);
+    let mut processed = crate::slides::process(raw);
+    if let Some((workspace_root, stem)) = images {
+        let mut budget = remaining_image_budget(workspace_root);
+        if ext == "pdf" {
+            crate::slides::render_pdf_visuals(
+                path,
+                &mut processed,
+                workspace_root,
+                stem,
+                &mut budget,
+            );
+        } else {
+            crate::slides::extract_pptx_visuals(
+                path,
+                &mut processed,
+                workspace_root,
+                stem,
+                &mut budget,
+            );
+        }
+        make_images_readonly(workspace_root)?;
+    }
     Ok(crate::slides::to_workspace_markdown(&processed))
+}
+
+/// How many more images this workspace may take before hitting
+/// `MAX_IMAGES_PER_WORKSPACE`.
+fn remaining_image_budget(workspace_root: &Path) -> usize {
+    crate::slides::MAX_IMAGES_PER_WORKSPACE.saturating_sub(count_workspace_images(workspace_root))
+}
+
+fn count_workspace_images(workspace_root: &Path) -> usize {
+    fs::read_dir(workspace_root.join(crate::slides::IMAGES_DIR))
+        .map(|rd| rd.filter_map(|e| e.ok()).count())
+        .unwrap_or(0)
+}
+
+fn make_images_readonly(
+    workspace_root: &Path,
+) -> std::result::Result<(), crate::slides::SlideError> {
+    let Ok(rd) = fs::read_dir(workspace_root.join(crate::slides::IMAGES_DIR)) else {
+        return Ok(());
+    };
+    for entry in rd.filter_map(|e| e.ok()) {
+        make_readonly(&entry.path())
+            .map_err(|e| crate::slides::SlideError(format!("cannot protect slide image: {e}")))?;
+    }
+    Ok(())
+}
+
+/// Copy an image artifact into `_images/` and write a small `input_*.md`
+/// pointing at it, so the model sees it alongside the other inputs.  Skips
+/// with a warning once the workspace image cap is reached.
+fn copy_image_artifact(
+    src: &Path,
+    rel_path: &str,
+    ext: &str,
+    course: &str,
+    date: &str,
+    workspace_root: &Path,
+) -> Result<()> {
+    if remaining_image_budget(workspace_root) == 0 {
+        eprintln!(
+            "warning: image cap ({}) reached — skipping image artifact '{}'",
+            crate::slides::MAX_IMAGES_PER_WORKSPACE,
+            rel_path
+        );
+        return Ok(());
+    }
+    let images_dir = workspace_root.join(crate::slides::IMAGES_DIR);
+    fs::create_dir_all(&images_dir)?;
+    let name = format!("{}.{}", sanitise(rel_path), ext);
+    let dest = images_dir.join(&name);
+    fs::copy(src, &dest)?;
+    make_readonly(&dest)?;
+
+    let file_name = Path::new(rel_path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let body = format!(
+        "Image artifact `{}` — view `{}/{}`.\n",
+        file_name,
+        crate::slides::IMAGES_DIR,
+        name
+    );
+    let wrapped = xml_wrap(
+        &body,
+        "artifact_image",
+        &[("file", &file_name), ("course", course), ("date", date)],
+    );
+    let input = workspace_root.join(format!("input_{}.md", sanitise(rel_path)));
+    fs::write(&input, wrapped)?;
+    make_readonly(&input)?;
+    Ok(())
 }
 
 /// Returns true for file extensions that are safe to read as UTF-8 text and
@@ -2993,6 +3119,72 @@ mod tests {
     }
 
     #[test]
+    fn wrap_session_inputs_copies_image_artifact() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "artifacts/board.png", "png bytes");
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/board.png".into(),
+            kind: ArtifactKind::Other,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+
+        let image = ws.path().join("_images/artifacts_board_png.png");
+        assert_eq!(std::fs::read_to_string(&image).unwrap(), "png bytes");
+        assert!(std::fs::metadata(&image).unwrap().permissions().readonly());
+        let pointer = std::fs::read_to_string(ws_file(ws.path(), "artifacts/board.png")).unwrap();
+        assert!(pointer.contains("<artifact_image"), "got: {pointer}");
+        assert!(
+            pointer.contains("`_images/artifacts_board_png.png`"),
+            "got: {pointer}"
+        );
+    }
+
+    #[test]
+    fn wrap_session_inputs_skips_image_artifact_over_cap() {
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        for i in 0..crate::slides::MAX_IMAGES_PER_WORKSPACE {
+            write_file(ws.path(), &format!("_images/prior-{i}.png"), "x");
+        }
+        write_file(vault.path(), "artifacts/board.png", "png bytes");
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/board.png".into(),
+            kind: ArtifactKind::Other,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+        assert!(!ws.path().join("_images/artifacts_board_png.png").exists());
+        assert!(!ws_file(ws.path(), "artifacts/board.png").exists());
+    }
+
+    #[test]
+    fn wrap_session_inputs_renders_visual_pdf_slide() {
+        use crate::slides::tests::{have, BLANK_PDF};
+        if !have("pdftotext") || !have("pdftoppm") {
+            eprintln!("skipping: poppler not installed");
+            return;
+        }
+        let vault = TempDir::new().unwrap();
+        let ws = TempDir::new().unwrap();
+        write_file(vault.path(), "artifacts/deck.pdf", BLANK_PDF);
+        let mut entry = make_session_entry();
+        entry.artifacts.push(ArtifactEntry {
+            path: "artifacts/deck.pdf".into(),
+            kind: ArtifactKind::Slides,
+        });
+        wrap_session_inputs(vault.path(), &entry, ws.path()).unwrap();
+
+        let input = std::fs::read_to_string(ws_file(ws.path(), "artifacts/deck.pdf")).unwrap();
+        assert!(
+            input.contains("_[Mostly visual — view `_images/artifacts_deck_pdf-p1.png`]_"),
+            "got: {input}"
+        );
+        assert!(ws.path().join("_images/artifacts_deck_pdf-p1.png").exists());
+    }
+
+    #[test]
     fn wrap_session_inputs_includes_text_artifact() {
         let vault = TempDir::new().unwrap();
         let ws = TempDir::new().unwrap();
@@ -3186,6 +3378,33 @@ mod tests {
     }
 
     #[test]
+    fn course_sessions_newest_first_orders_and_filters() {
+        use crate::manifest::SessionStatus;
+        let mut manifest = make_manifest_at(std::path::Path::new("/tmp"));
+        for date in ["2026-10-01", "2026-10-15", "2026-10-08"] {
+            manifest.sessions.insert(
+                format!("CPSC5005-{date}"),
+                make_processed_session("CPSC5005", date),
+            );
+        }
+        manifest.sessions.insert("CPSC5005-2026-10-22".into(), {
+            let mut s = make_processed_session("CPSC5005", "2026-10-22");
+            s.status = SessionStatus::Unprocessed;
+            s
+        });
+        manifest.sessions.insert(
+            "CPSC5002-2026-10-20".into(),
+            make_processed_session("CPSC5002", "2026-10-20"),
+        );
+
+        let dates: Vec<String> = course_sessions_newest_first(&manifest, "CPSC5005")
+            .iter()
+            .map(|e| e.date.to_string())
+            .collect();
+        assert_eq!(dates, vec!["2026-10-15", "2026-10-08", "2026-10-01"]);
+    }
+
+    #[test]
     fn course_sessions_for_assembly_only_includes_processed() {
         // Verify the filtering logic used inside assemble() for Course scope:
         // only Processed sessions for the given course should be collected.
@@ -3224,6 +3443,59 @@ mod tests {
         assert!(
             !included.contains(&"CPSC5002-2026-01-10"),
             "other course excluded"
+        );
+    }
+
+    #[test]
+    fn session_md_lists_images_only_when_present() {
+        use crate::config::{AiBackend, SkillVariant, SnapshotMode, VaultConfig};
+        use crate::manifest::{Manifest, ManifestConfig};
+
+        let ws = TempDir::new().unwrap();
+        let vault = TempDir::new().unwrap();
+
+        let cfg: VaultConfig = serde_json::from_str("{}").unwrap();
+        let manifest = Manifest::empty(
+            vault.path().to_path_buf(),
+            ManifestConfig {
+                raw_dir: "notes".into(),
+                recordings_dir: "recordings".into(),
+                artifacts_dir: "artifacts".into(),
+                sources_dir: "sources".into(),
+                synthetic_dir: "_synthetic".into(),
+                generated_dir: "_generated".into(),
+                filename_format: "{course}-{mm}-{dd}".into(),
+                default_backend: AiBackend::Mock,
+                skill_variant: SkillVariant::Claude,
+                snapshot_mode: SnapshotMode::PreMerge,
+            },
+        );
+
+        let params = WorkspaceParams {
+            vault_root: vault.path(),
+            config: &cfg,
+            manifest: &manifest,
+            run_id: "test-run",
+            scope: WorkspaceScope::Course {
+                course: "CPSC5002".to_string(),
+            },
+            skill_variant: SkillVariant::CourseReview,
+            backend_kind: AiBackend::Mock,
+            dry_run: false,
+            include_resources: vec![],
+        };
+
+        render_session_md(&params, ws.path(), &[]).unwrap();
+        let session_md = std::fs::read_to_string(ws.path().join("_session.md")).unwrap();
+        assert!(!session_md.contains("## Images"), "no images, no section");
+
+        write_file(ws.path(), "_images/deck-p3.png", "x");
+        write_file(ws.path(), "_images/board.png", "x");
+        render_session_md(&params, ws.path(), &[]).unwrap();
+        let session_md = std::fs::read_to_string(ws.path().join("_session.md")).unwrap();
+        assert!(
+            session_md.contains("## Images\n- 2 image(s) in `_images/`"),
+            "got:\n{session_md}"
         );
     }
 

@@ -43,9 +43,10 @@ The vault is plain Markdown — no proprietary format. Every note has YAML front
 | `claude` CLI | for Claude backend | runs the AI session |
 | `agy` CLI | for Agy/Gemini backend | runs the AI session |
 | `pdftotext` | optional | extracts text from PDF lecture slides |
+| `pdftoppm` | optional | renders mostly-visual PDF slides as images (same package) |
 | `pandoc` | optional | extracts text from DOCX source files |
 
-`pdftotext` is part of **poppler-utils**. Install it if you have PDF slides in your artifacts directories:
+`pdftotext` and `pdftoppm` are part of **poppler-utils**. Install it if you have PDF slides in your artifacts directories:
 
 ```sh
 # macOS
@@ -55,7 +56,7 @@ brew install poppler
 sudo apt install poppler-utils
 ```
 
-If `pdftotext` is not installed, PDF artifacts are silently skipped during workspace assembly (no crash — the session just won't have slide content). PPTX files are extracted in pure Rust with no external tools.
+If `pdftotext` is not installed, PDF artifacts are silently skipped during workspace assembly (no crash — the session just won't have slide content). If only `pdftoppm` is missing, visual slides are still marked in the text but no images are rendered. PPTX files are extracted in pure Rust with no external tools.
 
 Install `pandoc` if you have DOCX files (lecture notes, textbook chapters) in your `sources/` directory:
 
@@ -154,6 +155,8 @@ csnotes config --add-course CPSC5002
 Put raw notes in `notes/`, recording exports in `recordings/`, slides in `artifacts/`, textbook chapters in `sources/`.
 
 **Slide files (PDF and PPTX)** placed in an `artifacts/` directory are extracted automatically when a workspace is assembled. The pipeline strips deck-wide boilerplate (copyright footers, running headers) and deduplicates near-identical slides so the AI sees concise content, not repeated build-up slides. Text extraction requires `pdftotext` for PDF files; PPTX files are handled in pure Rust. If extraction fails (tool absent, corrupt file), a warning is printed and the session continues without that artifact.
+
+Slides with fewer than 8 words of real content (diagrams, plots, code screenshots) are kept rather than dropped, and the AI gets an image of each one in the workspace's `_images/`: PDF pages are rendered with `pdftoppm`, and PPTX slides contribute their embedded pictures. Image files in `artifacts/` (`png`, `jpg`, `jpeg`, `gif`, `webp`, e.g. a photo of the whiteboard) are passed through as well. A workspace holds at most 30 images; beyond that, slides keep a text marker and a warning is printed. Course reviews fill the 30 newest lecture first, so older decks lose their images before recent ones. PDF and PPTX files in `sources/` get the markers but no images.
 
 Then:
 
