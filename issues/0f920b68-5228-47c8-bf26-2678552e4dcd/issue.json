@@ -1,6 +1,6 @@
 {
   "uuid": "0f920b68-5228-47c8-bf26-2678552e4dcd",
-  "display_id": null,
+  "display_id": 185,
   "title": "Cross-family rewrite pass on instruction files (PI-PLAN Phase 0 leftover)",
   "description": "Remaining Phase 0 item: run _csnotes/instructions/*.md through one or two non-Claude models for tightening/voice; pick the winner per file. Manual, no code.",
   "status": "open",

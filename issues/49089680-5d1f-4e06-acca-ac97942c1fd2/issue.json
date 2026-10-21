@@ -1,6 +1,6 @@
 {
   "uuid": "49089680-5d1f-4e06-acca-ac97942c1fd2",
-  "display_id": null,
+  "display_id": 184,
   "title": "Possibly-relevant prior material in _session.md (PI-PLAN Phase 6a, no Pi needed)",
   "description": "PI-PLAN.md Phase 6 cheap layer. At assemble time keyword-match session inputs against conversation index files (global_tags, concepts_discussed), resources and note slugs; emit a 'Possibly relevant prior material' section. Backend-independent. ~half day.",
   "status": "open",

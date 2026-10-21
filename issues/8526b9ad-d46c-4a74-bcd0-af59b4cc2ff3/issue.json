@@ -1,6 +1,6 @@
 {
   "uuid": "8526b9ad-d46c-4a74-bcd0-af59b4cc2ff3",
-  "display_id": null,
+  "display_id": 170,
   "title": "csnotes sources: inventory command with use counts",
   "description": "csnotes sources [--course C] [--unused] [--dormant] [--untagged] [--json].\n- Group by course tag (untagged gets its own group); show kind, status, and a use count: number of _synthetic notes whose frontmatter contributing_sources lists the source_id. Compute at query time (walk _synthetic frontmatter); no new manifest field, so it can't go stale.\n- Mark dormant sources (see dormancy issue).\n- status.rs: replace the per-source list with one line, e.g. 'Sources: N unused for active courses · M dormant → csnotes sources'. Keep --json output backward-compatible or version it.\n- Edge: credited source_ids that aren't registered/active (SU vault: Zybooks 12-recursion, 13-exceptions, 15-collections are credited but staged). Show them as credited and note the status.\n- Tests: use counts from fixture notes; filters; status summary line.\n- SU vault check: 15 of 35 'unprocessed' sources should show as used.",
   "status": "closed",

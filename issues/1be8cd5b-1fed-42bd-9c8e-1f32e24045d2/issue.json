@@ -1,6 +1,6 @@
 {
   "uuid": "1be8cd5b-1fed-42bd-9c8e-1f32e24045d2",
-  "display_id": null,
+  "display_id": 172,
   "title": "csnotes sources tag <prefix> <course...>: write course tags",
   "description": "Bulk-tag sources by ID or path prefix (same expansion as process --source).\n- Write courses: into each source file's YAML frontmatter (create the frontmatter if missing; preserve other keys/body byte-for-byte as far as practical) AND update the manifest entry, so it takes effect immediately and survives reconcile --reset.\n- --dry-run shows the plan; --replace vs default add/merge; 'sources untag' or --remove for undo.\n- AI conversations with .json sidecars: decide whether the sidecar needs the tag too (check what reconcile reads).\n- Validate course names against active_courses plus courses seen in sessions; warn (don't fail) on unknown names.\n- Takes the manifest lock.\nSU vault first pass (for the user to run):\n  Textbooks/Zybooks-CPSC5001-McKee, Textbooks/Zybooks-CPSC5001-summary, Textbooks/Starting-Out-with-Java -> CPSC5001 CPSC5002\n  AI-Conversations/*/Java-* -> CPSC5001 CPSC5002\n  AI-Conversations/Claude/Cpp-* -> CPSC5005\n  Functional-programming-concepts-across-languages, Other/BigO-from-online -> user's call (untagged = everywhere).",
   "status": "closed",

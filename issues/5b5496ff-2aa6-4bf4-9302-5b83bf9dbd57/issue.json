@@ -1,6 +1,6 @@
 {
   "uuid": "5b5496ff-2aa6-4bf4-9302-5b83bf9dbd57",
-  "display_id": null,
+  "display_id": 179,
   "title": "Pi Phase 4: session agenda HUD",
   "description": "PI-PLAN.md Phase 4. Agenda seeded from _session.md data, setWidget from the official todo.ts example, agenda_update tool, persisted for recover --resume.",
   "status": "open",

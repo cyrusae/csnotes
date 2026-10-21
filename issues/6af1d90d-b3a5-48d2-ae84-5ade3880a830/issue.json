@@ -1,6 +1,6 @@
 {
   "uuid": "6af1d90d-b3a5-48d2-ae84-5ade3880a830",
-  "display_id": null,
+  "display_id": 180,
   "title": "Pi Phase 5: cross-family note reviewer (separate from check)",
   "description": "PI-PLAN.md Phase 5. Per R5: reviewer is its own /review command + csnotes_review tool, on demand, suggested after check passes; NEVER inside csnotes_check, never required for exit. Runs after the Phase 3 lint.",
   "status": "open",

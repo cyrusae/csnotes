@@ -1,6 +1,6 @@
 {
   "uuid": "da16fc5a-05e7-4f8a-9b4e-e83cbbe308ce",
-  "display_id": null,
+  "display_id": 175,
   "title": "Color escapes leak into piped output",
   "status": "closed",
   "priority": "low",

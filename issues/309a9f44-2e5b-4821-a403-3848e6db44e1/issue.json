@@ -1,6 +1,6 @@
 {
   "uuid": "309a9f44-2e5b-4821-a403-3848e6db44e1",
-  "display_id": null,
+  "display_id": 181,
   "title": "Pi Phase 6b: scout subagent over prior material",
   "description": "PI-PLAN.md Phase 6, agentic layer: scout(query) on a cheap model returning <=10 pointers. Build after the backend-independent keyword pass (separate issue).",
   "status": "open",

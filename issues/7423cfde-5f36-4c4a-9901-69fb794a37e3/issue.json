@@ -1,6 +1,6 @@
 {
   "uuid": "7423cfde-5f36-4c4a-9901-69fb794a37e3",
-  "display_id": null,
+  "display_id": 171,
   "title": "Source dormancy + course-tag filtering for all source kinds",
   "description": "Today workspace.rs source_visible_for_course (~L1064) only applies course tags to Textbook/Syllabus/WorkedExample. AI conversations and other kinds go into every workspace regardless of tags, so the Java conversations are in every CPSC5005 (C++) workspace.\nChange:\n- Apply course tags to every source kind: tagged → visible only for listed courses; untagged → visible everywhere (unchanged).\n- Dormant = non-empty courses with none in active_courses. Exclude from workspaces for Session/MultiSession/Course/Topic/Resource scopes. Still allowed in explicit --source scope (maybe with a note). Still wikilinkable (the vault-stems index is unaffected) and still counted as credited.\n- Derive from config at query time; never store it.\n- Topic/Resource scopes currently include every non-staged source: decide whether dormant ones are excluded there too (lean yes).\n- Tests: tagged AI conversation is hidden from another course's session; a dormant source is excluded from session/course scope but included in --source scope; re-activating the course brings it back.\nNote: changes behaviour for tagged non-textbook sources. Mention in CHANGELOG.",
   "status": "closed",
