@@ -1,0 +1,11 @@
+{
+  "uuid": "f17b7dfe-004b-4efd-9f73-3d7e155a0e37",
+  "display_id": null,
+  "title": "Sources lifecycle: status = to-do list, csnotes sources = inventory, course dormancy",
+  "description": "Design agreed 2026-10-21. Problem: status lists 35 'unprocessed' sources, but 'unprocessed' only means 'never the subject of process --source'. 15 of the 35 are already credited in notes. Sources are library material, not inbox items. Decisions:\n- status becomes a to-do list (pending sessions, open flags) plus ONE summary line for sources pointing at the new command. No per-source listing.\n- New 'csnotes sources' command for the inventory (named 'sources' to match --source; 'library' stays free for future resources/self-study work).\n- No kind-based inbox/library split (option B rejected): AI-conversation relevance varies too much to decide by kind.\n- 'Used' = credited in some note's contributing_sources (not 'was in a workspace', which inflates the count because untagged sources go into every workspace).\n- Dormancy (C): a source tagged only with inactive courses is hidden from new workspaces and the status count. Derived from active_courses at query time, never stored, so re-activating a course revives its sources.\nSubissues hold the implementation.",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T21:26:09.472850Z",
+  "updated_at": "2026-10-21T21:26:09.472850Z"
+}
