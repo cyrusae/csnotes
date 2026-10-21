@@ -1,0 +1,10 @@
+{
+  "uuid": "fa4fffc3-86fa-4824-beb1-9e850a8dab9c",
+  "issue_uuid": "1be8cd5b-1fed-42bd-9c8e-1f32e24045d2",
+  "author": "3owj",
+  "content": "Done (uncommitted): src/commands/sources_cmd.rs + 'csnotes sources tag PATTERN... -c COURSE [--replace|--remove] [--dry-run]'. Patterns: exact ID, folder prefix, or * glob (segment-local). Frontmatter edit is line-preserving and verified by re-parse; PDF/PPTX/DOCX are manifest-only (warned). Also fixed a parser bug found along the way: extract_source_meta deserialized the whole frontmatter into a struct, so 'status: \"completed\"' (16 SU sources) made courses/summary/tags silently vanish. Now field-wise. Verified on a vault copy: tags survive reconcile --reset.",
+  "created_at": "2026-10-21T21:31:51.774305Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAjWBcoiIdkzfDJsyjCunxcSWIbvZb90o+qFnHgS5PWie/lh50/ipK5pyRMEQcYXueZlF3P6W8dvhzNgfmcLgpDw=="
+}
