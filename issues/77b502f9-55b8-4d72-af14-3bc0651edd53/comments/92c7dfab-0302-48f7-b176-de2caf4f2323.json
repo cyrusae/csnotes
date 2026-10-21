@@ -1,0 +1,10 @@
+{
+  "uuid": "92c7dfab-0302-48f7-b176-de2caf4f2323",
+  "issue_uuid": "77b502f9-55b8-4d72-af14-3bc0651edd53",
+  "author": "3owj",
+  "content": "Done (option a): SessionEntry.started_at (serde default, from InProgressRecord at teardown; preserved by reconcile --reset). reindex pending = started_at > topic.last_updated && topic in topics_updated; legacy sessions (no started_at) never flagged. Tests: false-positive case, genuine desync, legacy; lifecycle asserts started_at recorded <= processed_at. SU vault copy: [2 pending]/[4 pending] gone after reconcile.",
+  "created_at": "2026-10-21T21:42:47.677470Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAS8jkETnB6XKS1DlariFdp8QNW1l/WqjwEwR12EP7i6ECSnd+mBXC6phwXfcw2x8M3O4cyqk0vYF6NuWITUEWDQ=="
+}
