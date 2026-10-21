@@ -422,7 +422,7 @@ Another real anchor. ^also-real
 
     #[test]
     fn collision_detection() {
-        let files = vec![
+        let files = [
             ("Line one ^foo\n", "file-a.md"),
             ("Line one ^foo\nLine two ^bar\n", "file-b.md"),
         ];

@@ -5,10 +5,10 @@ echo "› cargo fmt"
 cargo fmt
 
 echo "› cargo clippy --fix"
-cargo clippy --fix --allow-dirty -- -D warnings 2>&1
+cargo clippy --all-targets --fix --allow-dirty -- -D warnings 2>&1
 
 # Re-stage any files that were modified by fmt or clippy --fix.
 git add -u
 
 echo "› cargo clippy (verify)"
-cargo clippy -- -D warnings 2>&1
+cargo clippy --all-targets -- -D warnings 2>&1

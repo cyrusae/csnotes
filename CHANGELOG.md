@@ -73,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- status: [N pending] on topics is a false positive for the session that wrote them (L4)
 - Agent feedback: sed guard false positives, CLI-stamped report timestamps, anchor placement rule (L5)
 - Source frontmatter with an unrecognised value (e.g. `status: "completed"`) no longer silently drops `courses`, `summary`, and `tags`; fields are now read independently
 - Course tags now filter every source kind; previously AI conversations and other non-textbook sources went into every course's workspaces regardless of tags
@@ -125,6 +126,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- ManifestLock: say so when waiting on another csnotes process (L1)
 - README + vault reference docs: add resources section (L69)
 - remove code-narration prohibition from synthesis.md (L66)
 - update synthesis.md voice-and-style section with punchy-bullets guidance (L65)

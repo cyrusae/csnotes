@@ -441,7 +441,14 @@ pub fn run_teardown(
     new_manifest.topics = updated_manifest.topics;
 
     // Mark session(s) as processed and sources as processed
-    update_session_status(&report, &mut new_manifest, now, &config.synthetic_dir);
+    let started_at = manifest.session_in_progress.as_ref().map(|r| r.started_at);
+    update_session_status(
+        &report,
+        &mut new_manifest,
+        now,
+        started_at,
+        &config.synthetic_dir,
+    );
     update_source_status(&report, &mut new_manifest, now, &config.synthetic_dir);
 
     if !all_committed {
@@ -877,6 +884,7 @@ fn update_session_status(
     report: &SessionReport,
     manifest: &mut Manifest,
     now: chrono::DateTime<Utc>,
+    started_at: Option<chrono::DateTime<Utc>>,
     synthetic_dir: &str,
 ) {
     let topics = topics_touched_by_report(report, synthetic_dir);
@@ -884,6 +892,7 @@ fn update_session_status(
         if let Some(entry) = manifest.sessions.get_mut(session_id) {
             entry.status = SessionStatus::Processed;
             entry.processed_at = Some(now);
+            entry.started_at = started_at;
             entry.topics_updated = topics.clone();
         }
     }
@@ -947,6 +956,66 @@ fn topic_from_path(path: &str, synthetic_dir: &str) -> Option<String> {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+// ── No-recording prompt ───────────────────────────────────────────────────────
+
+enum RecordingChoice {
+    Continue,
+    Pause,
+    Quit,
+}
+
+fn prompt_no_recording(session_id: &str) -> Result<RecordingChoice> {
+    use std::io::{self, BufRead, Write};
+    print!(
+        "No recording exports found for {}. [c]ontinue / [p]ause / [q]uit: ",
+        session_id
+    );
+    io::stdout().flush()?;
+    let stdin = io::stdin();
+    let line = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
+    Ok(match line.trim() {
+        "p" => RecordingChoice::Pause,
+        "q" => RecordingChoice::Quit,
+        _ => RecordingChoice::Continue,
+    })
+}
+
+/// Count whitespace-delimited words in a file.  Returns `None` if the file
+/// cannot be read (missing or unreadable — those errors are handled elsewhere).
+fn count_words_in_file(path: &std::path::Path) -> Option<usize> {
+    let content = std::fs::read_to_string(path).ok()?;
+    Some(content.split_whitespace().count())
+}
+
+enum ShortFileChoice {
+    Continue,
+    Pause,
+    Quit,
+}
+
+fn prompt_short_files(session_id: &str, files: &[(String, usize)]) -> Result<ShortFileChoice> {
+    use std::io::{self, BufRead, Write};
+    eprintln!(
+        "Warning: {} input file{} for {} {} suspiciously short (< 100 words) — may be a placeholder:",
+        files.len(),
+        if files.len() == 1 { "" } else { "s" },
+        session_id,
+        if files.len() == 1 { "is" } else { "are" },
+    );
+    for (path, wc) in files {
+        eprintln!("  {} ({} words)", path, wc);
+    }
+    print!("[c]ontinue / [p]ause / [q]uit: ");
+    io::stdout().flush()?;
+    let stdin = io::stdin();
+    let line = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
+    Ok(match line.trim() {
+        "p" => ShortFileChoice::Pause,
+        "q" => ShortFileChoice::Quit,
+        _ => ShortFileChoice::Continue,
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -1091,6 +1160,7 @@ mod tests {
                     recording_missing: false,
                     status: SessionStatus::Unprocessed,
                     processed_at: None,
+                    started_at: None,
                     topics_updated: vec![],
                 },
             );
@@ -1350,64 +1420,4 @@ mod tests {
         };
         assert!(resolve_scope(&args, &m).is_err());
     }
-}
-
-// ── No-recording prompt ───────────────────────────────────────────────────────
-
-enum RecordingChoice {
-    Continue,
-    Pause,
-    Quit,
-}
-
-fn prompt_no_recording(session_id: &str) -> Result<RecordingChoice> {
-    use std::io::{self, BufRead, Write};
-    print!(
-        "No recording exports found for {}. [c]ontinue / [p]ause / [q]uit: ",
-        session_id
-    );
-    io::stdout().flush()?;
-    let stdin = io::stdin();
-    let line = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
-    Ok(match line.trim() {
-        "p" => RecordingChoice::Pause,
-        "q" => RecordingChoice::Quit,
-        _ => RecordingChoice::Continue,
-    })
-}
-
-/// Count whitespace-delimited words in a file.  Returns `None` if the file
-/// cannot be read (missing or unreadable — those errors are handled elsewhere).
-fn count_words_in_file(path: &std::path::Path) -> Option<usize> {
-    let content = std::fs::read_to_string(path).ok()?;
-    Some(content.split_whitespace().count())
-}
-
-enum ShortFileChoice {
-    Continue,
-    Pause,
-    Quit,
-}
-
-fn prompt_short_files(session_id: &str, files: &[(String, usize)]) -> Result<ShortFileChoice> {
-    use std::io::{self, BufRead, Write};
-    eprintln!(
-        "Warning: {} input file{} for {} {} suspiciously short (< 100 words) — may be a placeholder:",
-        files.len(),
-        if files.len() == 1 { "" } else { "s" },
-        session_id,
-        if files.len() == 1 { "is" } else { "are" },
-    );
-    for (path, wc) in files {
-        eprintln!("  {} ({} words)", path, wc);
-    }
-    print!("[c]ontinue / [p]ause / [q]uit: ");
-    io::stdout().flush()?;
-    let stdin = io::stdin();
-    let line = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
-    Ok(match line.trim() {
-        "p" => ShortFileChoice::Pause,
-        "q" => ShortFileChoice::Quit,
-        _ => ShortFileChoice::Continue,
-    })
 }

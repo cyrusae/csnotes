@@ -84,20 +84,25 @@ pub fn rebuild_topics(
         }
     }
 
-    // pending_sessions: sessions processed after the topic's last_updated that
-    // declared they touched this topic — signals possible desync.
+    // pending_sessions: sessions that declared they touched this topic but
+    // started after the topic was last updated — i.e. nothing in the topic
+    // changed during or after that session.  Signals possible desync.
+    // Compared against `started_at`, not `processed_at`: notes are stamped
+    // before teardown finishes, so `processed_at` is always later than the
+    // session's own edits.  Sessions without `started_at` (processed before
+    // it was recorded) are never flagged.
     let sessions_snapshot: Vec<(String, Option<chrono::DateTime<chrono::Utc>>, Vec<String>)> =
         manifest
             .sessions
             .iter()
-            .map(|(id, s)| (id.clone(), s.processed_at, s.topics_updated.clone()))
+            .map(|(id, s)| (id.clone(), s.started_at, s.topics_updated.clone()))
             .collect();
 
     for (topic_name, topic_entry) in manifest.topics.iter_mut() {
         topic_entry.pending_sessions = sessions_snapshot
             .iter()
-            .filter(|(_, processed_at, topics_updated)| {
-                processed_at.is_some_and(|t| t > topic_entry.last_updated)
+            .filter(|(_, started_at, topics_updated)| {
+                started_at.is_some_and(|t| t > topic_entry.last_updated)
                     && topics_updated.contains(topic_name)
             })
             .map(|(id, _, _)| id.clone())
@@ -200,6 +205,8 @@ mod tests {
                 artifacts: vec![],
                 recording_missing: false,
                 status: SessionStatus::Processed,
+                // Tests model a session that started when it was processed.
+                started_at: processed_at,
                 processed_at,
                 topics_updated,
             },
@@ -310,6 +317,95 @@ mod tests {
             "{:?}",
             topic.pending_sessions
         );
+    }
+
+    fn write_manifest_with_timed_session(
+        vault_root: &Path,
+        session_id: &str,
+        started_at: Option<DateTime<Utc>>,
+        processed_at: DateTime<Utc>,
+    ) {
+        write_manifest_with_session(
+            vault_root,
+            session_id,
+            Some(processed_at),
+            vec!["cs".into()],
+        );
+        let mut m = Manifest::load(vault_root).unwrap();
+        m.sessions.get_mut(session_id).unwrap().started_at = started_at;
+        m.save(vault_root).unwrap();
+    }
+
+    fn note_updated_at(ts: &str) -> String {
+        format!(
+            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: N\n\
+             block_id: n-01\ncontributing_sessions: []\ncontributing_sources: []\n\
+             created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"{ts}\"\n\
+             ---\nContent.\n\n^n-01\n"
+        )
+    }
+
+    #[test]
+    fn reindex_pending_excludes_session_that_wrote_the_topic() {
+        // The real-world false positive: notes stamped mid-session (16:17),
+        // session marked processed at the end of teardown (16:36).  The
+        // session started before the notes changed, so it did touch them.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/cs/n.md",
+            &note_updated_at("2026-08-26T16:17:07Z"),
+        );
+        write_manifest_with_timed_session(
+            tmp.path(),
+            "sess",
+            Some("2026-08-26T15:40:00Z".parse().unwrap()),
+            "2026-08-26T16:36:01Z".parse().unwrap(),
+        );
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        assert!(manifest.topics["cs"].pending_sessions.is_empty());
+    }
+
+    #[test]
+    fn reindex_pending_flags_session_that_never_touched_the_topic() {
+        // Session started after the topic's last change yet claims to have
+        // updated it → genuine desync.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/cs/n.md",
+            &note_updated_at("2026-08-01T10:00:00Z"),
+        );
+        write_manifest_with_timed_session(
+            tmp.path(),
+            "sess",
+            Some("2026-08-26T15:40:00Z".parse().unwrap()),
+            "2026-08-26T16:36:01Z".parse().unwrap(),
+        );
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        assert_eq!(
+            manifest.topics["cs"].pending_sessions,
+            vec!["sess".to_string()]
+        );
+    }
+
+    #[test]
+    fn reindex_pending_ignores_sessions_without_start_time() {
+        // Sessions processed before started_at was recorded are never flagged.
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "_synthetic/cs/n.md",
+            &note_updated_at("2026-08-01T10:00:00Z"),
+        );
+        write_manifest_with_timed_session(
+            tmp.path(),
+            "legacy",
+            None,
+            "2026-08-26T16:36:01Z".parse().unwrap(),
+        );
+        let manifest = reindex(tmp.path(), &make_vault_config()).unwrap();
+        assert!(manifest.topics["cs"].pending_sessions.is_empty());
     }
 
     #[test]

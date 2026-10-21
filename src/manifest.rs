@@ -149,6 +149,14 @@ pub struct SessionEntry {
     pub recording_missing: bool,
     pub status: SessionStatus,
     pub processed_at: Option<DateTime<Utc>>,
+    /// When the session that processed this one started (from the
+    /// in-progress record).  Used to detect topics a session claimed to touch
+    /// but didn't: notes are stamped mid-session (`csnotes commit`) or during
+    /// teardown, both *before* `processed_at`, so comparing against
+    /// `processed_at` flagged every session's own topics.  Absent for sessions
+    /// processed before this field existed — those are never flagged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
     pub topics_updated: Vec<String>,
 }
 
@@ -392,7 +400,24 @@ pub struct ManifestLock {
 }
 
 impl ManifestLock {
+    /// Acquire the lock, blocking until it's free.  If another csnotes
+    /// process holds it (e.g. a session open in another terminal), say so on
+    /// stderr first, so the wait doesn't look like a hang.
     pub fn acquire(vault_root: &Path) -> Result<Self> {
+        Self::acquire_with(vault_root, || {
+            use owo_colors::OwoColorize;
+            eprintln!(
+                "{}",
+                "Waiting for another csnotes process to release this vault \
+                 (e.g. a session open in another terminal) — ctrl+c to cancel…"
+                    .dimmed()
+            );
+        })
+    }
+
+    /// Like [`acquire`](Self::acquire), but calls `on_wait` (once) instead of
+    /// printing when the lock is contended.  Separate so tests can observe it.
+    pub fn acquire_with(vault_root: &Path, on_wait: impl FnOnce()) -> Result<Self> {
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
@@ -403,8 +428,20 @@ impl ManifestLock {
                 .truncate(false)
                 .open(&lock_path)
                 .with_context(|| format!("opening lock file {}", lock_path.display()))?;
-            let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if ret != 0 {
+            let fd = file.as_raw_fd();
+
+            // Fast path: take it without waiting.
+            if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                return Ok(ManifestLock { _file: file });
+            }
+            let err = std::io::Error::last_os_error();
+            if err.kind() != std::io::ErrorKind::WouldBlock {
+                anyhow::bail!("could not acquire manifest lock: {}", err);
+            }
+
+            // Contended: tell the user, then block.
+            on_wait();
+            if unsafe { libc::flock(fd, libc::LOCK_EX) } != 0 {
                 anyhow::bail!(
                     "could not acquire manifest lock (another csnotes process may be running): {}",
                     std::io::Error::last_os_error()
@@ -414,7 +451,7 @@ impl ManifestLock {
         }
         #[cfg(not(unix))]
         {
-            let _ = vault_root;
+            let _ = (vault_root, on_wait);
             Ok(ManifestLock {})
         }
     }
@@ -558,6 +595,7 @@ mod tests {
         let file2 = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
+            .truncate(false)
             .open(&lock_path)
             .unwrap();
         let ret = unsafe { libc::flock(file2.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
@@ -587,5 +625,47 @@ mod tests {
         let back: Manifest = serde_json::from_str(&json).unwrap();
         assert_eq!(back.version, MANIFEST_VERSION);
         assert!(back.sessions.is_empty());
+    }
+
+    // ── ManifestLock ─────────────────────────────────────────────────────────
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_uncontended_does_not_report_waiting() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut waited = false;
+        let _l = ManifestLock::acquire_with(tmp.path(), || waited = true).unwrap();
+        assert!(!waited);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_contended_reports_waiting_then_acquires_after_release() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let held = ManifestLock::acquire_with(&root, || panic!("first lock can't wait")).unwrap();
+
+        let (waiting_tx, waiting_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let root2 = root.clone();
+        let t = std::thread::spawn(move || {
+            let lock = ManifestLock::acquire_with(&root2, move || waiting_tx.send(()).unwrap());
+            done_tx.send(lock.is_ok()).unwrap();
+            lock
+        });
+
+        waiting_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("contended acquire should report that it's waiting");
+        assert!(
+            done_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "must still be blocked while the first lock is held"
+        );
+        drop(held);
+        assert!(done_rx.recv_timeout(Duration::from_secs(5)).unwrap());
+        drop(t.join().unwrap());
     }
 }

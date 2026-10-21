@@ -2234,6 +2234,7 @@ mod tests {
                 recording_missing: false,
                 filename_format: "{course}-{mm}-{dd}".into(),
                 processed_at: None,
+                started_at: None,
                 topics_updated: vec![],
             },
         );
@@ -2335,6 +2336,7 @@ mod tests {
                 recording_missing: false,
                 filename_format: "{course}-{mm}-{dd}".into(),
                 processed_at: None,
+                started_at: None,
                 topics_updated: vec![],
             },
         );
@@ -2409,6 +2411,7 @@ mod tests {
                 recording_missing: false,
                 filename_format: "{course}-{mm}-{dd}".into(),
                 processed_at: None,
+                started_at: None,
                 topics_updated: vec![],
             },
         );
@@ -2854,6 +2857,7 @@ mod tests {
             recording_missing: false,
             status: SessionStatus::Processed,
             processed_at: None,
+            started_at: None,
             topics_updated: vec![],
         }
     }
@@ -3098,6 +3102,7 @@ mod tests {
             recording_missing: false,
             filename_format: "{course}-{mm}-{dd}".into(),
             processed_at: None,
+            started_at: None,
             topics_updated: vec![],
         }
     }

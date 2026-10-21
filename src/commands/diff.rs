@@ -226,6 +226,7 @@ mod tests {
                     recording_missing: false,
                     status: SessionStatus::Unprocessed,
                     processed_at: None,
+                    started_at: None,
                     topics_updated: vec![],
                 },
             );

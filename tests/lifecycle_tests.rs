@@ -152,6 +152,17 @@ fn happy_path_creates_two_notes() {
         "session should be marked processed"
     );
 
+    // The session's start time is recorded (used by the topic "pending"
+    // check) and precedes processed_at.
+    let session = &manifest["sessions"]["CPSC5001-09-03"];
+    let started = session["started_at"]
+        .as_str()
+        .expect("started_at should be recorded at teardown");
+    let processed = session["processed_at"].as_str().unwrap();
+    let started: chrono::DateTime<chrono::Utc> = started.parse().unwrap();
+    let processed: chrono::DateTime<chrono::Utc> = processed.parse().unwrap();
+    assert!(started <= processed, "{started} should be <= {processed}");
+
     // No in-progress record should remain.
     assert!(
         manifest["session_in_progress"].is_null(),

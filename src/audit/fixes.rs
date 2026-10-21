@@ -408,13 +408,12 @@ mod tests {
     #[test]
     fn collect_fixes_no_fix_when_source_already_credited() {
         let tmp = TempDir::new().unwrap();
-        let content = format!(
-            "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
+        let content = "---\ncsnotes_schema: 1\nkind: atomic\ntopic: cs\ntitle: Note\n\
              block_id: sort-01\ncontributing_sessions: []\n\
              contributing_sources:\n  - source_id: Textbooks/SICP/Chapter-05\n    relationship: introduced\n\
              created: \"2026-01-01T00:00:00Z\"\nlast_updated: \"2026-01-01T00:00:00Z\"\n\
              ---\nSee [[Textbooks/SICP/Chapter-05]] for details.\n\n^sort-01\n"
-        );
+            .to_string();
         write(tmp.path(), "_synthetic/cs/sorting.md", &content);
         let manifest = manifest_with_source(tmp.path(), "Textbooks/SICP/Chapter-05");
         let fixes = collect_fixes(tmp.path(), &make_vault_config(), &manifest).unwrap();

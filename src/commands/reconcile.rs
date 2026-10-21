@@ -59,6 +59,7 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
         type SavedState = (
             SessionStatus,
             Option<chrono::DateTime<chrono::Utc>>,
+            Option<chrono::DateTime<chrono::Utc>>,
             Vec<String>,
         );
         let saved_session_state: std::collections::HashMap<String, SavedState> = manifest
@@ -67,7 +68,12 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
             .map(|(id, e)| {
                 (
                     id.clone(),
-                    (e.status, e.processed_at, e.topics_updated.clone()),
+                    (
+                        e.status,
+                        e.processed_at,
+                        e.started_at,
+                        e.topics_updated.clone(),
+                    ),
                 )
             })
             .collect();
@@ -87,10 +93,11 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
         let fmt = FilenameFormat::parse(&config.filename_format)?;
         let result = run_scan(vault_root, config, &args, &mut manifest, &fmt);
         // Restore processed status regardless of scan success.
-        for (id, (status, processed_at, topics_updated)) in &saved_session_state {
+        for (id, (status, processed_at, started_at, topics_updated)) in &saved_session_state {
             if let Some(entry) = manifest.sessions.get_mut(id) {
                 entry.status = *status;
                 entry.processed_at = *processed_at;
+                entry.started_at = *started_at;
                 entry.topics_updated = topics_updated.clone();
             }
         }
@@ -361,6 +368,7 @@ fn scan_raw_dir(
                 recording_missing: false,
                 status: SessionStatus::Unprocessed,
                 processed_at: None,
+                started_at: None,
                 topics_updated: vec![],
             },
         );
@@ -1072,6 +1080,53 @@ fn kind_from_source_type(s: &str) -> Option<SourceKind> {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+// Returns the osascript argv so the argument structure can be tested without
+// spawning a process (and without showing a real notification in tests).
+#[cfg(target_os = "macos")]
+fn notify_macos_args(message: &str) -> Vec<&str> {
+    vec![
+        "-e",
+        "on run argv",
+        "-e",
+        "display notification (item 1 of argv) with title \"csnotes\"",
+        "-e",
+        "end run",
+        message,
+    ]
+}
+
+fn notify(message: &str) {
+    // Escape hatch for test runs and cargo mutants: set CSNOTES_NO_NOTIFY=1 to
+    // suppress all desktop notifications without touching the notify flag path.
+    // This prevents mutations of the `if args.notify` guard from spawning
+    // osascript as a side effect of the test suite.
+    if std::env::var("CSNOTES_NO_NOTIFY").is_ok() {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Pass the message as argv rather than interpolating into the script
+        // string, so that quotes or backslashes in the message can't break
+        // the AppleScript syntax.
+        let _ = std::process::Command::new("osascript")
+            .args(notify_macos_args(message))
+            .status();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // notify-send is provided by libnotify-bin on Debian/Ubuntu and
+        // equivalent packages on other distros.  Best-effort: silently skip
+        // if not installed.
+        let _ = std::process::Command::new("notify-send")
+            .args(["csnotes", message])
+            .status();
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = message;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1106,6 +1161,7 @@ mod tests {
                 recording_missing: false,
                 status: SessionStatus::Unprocessed,
                 processed_at: None,
+                started_at: None,
                 topics_updated: vec![],
             },
         );
@@ -3017,52 +3073,5 @@ mod tests {
         assert_eq!(meta.summary, None);
         assert_eq!(meta.courses, vec!["CPSC5005"]);
         assert!(meta.tags.is_empty());
-    }
-}
-
-// Returns the osascript argv so the argument structure can be tested without
-// spawning a process (and without showing a real notification in tests).
-#[cfg(target_os = "macos")]
-fn notify_macos_args(message: &str) -> Vec<&str> {
-    vec![
-        "-e",
-        "on run argv",
-        "-e",
-        "display notification (item 1 of argv) with title \"csnotes\"",
-        "-e",
-        "end run",
-        message,
-    ]
-}
-
-fn notify(message: &str) {
-    // Escape hatch for test runs and cargo mutants: set CSNOTES_NO_NOTIFY=1 to
-    // suppress all desktop notifications without touching the notify flag path.
-    // This prevents mutations of the `if args.notify` guard from spawning
-    // osascript as a side effect of the test suite.
-    if std::env::var("CSNOTES_NO_NOTIFY").is_ok() {
-        return;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        // Pass the message as argv rather than interpolating into the script
-        // string, so that quotes or backslashes in the message can't break
-        // the AppleScript syntax.
-        let _ = std::process::Command::new("osascript")
-            .args(notify_macos_args(message))
-            .status();
-    }
-    #[cfg(target_os = "linux")]
-    {
-        // notify-send is provided by libnotify-bin on Debian/Ubuntu and
-        // equivalent packages on other distros.  Best-effort: silently skip
-        // if not installed.
-        let _ = std::process::Command::new("notify-send")
-            .args(["csnotes", message])
-            .status();
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = message;
     }
 }

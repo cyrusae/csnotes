@@ -2073,7 +2073,7 @@ mod tests {
         std::fs::create_dir_all(&from).unwrap();
         std::fs::create_dir_all(&to).unwrap();
 
-        std::fs::write(from.join("note.md"), &minimal_note("from")).unwrap();
+        std::fs::write(from.join("note.md"), minimal_note("from")).unwrap();
         std::fs::write(from.join("readme.txt"), "not a note").unwrap();
 
         move_topic_notes(&from, &to, "from", "to").unwrap();
