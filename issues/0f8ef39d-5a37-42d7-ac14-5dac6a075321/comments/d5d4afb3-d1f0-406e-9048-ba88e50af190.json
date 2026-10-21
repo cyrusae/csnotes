@@ -1,0 +1,10 @@
+{
+  "uuid": "d5d4afb3-d1f0-406e-9048-ba88e50af190",
+  "issue_uuid": "0f8ef39d-5a37-42d7-ac14-5dac6a075321",
+  "author": "3owj",
+  "content": "Done (uncommitted). Guard: shlex tokenization, only sed/perl's own args checked; 3 tests. Timestamps: Option + serde default, schema says omit, diff falls back to report mtime. Anchors: claude.md/gemini.md wording + exit checklist fixed; obsidian::anchor_is_trailing + warn_trailing_anchor soft warning in invariant_suite, check_workspace, audit_vault; flags exactly the 12 SU notes. Also: lifecycle/property tests now spawn csnotes with stdin=null (prompt_short_files hung on a live stdin). Not done: moving the anchors in the 12 vault notes.",
+  "created_at": "2026-10-21T21:00:04.184210Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAgkMJ9e20BB0+Og+8cyqyVE5Lz+IZF8Pq2T2LEP8ujfS5BJEpxIlObBcuGv4gAfWo4mp04efxeV599rNLNYv5Cw=="
+}
