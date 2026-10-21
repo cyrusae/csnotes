@@ -68,7 +68,7 @@ One entry for every note file you created.
 
 | Field | Notes |
 |---|---|
-| `kind` | "atomic" / "index" |
+| `kind` | "atomic" / "index" / "journal" |
 | `path` | workspace-relative; matches the file you wrote |
 | `block_id` | required for atomic; omit for index |
 | `embed_in` | index notes this atomic should appear in; `[]` if none |
