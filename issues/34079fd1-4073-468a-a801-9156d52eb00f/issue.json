@@ -1,0 +1,12 @@
+{
+  "uuid": "34079fd1-4073-468a-a801-9156d52eb00f",
+  "display_id": null,
+  "title": "Pi Phase 7: QoL extras",
+  "description": "PI-PLAN.md Phase 7: footer (model/context/cost), presets, notify, evaluate pi-btw.",
+  "status": "open",
+  "priority": "low",
+  "parent_uuid": "55312579-9304-4c71-8ff5-65b0a2f455d7",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T22:37:55.240753Z",
+  "updated_at": "2026-10-21T22:37:55.240753Z"
+}
