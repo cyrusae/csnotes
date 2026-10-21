@@ -1,0 +1,12 @@
+{
+  "uuid": "5ed3ab12-6a02-491d-ae8f-48d35c428850",
+  "display_id": null,
+  "title": "Pi Phase 2: PiBackend in Rust",
+  "description": "PI-PLAN.md Phase 2. Blocked on the Phase 1 go. Must satisfy R1 (allowlist only csnotes_* confined tools, never built-in read/write/edit), R3 (launch via npx @earendil-works/pi-coding-agent@<pinned>, version const in binary, doctor checks it runs), R4 (instruction variants via <!-- if claude/pi --> blocks rendered at write time, not a substitution table; retires gemini.md). Plus: remove Agy backend, doctor, fake-pi lifecycle test, docs.",
+  "status": "open",
+  "priority": "low",
+  "parent_uuid": "55312579-9304-4c71-8ff5-65b0a2f455d7",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T22:37:54.292702Z",
+  "updated_at": "2026-10-21T22:37:54.292702Z"
+}
