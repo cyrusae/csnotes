@@ -1,0 +1,11 @@
+{
+  "uuid": "55312579-9304-4c71-8ff5-65b0a2f455d7",
+  "display_id": null,
+  "title": "Pi backend (see _docs/PI-PLAN.md)",
+  "description": "Epic for _docs/PI-PLAN.md phases 1-2, 4-7. Phase 3 (style lint) and Phase 6a (prior-material keyword pass) are tracked as standalone issues because they don't need Pi. The plan's 'Review notes (2026-10-21)' section holds the five design concerns (R1-R5); each sub-issue lists which ones it must satisfy. Not before the CPSC5005 midterm.",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T22:36:38.379775Z",
+  "updated_at": "2026-10-21T22:36:38.379775Z"
+}
