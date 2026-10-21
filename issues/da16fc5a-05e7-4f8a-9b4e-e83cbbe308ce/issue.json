@@ -1,0 +1,10 @@
+{
+  "uuid": "da16fc5a-05e7-4f8a-9b4e-e83cbbe308ce",
+  "display_id": null,
+  "title": "Color escapes leak into piped output",
+  "status": "open",
+  "priority": "low",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T22:29:30.325076Z",
+  "updated_at": "2026-10-21T22:29:30.325076Z"
+}
