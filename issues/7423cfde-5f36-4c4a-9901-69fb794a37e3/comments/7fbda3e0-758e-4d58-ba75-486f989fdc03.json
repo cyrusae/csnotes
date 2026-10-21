@@ -1,0 +1,10 @@
+{
+  "uuid": "7fbda3e0-758e-4d58-ba75-486f989fdc03",
+  "issue_uuid": "7423cfde-5f36-4c4a-9901-69fb794a37e3",
+  "author": "3owj",
+  "content": "Done (uncommitted): SourceEntry::visible_for_course (tags apply to every kind) + SourceEntry::is_dormant(active_courses) in manifest.rs. sources_for_scope takes active_courses; Topic/Resource scopes exclude dormant; Session/MultiSession/Course filter by course match (so a leftover session from a retired course still sees its own sources); explicit --source includes dormant. Flat vaults (no active_courses) have no dormancy. 4 new tests; old 'non-textbook always included' test inverted.",
+  "created_at": "2026-10-21T21:33:10.969699Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAriYcc802J2uBd9N8L005z8bG/33x/41DX+HOuU979Fu7fxcnK6St4Jc0YwoXpeJThoyY2BEM+hIHkVc4hljpDA=="
+}
