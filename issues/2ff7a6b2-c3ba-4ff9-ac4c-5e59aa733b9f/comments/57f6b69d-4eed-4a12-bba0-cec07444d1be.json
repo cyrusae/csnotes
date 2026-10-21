@@ -1,0 +1,10 @@
+{
+  "uuid": "57f6b69d-4eed-4a12-bba0-cec07444d1be",
+  "issue_uuid": "2ff7a6b2-c3ba-4ff9-ac4c-5e59aa733b9f",
+  "author": "3owj",
+  "content": "Done: 6 consts -> include_str! of _csnotes/instructions/*.md. synthesis.md taken from embedded (newer); gemini.md kept file version (newer, matches claude.md wording); course-review/resource-review/csnotes_reference extracted; report_schema.md regenerated (was missing 'journal' kind). Tests: bullets rule, report_schema drift, write_instruction_files round-trip. Not done: live vault refresh, cross-family rewrite (user tasks).",
+  "created_at": "2026-10-21T16:06:44.567377Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAjBpU+j7nOKCEIxlZvSsybBaJyanAp+giv5DMTL1fFkKELfitVVMuHhbTtrJdIigIJRSR7frq3tvBHu9iPkt/CQ=="
+}
