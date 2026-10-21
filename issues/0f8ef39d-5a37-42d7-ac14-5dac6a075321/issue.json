@@ -1,0 +1,11 @@
+{
+  "uuid": "0f8ef39d-5a37-42d7-ac14-5dac6a075321",
+  "display_id": null,
+  "title": "Agent feedback: sed guard false positives, CLI-stamped report timestamps, anchor placement rule",
+  "description": "From a session agent's feedback 2026-10-21. (1) csnotes_guard.py sed/perl regex matches -i anywhere later on the line (grep -i in a pipe, filenames with -i-), misses combined flags (-ni, -Ei). Tokenize instead. (2) started_at/completed_at are required in _session_report.json but only displayed by diff; make them optional and have the CLI stamp them. (3) claude.md/gemini.md say the anchor goes at the END of the note, which makes the index embed the last block; synthesis.md (correct) says after the intro. 12/51 notes in the SU vault have the anchor at the end. Fix wording and add a check warning.",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-10-21T20:35:32.593399Z",
+  "updated_at": "2026-10-21T20:35:32.593399Z"
+}
