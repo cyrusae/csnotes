@@ -1,6 +1,6 @@
+use crate::ui::Paint;
 use anyhow::Result;
 use chrono::Utc;
-use owo_colors::OwoColorize;
 use serde::Serialize;
 
 use crate::config::{find_vault_root, VaultConfig};

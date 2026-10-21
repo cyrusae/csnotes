@@ -401,23 +401,23 @@ pub struct ManifestLock {
 
 impl ManifestLock {
     /// Acquire the lock, blocking until it's free.  If another csnotes
-    /// process holds it (e.g. a session open in another terminal), say so on
-    /// stderr first, so the wait doesn't look like a hang.
+    /// process holds it (e.g. a session open in another terminal), show a
+    /// spinner saying so on stderr (a one-line note when not on a terminal),
+    /// so the wait doesn't look like a hang.
     pub fn acquire(vault_root: &Path) -> Result<Self> {
         Self::acquire_with(vault_root, || {
-            use owo_colors::OwoColorize;
-            eprintln!(
-                "{}",
-                "Waiting for another csnotes process to release this vault \
-                 (e.g. a session open in another terminal) — ctrl+c to cancel…"
-                    .dimmed()
-            );
+            // Short enough to fit an 80-column terminal on one line.
+            crate::ui::spinner_or_note(
+                "Vault locked by another csnotes process — waiting (ctrl+c to cancel)",
+            )
         })
     }
 
     /// Like [`acquire`](Self::acquire), but calls `on_wait` (once) instead of
-    /// printing when the lock is contended.  Separate so tests can observe it.
-    pub fn acquire_with(vault_root: &Path, on_wait: impl FnOnce()) -> Result<Self> {
+    /// showing the spinner when the lock is contended.  Whatever `on_wait`
+    /// returns is held until the lock is acquired.  Separate so tests can
+    /// observe it.
+    pub fn acquire_with<G>(vault_root: &Path, on_wait: impl FnOnce() -> G) -> Result<Self> {
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
@@ -440,7 +440,7 @@ impl ManifestLock {
             }
 
             // Contended: tell the user, then block.
-            on_wait();
+            let _waiting = on_wait();
             if unsafe { libc::flock(fd, libc::LOCK_EX) } != 0 {
                 anyhow::bail!(
                     "could not acquire manifest lock (another csnotes process may be running): {}",

@@ -158,10 +158,12 @@ pub fn assemble(params: &WorkspaceParams<'_>) -> Result<PathBuf> {
     }
 
     if params.dry_run {
-        println!(
-            "dry-run: workspace would be created at {}",
-            workspace_root.display()
-        );
+        crate::ui::suspend(|| {
+            println!(
+                "dry-run: workspace would be created at {}",
+                workspace_root.display()
+            )
+        });
         return Ok(workspace_root);
     }
 
@@ -600,10 +602,10 @@ fn wrap_session_inputs(
                     make_readonly(&dest)?;
                 }
                 Err(e) => {
-                    eprintln!(
+                    crate::ui::warn_line(format!(
                         "warning: slide extraction skipped for '{}': {}",
                         artifact.path, e
-                    );
+                    ));
                 }
             }
             continue;
@@ -855,10 +857,10 @@ fn write_source_file(
                 make_readonly(&dest)?;
             }
             Err(e) => {
-                eprintln!(
+                crate::ui::warn_line(format!(
                     "warning: slide extraction skipped for source '{}': {}",
                     source_id, e
-                );
+                ));
             }
         }
         return Ok(None);
@@ -881,10 +883,10 @@ fn write_source_file(
                 make_readonly(&dest)?;
             }
             Err(e) => {
-                eprintln!(
+                crate::ui::warn_line(format!(
                     "warning: DOCX extraction skipped for source '{}': {}",
                     source_id, e
-                );
+                ));
             }
         }
         return Ok(None);
@@ -1998,11 +2000,11 @@ fn copy_image_artifact(
     workspace_root: &Path,
 ) -> Result<()> {
     if remaining_image_budget(workspace_root) == 0 {
-        eprintln!(
+        crate::ui::warn_line(format!(
             "warning: image cap ({}) reached — skipping image artifact '{}'",
             crate::slides::MAX_IMAGES_PER_WORKSPACE,
             rel_path
-        );
+        ));
         return Ok(());
     }
     let images_dir = workspace_root.join(crate::slides::IMAGES_DIR);

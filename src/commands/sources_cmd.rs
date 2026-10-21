@@ -13,8 +13,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
+use crate::ui::Paint;
 use anyhow::{bail, Context, Result};
-use owo_colors::OwoColorize;
 
 use crate::config::{find_vault_root, VaultConfig};
 use crate::manifest::{Manifest, ManifestLock, SourceEntry, SourceStatus};

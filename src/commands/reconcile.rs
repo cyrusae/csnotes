@@ -81,7 +81,7 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
         let n_sources = manifest.sources.len();
         manifest.sessions.clear();
         manifest.sources.clear();
-        use owo_colors::OwoColorize;
+        use crate::ui::Paint;
         println!(
             "{}  cleared {} session(s) and {} source(s) — re-scanning from scratch.",
             "reconcile --reset:".yellow().bold(),
@@ -111,7 +111,10 @@ pub fn run_for_vault(vault_root: &Path, config: &VaultConfig, args: ReconcileArg
     // Phase 3: rescan _synthetic/ to rebuild the topics map.
     // This keeps the manifest fresh after manual vault edits, recovery copies,
     // or any other change that happens outside of normal session processing.
-    crate::audit::rebuild_topics(vault_root, &config.synthetic_dir, &mut manifest)?;
+    {
+        let _spin = crate::ui::spinner("Indexing notes…");
+        crate::audit::rebuild_topics(vault_root, &config.synthetic_dir, &mut manifest)?;
+    }
 
     manifest.save(vault_root)?;
     Ok(())
@@ -132,6 +135,7 @@ fn run_scan(
     let mut new_artifacts: Vec<(String, String)> = Vec::new(); // (session_id, path)
     let mut new_resources: Vec<String> = Vec::new(); // resource IDs
     let mut space_warnings: Vec<PathBuf> = Vec::new();
+    let spin = crate::ui::spinner("Scanning vault…");
 
     // ── Resolve course roots ──────────────────────────────────────────────────
     // If `active_courses` is set, raw notes and recording exports live under
@@ -219,6 +223,8 @@ fn run_scan(
         scan_resources_dir(&resources_dir, vault_root, manifest, &mut new_resources)?;
     }
 
+    drop(spin);
+
     // ── Space warnings ────────────────────────────────────────────────────────
     for path in &space_warnings {
         eprintln!(
@@ -236,11 +242,11 @@ fn run_scan(
 
     if nothing_new {
         if !args.quiet {
-            use owo_colors::OwoColorize;
+            use crate::ui::Paint;
             println!("{}", "reconcile: nothing new.".dimmed());
         }
     } else {
-        use owo_colors::OwoColorize;
+        use crate::ui::Paint;
         for id in &new_sessions {
             println!("  {} {}   {}", "+".green().bold(), "session".dimmed(), id);
         }

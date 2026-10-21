@@ -237,7 +237,7 @@ pub(crate) fn run_reset(
         );
     }
 
-    use owo_colors::OwoColorize;
+    use crate::ui::Paint;
 
     let ws_synthetic = rec.workspace_path.join(&config.synthetic_dir);
     let vault_synthetic = vault_root.join(&config.synthetic_dir);

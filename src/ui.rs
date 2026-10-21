@@ -1,30 +1,93 @@
-/// Terminal color helpers.
+/// Terminal color and progress helpers.
 ///
 /// Call `init_color()` once at startup. All color in this codebase flows
-/// through `owo_colors::OwoColorize` (for styled text) and `rainbow()` (for
-/// the HSL gradient header). Both degrade gracefully when `NO_COLOR` is set,
-/// `TERM=dumb`, or stdout is not a tty.
+/// through the `Paint` trait (for styled text) and `rainbow()` (for the HSL
+/// gradient header). Both print plain text when `NO_COLOR` is set,
+/// `TERM=dumb`, or stdout or stderr is not a tty.
+///
+/// `spinner()` shows an activity indicator on stderr for work that can take
+/// more than a moment.  Output printed while one may be active goes through
+/// `warn_line()` / `suspend()` so it doesn't collide with the spinner line.
+use std::fmt;
 use std::io::IsTerminal;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
 
-/// Configure owo-colors based on the current environment. Must be called
-/// before any output is produced.
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+
+/// Whether styled output emits ANSI escapes.  Off until `init_color()`
+/// decides otherwise, so tests and library callers get plain text.
+static COLOR: AtomicBool = AtomicBool::new(false);
+
+/// Turn color on if the environment supports it. Must be called before any
+/// output is produced.
 pub fn init_color() {
-    if !color_supported() {
-        owo_colors::set_override(false);
-    }
+    COLOR.store(color_supported(), Ordering::Relaxed);
 }
 
 /// True when the terminal appears to support ANSI true-color output.
+/// Both streams must be terminals: either one may carry styled text, and a
+/// redirected one (`| less`, `2> log`) should get plain text.
 pub fn color_supported() -> bool {
     std::env::var_os("NO_COLOR").is_none()
         && std::env::var("TERM").map_or(true, |t| t != "dumb")
         && std::io::stdout().is_terminal()
+        && std::io::stderr().is_terminal()
 }
+
+fn color_enabled() -> bool {
+    COLOR.load(Ordering::Relaxed)
+}
+
+/// Text styled by a `Paint` method.  Displays with ANSI escapes only when
+/// color is enabled.  (`owo_colors::OwoColorize` always emits escapes; its
+/// global override only applies to `if_supports_color`.)
+pub struct Painted<'a, T: ?Sized> {
+    inner: &'a T,
+    style: owo_colors::Style,
+}
+
+impl<T: fmt::Display + ?Sized> fmt::Display for Painted<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if color_enabled() {
+            write!(f, "{}", self.style.style(self.inner))
+        } else {
+            fmt::Display::fmt(self.inner, f)
+        }
+    }
+}
+
+/// Color-aware styling for anything `Display`; chain like `OwoColorize`
+/// (`"x".red().bold()`).
+pub trait Paint: fmt::Display {
+    fn bold(&self) -> Painted<'_, Self> {
+        self.painted(owo_colors::Style::new().bold())
+    }
+    fn dimmed(&self) -> Painted<'_, Self> {
+        self.painted(owo_colors::Style::new().dimmed())
+    }
+    fn green(&self) -> Painted<'_, Self> {
+        self.painted(owo_colors::Style::new().green())
+    }
+    fn red(&self) -> Painted<'_, Self> {
+        self.painted(owo_colors::Style::new().red())
+    }
+    fn yellow(&self) -> Painted<'_, Self> {
+        self.painted(owo_colors::Style::new().yellow())
+    }
+    #[doc(hidden)]
+    fn painted(&self, style: owo_colors::Style) -> Painted<'_, Self> {
+        Painted { inner: self, style }
+    }
+}
+
+impl<T: fmt::Display + ?Sized> Paint for T {}
 
 /// Apply a rainbow HSL gradient (0°–300°) to `s` using ANSI true-color
 /// escape codes. Returns a plain string when color is disabled.
 pub fn rainbow(s: &str) -> String {
-    if !color_supported() {
+    if !color_enabled() {
         return s.to_string();
     }
     let chars: Vec<char> = s.chars().collect();
@@ -63,11 +126,199 @@ pub(crate) fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
     )
 }
 
+// ── Spinners ──────────────────────────────────────────────────────────────────
+
+/// The spinner currently in scope, if any.  Only one is live at a time; a
+/// spinner started while another is active is inert.  The lock also orders
+/// the delayed first draw against `Drop`, so a finished spinner never draws.
+static ACTIVE: Mutex<Option<ProgressBar>> = Mutex::new(None);
+
+/// Work that finishes sooner than this never shows a spinner (no flicker).
+const SPINNER_DELAY: Duration = Duration::from_millis(250);
+const SPINNER_TICK: Duration = Duration::from_millis(100);
+
+/// RAII guard for `spinner()`: the spinner is cleared when this is dropped.
+#[must_use = "the spinner disappears when this guard is dropped"]
+pub struct Spinner {
+    bar: Option<ProgressBar>,
+}
+
+impl Spinner {
+    /// A guard that shows nothing.
+    pub fn inert() -> Self {
+        Spinner { bar: None }
+    }
+}
+
+impl Drop for Spinner {
+    fn drop(&mut self) {
+        if let Some(bar) = self.bar.take() {
+            let mut active = lock_active();
+            bar.finish_and_clear();
+            *active = None;
+        }
+    }
+}
+
+/// True when stderr is an interactive terminal that can redraw a line.
+pub fn spinners_enabled() -> bool {
+    std::io::stderr().is_terminal() && std::env::var("TERM").map_or(true, |t| t != "dumb")
+}
+
+/// Start a spinner reading `message` on stderr.  It appears only if the
+/// guard is still alive after a short delay, and only on a terminal.
+/// Never hold one across a prompt or while an AI backend owns the terminal.
+pub fn spinner(message: impl Into<String>) -> Spinner {
+    spinner_with(spinners_enabled(), message.into())
+}
+
+/// Like `spinner()`, but when spinners are unavailable (not a terminal),
+/// print `message` once instead so non-interactive output still says why
+/// the command is pausing.
+pub fn spinner_or_note(message: impl Into<String>) -> Spinner {
+    let message = message.into();
+    if spinners_enabled() {
+        spinner_with(true, message)
+    } else {
+        eprintln!("{}", message.dimmed());
+        Spinner::inert()
+    }
+}
+
+fn spinner_with(enabled: bool, message: String) -> Spinner {
+    if !enabled {
+        return Spinner::inert();
+    }
+    let mut active = lock_active();
+    if active.is_some() {
+        return Spinner::inert();
+    }
+    let bar = ProgressBar::with_draw_target(None, ProgressDrawTarget::hidden());
+    bar.set_style(
+        ProgressStyle::with_template("{spinner} {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+    );
+    bar.set_message(message);
+    *active = Some(bar.clone());
+    drop(active);
+
+    let delayed = bar.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(SPINNER_DELAY);
+        let _active = lock_active();
+        if !delayed.is_finished() {
+            delayed.set_draw_target(ProgressDrawTarget::stderr());
+            delayed.enable_steady_tick(SPINNER_TICK);
+        }
+    });
+    Spinner { bar: Some(bar) }
+}
+
+/// Run `f` (which prints) with any active spinner temporarily cleared.
+/// `f` must not start a spinner.
+pub fn suspend<R>(f: impl FnOnce() -> R) -> R {
+    let active = lock_active();
+    match active.as_ref() {
+        Some(bar) => bar.suspend(f),
+        None => f(),
+    }
+}
+
+/// `eprintln!` that steps around an active spinner.
+pub fn warn_line(line: impl std::fmt::Display) {
+    suspend(|| eprintln!("{line}"));
+}
+
+fn lock_active() -> std::sync::MutexGuard<'static, Option<ProgressBar>> {
+    // A panic while printing can't leave the slot inconsistent; keep going.
+    ACTIVE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Spinner tests share the global slot; run them one at a time.
+    static SPINNER_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Paint tests flip the global color switch; run them one at a time.
+    static COLOR_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn paint_is_plain_when_color_disabled() {
+        let _g = COLOR_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        COLOR.store(false, Ordering::Relaxed);
+        assert_eq!("reconcile".dimmed().to_string(), "reconcile");
+        assert_eq!(format!("{}", "err".red().bold()), "err");
+        assert_eq!(rainbow("hi"), "hi");
+    }
+
+    #[test]
+    fn paint_styles_when_color_enabled() {
+        let _g = COLOR_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        COLOR.store(true, Ordering::Relaxed);
+        let dim = "x".dimmed().to_string();
+        let chained = 3.red().bold().to_string();
+        COLOR.store(false, Ordering::Relaxed);
+        assert_eq!(dim, "\x1b[2mx\x1b[0m");
+        assert!(chained.contains("\x1b[1m") && chained.contains("\x1b[31m"));
+        assert!(chained.contains('3'));
+    }
+
+    #[test]
+    fn spinner_disabled_is_inert() {
+        let _g = SPINNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let s = spinner_with(false, "working".into());
+        assert!(s.bar.is_none());
+        assert!(lock_active().is_none());
+    }
+
+    #[test]
+    fn spinner_registers_and_clears_on_drop() {
+        let _g = SPINNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let s = spinner_with(true, "working".into());
+        assert!(s.bar.is_some());
+        assert!(lock_active().is_some());
+        drop(s);
+        assert!(lock_active().is_none());
+    }
+
+    #[test]
+    fn nested_spinner_is_inert() {
+        let _g = SPINNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let outer = spinner_with(true, "outer".into());
+        let inner = spinner_with(true, "inner".into());
+        assert!(inner.bar.is_none());
+        drop(inner);
+        assert!(lock_active().is_some(), "inner drop must not clear outer");
+        drop(outer);
+        assert!(lock_active().is_none());
+    }
+
+    #[test]
+    fn spinner_dropped_before_delay_never_draws() {
+        let _g = SPINNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let s = spinner_with(true, "quick".into());
+        let bar = s.bar.clone().unwrap();
+        drop(s);
+        std::thread::sleep(SPINNER_DELAY + Duration::from_millis(100));
+        assert!(bar.is_finished());
+        assert!(
+            bar.is_hidden(),
+            "finished spinner must not attach to stderr"
+        );
+    }
+
+    #[test]
+    fn suspend_runs_closure_with_and_without_spinner() {
+        let _g = SPINNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(suspend(|| 1), 1);
+        let s = spinner_with(true, "working".into());
+        assert_eq!(suspend(|| 2), 2);
+        drop(s);
+    }
 
     // hsl_to_rgb: one test per branch (h<60, 60-120, 120-180, 180-240, 240-300, ≥300)
     // using s=1.0, l=0.5 so m=0 and c=1, giving clean integer-ish values.

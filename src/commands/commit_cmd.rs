@@ -22,9 +22,9 @@
 /// on any failure the snapshot is restored so the AI can fix and retry.
 use std::path::{Path, PathBuf};
 
+use crate::ui::Paint;
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
-use owo_colors::OwoColorize;
 
 use crate::audit::{invariant_suite, precondition_pass_ops};
 use crate::config::{find_vault_root, VaultConfig};

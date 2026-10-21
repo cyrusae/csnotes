@@ -1,8 +1,8 @@
 use std::path::Path;
 
+use crate::ui::Paint;
 use anyhow::{bail, Result};
 use chrono::Utc;
-use owo_colors::OwoColorize;
 
 use crate::audit::{invariant_suite, precondition_pass_ops};
 use crate::backend::make_backend;
@@ -172,7 +172,10 @@ pub fn run(args: ProcessArgs) -> Result<()> {
         include_resources,
     };
 
-    let workspace_root = assemble(&ws_params)?;
+    let workspace_root = {
+        let _spin = crate::ui::spinner("Preparing workspace…");
+        assemble(&ws_params)?
+    };
 
     if args.dry_run {
         let tag = "dry-run".yellow().bold().to_string();
@@ -421,8 +424,11 @@ pub fn run_teardown(
         // Steps 5-6: Snapshot → execute → restore on failure, cleanup on success.
         // Structural ops can fail mid-batch leaving a partial rename; the snapshot
         // makes this block atomic so the AI always re-enters a clean workspace.
-        take_workspace_snapshot(workspace_root, &config.synthetic_dir)?;
-        let ops_result = execute_teardown_ops(remaining, workspace_root, config, manifest, now);
+        let ops_result = {
+            let _spin = crate::ui::spinner("Applying operations…");
+            take_workspace_snapshot(workspace_root, &config.synthetic_dir)?;
+            execute_teardown_ops(remaining, workspace_root, config, manifest, now)
+        };
         if let Err(e) = ops_result {
             if let Err(re) = restore_workspace_snapshot(workspace_root, &config.synthetic_dir) {
                 eprintln!("warning: failed to restore workspace snapshot: {}", re);
@@ -434,7 +440,10 @@ pub fn run_teardown(
     }
 
     // Step 7: Build updated manifest (always — topics must reflect current state)
-    let updated_manifest = crate::audit::reindex(workspace_root, config)?;
+    let updated_manifest = {
+        let _spin = crate::ui::spinner("Indexing notes…");
+        crate::audit::reindex(workspace_root, config)?
+    };
     // Preserve sessions and sources from the existing manifest (reindex only
     // touches topics)
     let mut new_manifest = manifest.clone();
@@ -453,12 +462,15 @@ pub fn run_teardown(
 
     if !all_committed {
         // Step 8: Invariant suite
-        let audit = invariant_suite(
-            workspace_root,
-            &config.synthetic_dir,
-            &report,
-            &new_manifest,
-        )?;
+        let audit = {
+            let _spin = crate::ui::spinner("Checking notes…");
+            invariant_suite(
+                workspace_root,
+                &config.synthetic_dir,
+                &report,
+                &new_manifest,
+            )?
+        };
 
         if !audit.is_clean() {
             eprintln!(
@@ -491,10 +503,12 @@ pub fn run_teardown(
             r.phase = "merging".to_string();
         }
         manifest.save(vault_root)?;
+        let _spin = crate::ui::spinner("Merging into vault…");
         let _snapshot = take_snapshot(vault_root, &config.synthetic_dir, run_id)?;
 
         // Step 10: Merge-back
         merge_back(workspace_root, vault_root, &config.synthetic_dir)?;
+        drop(_spin);
     }
 
     // Step 10.5: Relink raw notes — propagate path changes from structural ops

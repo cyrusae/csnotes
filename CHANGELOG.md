@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- Color escapes leak into piped output (L10)
 - Course review: fill image cap newest session first (L9)
 - status: [N pending] on topics is a false positive for the session that wrote them (L4)
 - Agent feedback: sed guard false positives, CLI-stamped report timestamps, anchor placement rule (L5)
@@ -128,6 +129,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- Loading spinners for slow operations (L2)
 - ManifestLock: say so when waiting on another csnotes process (L1)
 - README + vault reference docs: add resources section (L69)
 - remove code-narration prohibition from synthesis.md (L66)

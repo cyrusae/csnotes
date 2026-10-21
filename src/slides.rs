@@ -374,9 +374,9 @@ fn render_pdf_visuals_with(
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 if !PDFTOPPM_MISSING_WARNED.swap(true, Ordering::Relaxed) {
-                    eprintln!(
+                    crate::ui::warn_line(
                         "warning: pdftoppm not found — visual slides are marked but not \
-                         rendered (install poppler to include slide images)"
+                         rendered (install poppler to include slide images)",
                     );
                 }
                 return;
@@ -444,12 +444,12 @@ pub fn extract_pptx_visuals(
 
 fn warn_budget_exhausted(path: &Path, skipped: usize) {
     if skipped > 0 {
-        eprintln!(
+        crate::ui::warn_line(format!(
             "warning: image cap ({}) reached — {} visual slide(s) in '{}' left as text markers",
             MAX_IMAGES_PER_WORKSPACE,
             skipped,
             path.display()
-        );
+        ));
     }
 }
 
