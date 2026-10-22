@@ -1,0 +1,10 @@
+{
+  "uuid": "24261978-919f-4e9b-aa9f-8d9b095256bb",
+  "issue_uuid": "7f5796d1-97ca-4bd0-ada5-c3f00dfcd2c0",
+  "author": "3owj",
+  "content": "R2 'works' half confirmed by user 2026-10-21: Claude via subscription works in Pi through the claude-bridge plugin. Plugin-currency vs pinning concern split out as R6.",
+  "created_at": "2026-10-22T02:45:04.396330Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA9dKpjTBRGqpW18Ud4AbzlrvRfSbxtTR6VTLLzd7O0vPLKQnE4oCuhUcX0ySFtJX5YkU716dq+UQIXH1tFFPoAw=="
+}
