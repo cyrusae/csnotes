@@ -1,0 +1,10 @@
+{
+  "uuid": "67c4d784-dbee-4c39-8158-4ca422f7f118",
+  "issue_uuid": "e637d8fb-5d31-41ae-a499-38e5158e5a79",
+  "author": "3owj",
+  "content": "Repo github.com/cyrusae/pi-claude-pretooluse-gate (PRIVATE), commit e5c07a0: package.json pi manifest, extensions/claude-pretooluse-gate.ts, README, MIT LICENSE. Laptop now loads it via local-path package (pi install ~/GitHere/pi-claude-pretooluse-gate); loose ~/.pi/agent/extensions copy removed (backup /tmp/claude-pretooluse-gate.ts.bak). Needs full Pi restart + marker test to verify. Desktop: pi install git:github.com/cyrusae/pi-claude-pretooluse-gate.",
+  "created_at": "2026-10-22T04:40:36.263034Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAwJkZllAJmNXakFCEEvD4uBnZ15y6cih6WbZGIq5vZPUlv6KOVgnMbsQulySYRCODeyek9OJ4SvrWocZ/XOVCBA=="
+}
