@@ -1,0 +1,75 @@
+{
+  "allowedTools": [
+    "Bash(tmux *)",
+    "Bash(git worktree *)"
+  ],
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "ROOT=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; HOOK=\"$ROOT/.claude/hooks/post-edit-check.py\"; SHIM=\"$ROOT/.claude/pi-tool-shim.py\"; if [ ! -f \"$HOOK\" ]; then exit 0; elif [ -f \"$SHIM\" ]; then python3 \"$SHIM\" \"$HOOK\"; else python3 \"$HOOK\"; fi",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Write|Edit|mcp__custom-tools__(write|edit)"
+      },
+      {
+        "hooks": [
+          {
+            "command": "HOOK=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/heartbeat.py\"; if [ -f \"$HOOK\" ]; then python3 \"$HOOK\"; else exit 0; fi",
+            "timeout": 3,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "HOOK=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/pre-web-check.py\"; if [ -f \"$HOOK\" ]; then python3 \"$HOOK\"; else exit 0; fi",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "WebFetch|WebSearch"
+      },
+      {
+        "hooks": [
+          {
+            "command": "ROOT=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; HOOK=\"$ROOT/.claude/hooks/work-check.py\"; SHIM=\"$ROOT/.claude/pi-tool-shim.py\"; if [ ! -f \"$HOOK\" ]; then exit 0; elif [ -f \"$SHIM\" ]; then python3 \"$SHIM\" \"$HOOK\"; else python3 \"$HOOK\"; fi",
+            "timeout": 3,
+            "type": "command"
+          }
+        ],
+        "matcher": "Write|Edit|Bash|mcp__custom-tools__(write|edit|bash)"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "HOOK=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/session-start.py\"; if [ -f \"$HOOK\" ]; then python3 \"$HOOK\"; else exit 0; fi",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "HOOK=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/prompt-guard.py\"; if [ -f \"$HOOK\" ]; then python3 \"$HOOK\"; else exit 0; fi",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}
