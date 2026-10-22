@@ -2,11 +2,12 @@
   "uuid": "dccac918-84a0-4aaf-a308-c555132442a1",
   "display_id": 191,
   "title": "Pi: crosslink PreToolUse guard never fires - matcher Write|Edit|Bash doesn't match mcp__custom-tools__* tool names (git commit gate / push block unenforced)",
-  "status": "open",
+  "status": "closed",
   "priority": "high",
   "created_by": "3owj",
   "created_at": "2026-10-22T03:35:28.794084Z",
-  "updated_at": "2026-10-22T03:35:30.082139Z",
+  "updated_at": "2026-10-22T04:04:55.213941Z",
+  "closed_at": "2026-10-22T04:04:55.213941Z",
   "labels": [
     "pi"
   ]
