@@ -102,6 +102,23 @@ fn run_process(vault_root: &Path, fixture: &str) -> std::process::ExitStatus {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+/// `--version` reports the Cargo version, followed by the git commit and
+/// date when built from a checkout (see build.rs).
+#[test]
+fn version_reports_cargo_version() {
+    let out = Command::new(env!("CARGO_BIN_EXE_csnotes"))
+        .arg("--version")
+        .output()
+        .expect("failed to spawn csnotes binary");
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = format!("csnotes {}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        stdout.trim() == expected || stdout.starts_with(&format!("{expected} (")),
+        "unexpected --version output: {stdout:?}"
+    );
+}
+
 /// Happy path: mock AI creates an index note and one atomic note.
 /// After teardown the vault must contain both notes with CLI-stamped
 /// frontmatter, the session must be marked processed, and no in-progress

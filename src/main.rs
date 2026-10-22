@@ -210,7 +210,8 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
 #[command(
     name = "csnotes",
     about = "AI-assisted synthesis of graduate lecture notes",
-    version
+    // Cargo version plus git commit and date; see build.rs.
+    version = env!("CSNOTES_VERSION")
 )]
 struct Cli {
     #[command(subcommand)]
