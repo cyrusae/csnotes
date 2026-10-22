@@ -1,0 +1,10 @@
+{
+  "uuid": "56e12db1-0201-424b-8463-f87c0cc16db8",
+  "display_id": 190,
+  "title": "CI: GitHub Actions (fmt/clippy/test, macOS+Linux) + Renovate automerge policy + branch protection",
+  "status": "open",
+  "priority": "high",
+  "created_by": "3owj",
+  "created_at": "2026-10-22T03:29:24.329063Z",
+  "updated_at": "2026-10-22T03:29:24.329063Z"
+}
