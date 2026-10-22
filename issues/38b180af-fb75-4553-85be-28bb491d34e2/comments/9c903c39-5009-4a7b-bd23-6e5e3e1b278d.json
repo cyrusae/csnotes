@@ -1,0 +1,10 @@
+{
+  "uuid": "9c903c39-5009-4a7b-bd23-6e5e3e1b278d",
+  "issue_uuid": "38b180af-fb75-4553-85be-28bb491d34e2",
+  "author": "3owj",
+  "content": "Un-ignored .claude/ and .crosslink/ wholesale; rely on crosslink-managed block, plus ignore settings.local.json, .crosslink/.last-hydrated-ref, .crosslink/driver-key.pub. Tracked: .claude/settings.json, .claude/pi-tool-shim.py (moved out of generated .claude/hooks/), .crosslink/hook-config.json, .crosslink/.gitignore, .crosslink/rules/. Hook command falls back to running the hook directly when the shim is missing (a missing shim previously failed closed and blocked all bash/write/edit). agent_overrides.tracking_mode=strict, verified: write blocked without active issue, allowed with one; read-only bash still allowed.",
+  "created_at": "2026-10-22T04:16:36.470342Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAp0aChIPjfvP5/oNPwHFd79h3f4oqsGtaOJm+WjqlsgR1DjX3e5aGRTwsrDyMh8hUl0oGqNKM/kN1TmCV17veBw=="
+}
