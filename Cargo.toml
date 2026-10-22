@@ -48,7 +48,7 @@ owo-colors = "4"
 indexmap = { version = "2", features = ["serde"] }
 
 # Slide extraction (PDF/PPTX → text for workspace ingestion)
-zip       = { version = "8", default-features = false, features = ["deflate"] }
+zip       = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = "0.42"
 indicatif = "0.18"
 
