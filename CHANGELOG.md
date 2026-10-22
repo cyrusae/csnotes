@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- Build broken by quick-xml 0.42 API changes; PPTX text extraction no longer drops XML entities like `&amp;` and `&lt;` (#189)
 - invariant_suite requires csnotes frontmatter on journal create_note ops, contradicting instructions (L1)
 - Color escapes leak into piped output (L10)
 - Course review: fill image cap newest session first (L9)
