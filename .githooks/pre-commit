@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
+# Written for bash 3.2 (macOS /bin/bash): no mapfile, and no "${arr[@]}" on
+# empty arrays under `set -u`.
 set -euo pipefail
+
+# Files in this commit, captured before fmt/clippy touch the working tree.
+# Fixes are re-staged only for these, so unrelated edits stay out of the
+# commit. Partially staged files are skipped: re-adding them would also stage
+# the hunks deliberately left out.
+staged=()
+partial=()
+while IFS= read -r -d '' f; do
+    if git diff --quiet -- "$f"; then
+        staged+=("$f")
+    else
+        partial+=("$f")
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
 
 echo "› cargo fmt"
 cargo fmt
@@ -7,8 +23,13 @@ cargo fmt
 echo "› cargo clippy --fix"
 cargo clippy --all-targets --fix --allow-dirty -- -D warnings 2>&1
 
-# Re-stage any files that were modified by fmt or clippy --fix.
-git add -u
+if [ ${#staged[@]} -gt 0 ]; then
+    git add -- "${staged[@]}"
+fi
+if [ ${#partial[@]} -gt 0 ]; then
+    echo "› not re-staged (partially staged; any fmt/clippy fixes are left unstaged):"
+    printf '    %s\n' "${partial[@]}"
+fi
 
 echo "› cargo clippy (verify)"
 cargo clippy --all-targets -- -D warnings 2>&1
