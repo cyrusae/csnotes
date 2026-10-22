@@ -319,6 +319,9 @@ pub fn invariant_suite(
     for op in &report.operations {
         if let Op::CreateNote(op) = op {
             match safe_join(workspace_root, &op.path) {
+                // Journal entries are free-form: no csnotes frontmatter is
+                // stamped (see execute_create_note), so none is required.
+                Ok(_) if op.kind == NoteKind::Journal => {}
                 Ok(path) => {
                     if let Err(e) = parse_frontmatter_from_path(&path) {
                         result.hard_violations.push(format!(
@@ -1566,6 +1569,43 @@ mod tests {
                 .hard_violations
                 .iter()
                 .any(|v| v.contains("ghost-note")),
+            "{:?}",
+            result.hard_violations
+        );
+    }
+
+    #[test]
+    fn invariant_suite_journal_without_frontmatter_is_clean() {
+        let tmp = TempDir::new().unwrap();
+        let path = "_journal/CPSC5005/review-2026-10-21.md";
+        write(tmp.path(), path, "## Topics covered\n- BST deletion\n");
+        let report = make_report(vec![Op::CreateNote(CreateNoteOp {
+            kind: NoteKind::Journal,
+            path: path.into(),
+            title: "Review — 2026-10-21".into(),
+            topic: "_journal".into(),
+            block_id: None,
+            embed_in: vec![],
+            provenance: ProvenanceDelta::default(),
+            change_summary: "Review session journal entry".into(),
+        })]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(result.is_clean(), "{:?}", result.hard_violations);
+    }
+
+    #[test]
+    fn invariant_suite_atomic_without_frontmatter_is_hard_violation() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "_synthetic/cs/bare.md", "No frontmatter.\n");
+        let report = make_report(vec![create_op("_synthetic/cs/bare.md")]);
+        let manifest = make_empty_manifest(tmp.path());
+        let result = invariant_suite(tmp.path(), "_synthetic", &report, &manifest).unwrap();
+        assert!(
+            result
+                .hard_violations
+                .iter()
+                .any(|v| v.contains("invalid frontmatter")),
             "{:?}",
             result.hard_violations
         );

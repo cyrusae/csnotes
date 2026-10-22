@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 1: topics_updated, rename_topic, richer briefing, source pipeline (L1)
 
 ### Fixed
+- invariant_suite requires csnotes frontmatter on journal create_note ops, contradicting instructions (L1)
 - Color escapes leak into piped output (L10)
 - Course review: fill image cap newest session first (L9)
 - status: [N pending] on topics is a false positive for the session that wrote them (L4)

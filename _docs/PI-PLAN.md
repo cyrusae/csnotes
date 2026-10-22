@@ -1,12 +1,14 @@
 # Pi backend — plan
 
 > Drafted 2026-09-29. Status: proposal. Phase 0 done 2026-10-21; nothing Pi-specific implemented.
-> Reviewed 2026-10-21. Read **Review notes** (R1–R5) before starting any phase; the
+> Reviewed 2026-10-21. Read **Review notes** (R1–R6) before starting any phase; the
 > text below has been amended where it conflicted with them.
-> Tracking (crosslink): L11 epic → L18 spike (Phase 1) → L19 PiBackend (Phase 2);
-> L20 agenda (4), L21 reviewer (5, after L12), L22 scout (6b, after L13), L23 QoL (7).
-> No Pi needed: L12 style lint (Phase 3), L13 prior-material pass (6a),
-> L14 cross-family instruction rewrite (Phase 0 leftover).
+> Tracking (crosslink): #176 epic → #177 spike (Phase 1) → #178 PiBackend (Phase 2);
+> #179 agenda (4), #180 reviewer (5, after #183), #181 scout (6b, after #184), #182 QoL (7).
+> Added 2026-10-21 (local IDs until synced): L2 claude-bridge currency vs pinning (R6),
+> L3 reading-comfort theming (goal 6).
+> No Pi needed: #183 style lint (Phase 3), #184 prior-material pass (6a),
+> #185 cross-family instruction rewrite (Phase 0 leftover).
 > Pi = the `earendil-works/pi` coding-agent harness (formerly `badlogic/pi-mono`),
 > npm `@earendil-works/pi-coding-agent`, docs at https://pi.dev/docs/latest.
 
@@ -24,6 +26,12 @@
    OpenRouter models for cheap helper roles and cross-family review.
 5. Workflow upgrades that Pi makes cheap: session agenda HUD, style review pass,
    scout subagents over prior material.
+6. **Reading comfort (active goal, added 2026-10-21).** Theme the session UI so it is
+   easier on the eyes and harder to misread: colors, contrast, how questions and
+   prompts stand out. Motivation: most mistakes on a mock exam were misreads, not
+   gaps in understanding, so readability during study sessions is a real UX win.
+   This customizes the harness to one reader; keep it config/theme-file driven so
+   it stays out of the core logic. Tracked as L3; see Phase 7.
 
 ## Decisions already made
 
@@ -48,8 +56,8 @@
 
 ## Review notes (2026-10-21)
 
-Five design concerns from reviewing this plan. Each has a decision; sub-issues under
-L11 reference them by number. If a spike result contradicts one, update it here
+Design concerns from reviewing this plan (R1–R5), plus later findings (R6). Sub-issues under
+#176 reference them by number. If a spike result contradicts one, update it here
 rather than quietly working around it.
 
 ### R1 — Path confinement must not depend on the extension loading
@@ -86,6 +94,35 @@ whole panel idea.
 current terms as well as whether it technically works. If it fails: decide
 explicitly between (a) Pi with API-billed Claude, (b) Pi with non-Claude primaries
 and Claude Code kept for Claude sessions, or (c) stopping here. Don't drift into one.
+
+**Status (2026-10-21).** *Works:* confirmed. Claude runs in Pi on the subscription
+login via the **claude-bridge** plugin. *Permitted / will keep working:* accepted as
+a known risk rather than resolved. Anthropic could block the bridge at some point;
+since the Claude Code backend stays intact (see Decisions), that would be handled
+then, by falling back to option (b) or the Claude Code backend. The operational
+consequence of depending on the plugin is R6.
+
+### R6 — The claude-bridge plugin vs exact-version pinning
+
+**Problem.** Subscription auth in Pi goes through the claude-bridge plugin, and the
+plugin is non-optional for that. It has to track whatever upstream auth changes
+happen, so it may need updating on its own schedule. That pulls against R3: an exact
+Pi pin only helps if the plugin version it was tested with keeps working, and a
+plugin update may in turn require a newer Pi. In the worst case the "pin" turns into
+frequent forced bumps.
+
+**Not decided yet.** Options to weigh when Phase 2 starts:
+- Pin Pi and the plugin as a tested *pair*, bumped together through the R3 upgrade
+  checklist. Simplest; costs a commit per forced bump.
+- Pin Pi exactly but let the plugin float within a range. Less churn; reintroduces
+  untested combinations, which is what R3 was trying to avoid.
+- Treat a broken bridge as "use the Claude Code backend for Claude today" rather than
+  an emergency, so a bump can wait for a convenient moment.
+
+`doctor` should report the plugin's presence and version alongside Pi's, and a
+bridge failure should name the plugin, not surface as a generic auth error. Whether
+the pinning effort is worth it depends on how often the plugin actually moves;
+watch that for a while before investing. Tracked as L2.
 
 ### R3 — Pin Pi by running an exact version, not by warning about drift
 
@@ -135,7 +172,7 @@ after `check` passes, never required for exit.
   must return images, not just text. Add both to the spike.
 - **Backend-independent phases.** Phase 3 (style lint) and Phase 6's keyword pass
   help the Claude backend too and need no Pi. They're tracked as standalone issues,
-  not under L11, so they don't wait on the spike.
+  not under #176, so they don't wait on the spike.
 - **Timebox the spike** at about 3 hours with a written go/no-go, appended below. If R1
   or R2 fails, stop and rethink rather than building Phase 2 around a workaround.
 
@@ -291,8 +328,11 @@ Take a preserved workspace (`process` then quit before teardown, or
 `--backend mock` + copy), hand-write `.pi/`, and run Pi against it.
 
 Timebox ~3 hours (see Review notes). Must confirm before writing Rust, **in this order**:
-- [ ] **R2 gate:** Claude via subscription OAuth works in Pi *and* is permitted under
-      current terms. If not, stop and decide per R2.
+- [x] **R2 gate:** Claude via subscription OAuth works in Pi (confirmed 2026-10-21 via
+      the claude-bridge plugin). Blocking risk accepted with Claude Code as fallback;
+      plugin upkeep is R6.
+- [ ] Record the claude-bridge plugin version that works with the Pi version under
+      test, and how it is installed/loaded (R6).
 - [ ] **R1 gate:** `--tools csnotes_read,csnotes_grep,csnotes_ls,csnotes_write,csnotes_edit,csnotes_check,csnotes_commit,csnotes_report_schema`
       yields exactly that tool set, with bash and the built-in file tools absent from
       prompt and runtime; with the extension deliberately broken, the session has
@@ -397,6 +437,11 @@ It's also useful under the Claude backend.
 - [ ] Official `notify` example for "turn finished" while you're in another window.
 - [ ] `pi-btw` for side questions that shouldn't pollute the session. Evaluate it first.
 - [ ] Already built in and worth learning: `/tree` for tangents, `/export` to HTML.
+- [ ] **Reading-comfort theme (goal 6, L3).** Find out what Pi's theming covers
+      (colors, markdown rendering, emphasis, widths) and build a theme tuned for
+      careful reading. Ship it from `pi/` like the extension, selectable from
+      `csnotes.toml`, so it's a setting rather than a fork. Check whether themes
+      are part of the breaking-change surface before relying on them.
 
 ---
 
