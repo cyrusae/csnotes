@@ -1,0 +1,9 @@
+# cargo-deny configuration. CI runs only the advisories check
+# (.github/workflows/audit.yml); see https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Every ignore needs a reason and a tracking issue; remove it once resolved.
+ignore = [
+    { id = "RUSTSEC-2025-0068", reason = "serde_yml unsound/unmaintained, no fixed release; replacement tracked in crosslink #197" },
+    { id = "RUSTSEC-2026-0333", reason = "noyalib, pulled in only by serde_yml; goes away with crosslink #197" },
+]
