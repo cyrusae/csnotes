@@ -1,0 +1,10 @@
+{
+  "uuid": "be499f08-b0ec-4cde-ba9c-e7d9981cc01d",
+  "issue_uuid": "1da9cc72-eff9-4325-9e01-2bb34b079bfa",
+  "author": "3owj",
+  "content": "quick-xml 0.40->0.42 broke src/slides.rs: names are &str now, BytesText::decode removed (-> xml10_content). Also fixed pre-existing bug: entity/char refs arrive as Event::GeneralRef and were silently dropped from PPTX text (e.g. 'Q&A' -> 'QA'). Added regression test. fmt/clippy/579 tests green. Uncommitted pending user OK.",
+  "created_at": "2026-10-22T03:19:46.401912Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA2l2bToJHTr5K30qqi62JEKdHmrqjGAZwD/egbG0cnvdsdYpLmivKyx5EyRdTZHfOhgEXRYDID+lZbs54OyAIBg=="
+}
