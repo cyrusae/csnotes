@@ -584,7 +584,7 @@ fn parse_image_relationships(xml: &str) -> Vec<String> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e))
-                if e.local_name().as_ref() == b"Relationship" =>
+                if e.local_name().as_ref() == "Relationship" =>
             {
                 let mut is_image = false;
                 let mut external = false;
@@ -595,9 +595,9 @@ fn parse_image_relationships(xml: &str) -> Vec<String> {
                         .unwrap_or_default()
                         .into_owned();
                     match attr.key.as_ref() {
-                        b"Type" => is_image = value.ends_with("/image"),
-                        b"TargetMode" => external = value == "External",
-                        b"Target" => target = Some(value),
+                        "Type" => is_image = value.ends_with("/image"),
+                        "TargetMode" => external = value == "External",
+                        "Target" => target = Some(value),
                         _ => {}
                     }
                 }
@@ -635,7 +635,7 @@ fn resolve_pptx_target(target: &str) -> String {
 /// joins runs with no separator (PowerPoint splits runs on formatting
 /// boundaries, not word boundaries).
 fn extract_xml_text_nodes(xml: &str) -> Vec<String> {
-    use quick_xml::escape::unescape;
+    use quick_xml::escape::resolve_predefined_entity;
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -651,16 +651,16 @@ fn extract_xml_text_nodes(xml: &str) -> Vec<String> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => match e.name().as_ref() {
-                b"a:p" => {
+                "a:p" => {
                     current_para = Some(String::new());
                 }
-                b"a:t" => {
+                "a:t" => {
                     in_text = true;
                 }
                 _ => {}
             },
             Ok(Event::End(ref e)) => match e.name().as_ref() {
-                b"a:p" => {
+                "a:p" => {
                     if let Some(para) = current_para.take() {
                         let trimmed = para.trim().to_string();
                         if !trimmed.is_empty() {
@@ -668,7 +668,7 @@ fn extract_xml_text_nodes(xml: &str) -> Vec<String> {
                         }
                     }
                 }
-                b"a:t" => {
+                "a:t" => {
                     in_text = false;
                 }
                 _ => {}
@@ -676,11 +676,24 @@ fn extract_xml_text_nodes(xml: &str) -> Vec<String> {
             Ok(Event::Text(e)) => {
                 if in_text {
                     if let Some(ref mut para) = current_para {
-                        if let Ok(decoded) = e.decode() {
-                            match unescape(&decoded) {
-                                Ok(text) => para.push_str(&text),
-                                Err(_) => para.push_str(&decoded),
-                            }
+                        para.push_str(&e.xml10_content());
+                    }
+                }
+            }
+            // Entity and character references (`&amp;`, `&#x2013;`) arrive as
+            // separate events between the surrounding `Text` events.
+            Ok(Event::GeneralRef(e)) => {
+                if in_text {
+                    if let Some(ref mut para) = current_para {
+                        if let Ok(Some(ch)) = e.resolve_char_ref() {
+                            para.push(ch);
+                        } else if let Some(s) = resolve_predefined_entity(&e) {
+                            para.push_str(s);
+                        } else {
+                            // Unknown entity: keep it verbatim rather than drop text.
+                            para.push('&');
+                            para.push_str(&e);
+                            para.push(';');
                         }
                     }
                 }
@@ -1145,6 +1158,13 @@ pub(crate) mod tests {
         let xml = r#"<root><a:p><a:r><a:t>  </a:t></a:r></a:p><a:p><a:r><a:t>Real</a:t></a:r></a:p></root>"#;
         let lines = extract_xml_text_nodes(xml);
         assert_eq!(lines, vec!["Real"]);
+    }
+
+    #[test]
+    fn extract_xml_unescapes_entities() {
+        let xml = r#"<root><a:p><a:r><a:t>Q&amp;A: x &lt; y &#x2013; &#65;&bogus;</a:t></a:r></a:p></root>"#;
+        let lines = extract_xml_text_nodes(xml);
+        assert_eq!(lines, vec!["Q&A: x < y \u{2013} A&bogus;"]);
     }
 
     // ── to_workspace_markdown ─────────────────────────────────────────────────
