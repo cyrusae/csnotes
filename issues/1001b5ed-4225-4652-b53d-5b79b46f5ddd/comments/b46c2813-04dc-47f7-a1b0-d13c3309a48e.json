@@ -1,0 +1,10 @@
+{
+  "uuid": "b46c2813-04dc-47f7-a1b0-d13c3309a48e",
+  "issue_uuid": "1001b5ed-4225-4652-b53d-5b79b46f5ddd",
+  "author": "3owj",
+  "content": "Root cause: invariant_suite parsed csnotes frontmatter for every create_note path, including kind=journal. Precondition pass, execute_create_note and course-review.md all treat journals as free-form (no stamping). Fix: skip journal ops in that check; 2 regression tests (journal clean, bare atomic still flagged). Instructions were already correct.",
+  "created_at": "2026-10-22T02:41:18.032889Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAB7NX10iyRrxXiARaueRwqzCYQtokEzeOrPTXLeA5TKweYoxrIicsG5JIaWV8ce/w11h+RDzTNacqajdXyYKwBw=="
+}
