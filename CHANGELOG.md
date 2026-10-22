@@ -131,6 +131,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- Embed git commit + date in csnotes --version (#192)
+- CI: GitHub Actions (fmt/clippy/test, macOS+Linux) + Renovate automerge policy + branch protection (#190)
 - Loading spinners for slow operations (L2)
 - ManifestLock: say so when waiting on another csnotes process (L1)
 - README + vault reference docs: add resources section (L69)
