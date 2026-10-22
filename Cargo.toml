@@ -29,7 +29,7 @@ libc     = "0.2"
 
 # IDs / paths
 uuid = { version = "1", features = ["v4"] }
-dirs = "6"
+dirs = "7"
 
 # Error handling
 anyhow    = "1"
