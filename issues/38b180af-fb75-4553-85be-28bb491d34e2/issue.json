@@ -2,11 +2,12 @@
   "uuid": "38b180af-fb75-4553-85be-28bb491d34e2",
   "display_id": 194,
   "title": "gitignore: track shared .claude/ and .crosslink/ config so hook setup syncs across machines",
-  "status": "open",
+  "status": "closed",
   "priority": "medium",
   "created_by": "3owj",
   "created_at": "2026-10-22T04:09:20.721770Z",
-  "updated_at": "2026-10-22T04:09:22.032849Z",
+  "updated_at": "2026-10-22T04:16:37.933517Z",
+  "closed_at": "2026-10-22T04:16:37.933517Z",
   "labels": [
     "infra"
   ]
