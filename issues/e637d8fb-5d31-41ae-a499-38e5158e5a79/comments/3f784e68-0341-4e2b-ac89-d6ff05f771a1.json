@@ -1,0 +1,10 @@
+{
+  "uuid": "3f784e68-0341-4e2b-ac89-d6ff05f771a1",
+  "issue_uuid": "e637d8fb-5d31-41ae-a499-38e5158e5a79",
+  "author": "3owj",
+  "content": "Done this session: fixed quick-xml 0.42 build break + entity-dropping bug (#189); crosslink tracker_remote fixed (was '(text)'), stale locks released; CI (fmt/clippy/test macOS+Linux, 'CI OK' required) + Renovate automerge policy + branch protection incl. admins (#190); --version embeds git sha/date (#192); pre-commit no longer git add -u (#193); .claude/.crosslink shared config tracked, strict tracking mode, Pi tool-name shim (#191, #194); Pi enforcement via extension repo github.com/cyrusae/pi-claude-pretooluse-gate (#195, OPEN: after full Pi restart, verify with blocked 'git branch -D x; touch /tmp/marker' -> no marker, then close). Leftovers: sentinel.default_agent.model still '(text)'; watch first Renovate batch under new rules; optional weekly cargo audit job; maybe try crosslink beta (fixes intervene message).",
+  "created_at": "2026-10-22T04:40:50.095659Z",
+  "kind": "handoff",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA2OIfvkTWoqZv3hDV2PsPuID77Jx2Jxkj3lSwaciwxk1+F/wNGXWhrWxBbzCthKzy8fRUuHXoxBm7onSPO4+GAA=="
+}
