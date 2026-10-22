@@ -1,0 +1,10 @@
+{
+  "uuid": "4acfdb19-d0e0-4d44-89c4-2694b57c9b80",
+  "issue_uuid": "432b6929-6e3b-4243-ba18-36fd9e18a4c1",
+  "author": "3owj",
+  "content": "Added .github/workflows/audit.yml (cargo-deny-action v2.1.1 pinned, check advisories; weekly Mon 14:17 UTC + PRs touching Cargo.toml/Cargo.lock/deny.toml + manual; not a required check) and deny.toml ignoring RUSTSEC-2025-0068 + RUSTSEC-2026-0333 pending #197. First run found 5 advisories: 3 zip (fixed by merging Renovate PR #31, zip 9.0.5; csnotes never calls extract() so was not exploitable) + 2 serde_yml/noyalib (#197).",
+  "created_at": "2026-10-22T04:46:26.894210Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA5xUrWdwI/mEi5HprWCDiN0jcQ4+204ddhXV5+C62tzcHYhe+GAgUjLhmPChJzCR5exkCDPehAtCkXYEqMA3bCA=="
+}
