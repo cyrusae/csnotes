@@ -285,14 +285,13 @@ pub fn move_anchor_after_intro(content: &str, block_id: &str) -> Option<String> 
     let last_line = lines[last].trim_end();
     if last_line.trim_start() == anchor {
         lines.truncate(last);
-    } else if let Some(rest) = last_line.strip_suffix(&anchor) {
+    } else {
+        let rest = last_line.strip_suffix(&anchor)?;
         if !rest.ends_with(char::is_whitespace) {
             return None;
         }
         lines[last] = rest.trim_end();
         lines.truncate(last + 1);
-    } else {
-        return None;
     }
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
         lines.pop();
