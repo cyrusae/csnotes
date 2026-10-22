@@ -131,6 +131,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No manifest locking for concurrent csnotes runs (L39)
 
 ### Changed
+- Package Pi PreToolUse gate extension into its own repo (#195)
 - Weekly scheduled dependency security audit (RustSec advisories) in CI (#196)
 - Embed git commit + date in csnotes --version (#192)
 - CI: GitHub Actions (fmt/clippy/test, macOS+Linux) + Renovate automerge policy + branch protection (#190)
