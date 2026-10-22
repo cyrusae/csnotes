@@ -1,0 +1,11 @@
+{
+  "uuid": "7aa058a0-5bbc-445b-90da-98407af1bfc6",
+  "display_id": 197,
+  "title": "Replace serde_yml (RUSTSEC-2025-0068 unsound/unmaintained; transitive noyalib RUSTSEC-2026-0333)",
+  "description": "serde_yml 0.0.13 is flagged unsound + unmaintained with no fixed version; it pulls noyalib 0.0.5 (resource budgets not enforced on typed deserialization). Used in src/frontmatter.rs, src/audit/{fixes,invariants}.rs, src/workspace.rs, src/ops/{structural,content}.rs, src/commands/{reconcile,sources_cmd}.rs. Both advisory IDs are ignored in deny.toml pending this; remove the ignores when done. Inputs are the user's own notes, so practical risk is low.",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-10-22T04:45:53.946449Z",
+  "updated_at": "2026-10-22T04:45:53.946449Z"
+}
