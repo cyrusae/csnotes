@@ -1,0 +1,10 @@
+{
+  "uuid": "9af1084e-6b20-486b-b80f-281d62ba8fa9",
+  "issue_uuid": "dccac918-84a0-4aaf-a308-c555132442a1",
+  "author": "3owj",
+  "content": "RESOLVED. /reload did not load the new extension; a full Pi restart did (debug log confirmed load + tool_call events). Live marker test after restart: blocked 'git branch -D x; touch /tmp/marker' -> marker NOT created, so enforcement is real. Both layers fire: Pi extension ~/.pi/agent/extensions/claude-pretooluse-gate.ts (actual pre-execution block) and the Claude Code hook via .claude/pi-tool-shim.py (message only). Debug logging removed. Extension lives outside the repo; candidate to move into its own repo/Pi package.",
+  "created_at": "2026-10-22T04:36:44.012261Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA259nihaI20t6mkKBg6wJVSuuEY/HH1J9bgUqV+bJT9TaG56ZN4I4s4h2e4EdsudBIQqwCp0S+2ewZO/IXHadCQ=="
+}
