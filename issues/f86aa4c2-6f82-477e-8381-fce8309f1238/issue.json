@@ -1,0 +1,12 @@
+{
+  "uuid": "f86aa4c2-6f82-477e-8381-fce8309f1238",
+  "display_id": null,
+  "title": "Pi: claude-bridge plugin must stay current for subscription auth — conflicts with exact-version pinning (R6)",
+  "description": "Claude-in-Pi via subscription confirmed working through the claude-bridge plugin (2026-10-21). The plugin is non-optional for subscription auth and must track upstream auth changes, which pulls against R3's exact Pi pin. Also: Anthropic could block the bridge; acceptable risk while the Claude Code backend stays intact as fallback. See PI-PLAN.md R6.",
+  "status": "open",
+  "priority": "low",
+  "parent_uuid": "55312579-9304-4c71-8ff5-65b0a2f455d7",
+  "created_by": "3owj",
+  "created_at": "2026-10-22T02:45:04.027551Z",
+  "updated_at": "2026-10-22T02:45:04.027551Z"
+}
