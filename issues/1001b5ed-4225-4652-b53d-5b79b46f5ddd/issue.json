@@ -1,0 +1,10 @@
+{
+  "uuid": "1001b5ed-4225-4652-b53d-5b79b46f5ddd",
+  "display_id": null,
+  "title": "invariant_suite requires csnotes frontmatter on journal create_note ops, contradicting instructions",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "3owj",
+  "created_at": "2026-10-22T02:40:36.192587Z",
+  "updated_at": "2026-10-22T02:40:36.192587Z"
+}
