@@ -1,0 +1,10 @@
+{
+  "uuid": "a203a2bf-800f-43f0-881d-882a4ee153ce",
+  "issue_uuid": "dccac918-84a0-4aaf-a308-c555132442a1",
+  "author": "3owj",
+  "content": "Pi extension ~/.pi/agent/extensions/claude-pretooluse-gate.ts written (tool_call handler runs work-check.py, blocks on exit 2). Handler logic verified via jiti harness (blocks git branch -D, allows git status). But after user /reload, live marker test still ran: session log shows bash executed in 20ms, so handler did not run -> extension apparently not loaded. Added temp debug log /tmp/pi-gate-debug.log; awaiting another reload.",
+  "created_at": "2026-10-22T04:34:09.921804Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA8kS5OKUvo4NLnbVxRWW7Y/BAVYjjWY3Ft7i4nlQaRBndqWGtbsJCbK8aHrTZ0ACgi8Zood3ahFWv5pDNG/EVCw=="
+}
