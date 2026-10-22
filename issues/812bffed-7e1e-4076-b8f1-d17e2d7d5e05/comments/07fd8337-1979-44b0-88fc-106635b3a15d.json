@@ -1,0 +1,10 @@
+{
+  "uuid": "07fd8337-1979-44b0-88fc-106635b3a15d",
+  "issue_uuid": "812bffed-7e1e-4076-b8f1-d17e2d7d5e05",
+  "author": "3owj",
+  "content": "build.rs embeds short sha + commit date into --version (e.g. 'csnotes 0.1.0 (7f4cf0a 2026-10-21)'); falls back to bare version outside a git checkout (verified); reruns on HEAD/ref/packed-refs change (verified). Branch version-info, commit 7f4cf0a, awaiting user push.",
+  "created_at": "2026-10-22T03:37:59.153354Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAdYtHY3Qi5Xr7B4OG5VvCRb6A08gxGoebtXZsT+FSjhaBDXYzgloN8d16bkblaGdk7skki9UQry/HHhkGKhb4AQ=="
+}
