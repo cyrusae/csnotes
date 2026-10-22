@@ -1,0 +1,10 @@
+{
+  "uuid": "2656d078-e86d-4df2-b1c6-75f56d5c0ba6",
+  "issue_uuid": "dccac918-84a0-4aaf-a308-c555132442a1",
+  "author": "3owj",
+  "content": "Fixed locally. Hooks DO fire under Pi (heartbeat, no matcher, was updating); only name matching was broken. Added .claude/hooks/pi-tool-shim.py: maps mcp__custom-tools__{bash,write,edit,read} -> Bash/Write/Edit/Read and tool_input.path -> file_path (absolute, relative to payload cwd), then runs the real hook; on exit 2 also copies stdout to stderr (work-check prints its reason to stdout, Claude Code only surfaces stderr on exit 2 - affected native too). settings.json: work-check matcher Write|Edit|Bash|mcp__custom-tools__(write|edit|bash), post-edit matcher Write|Edit|mcp__custom-tools__(write|edit), both routed via shim. Settings hot-reloaded, no restart needed. Verified offline (7 cases) and live (blocked git branch -D, message shown). Finding: .crosslink/agent.json makes this checkout an agent context, so agent_overrides apply (tracking_mode relaxed, own blocked list) not top-level config; added git branch -D to agent_overrides.blocked_git_commands. Caveat: .claude/ and .crosslink/ are gitignored, so all of this is local-only; crosslink init --update may regenerate settings.json.",
+  "created_at": "2026-10-22T04:04:53.765385Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA9MfcUK3k3JjZfeLTJrDNAwej04CbLL0jH3AZt9DFgouqIrvZRBflRXXrcpbECU8GRLVWuXvLybyLowAPANwGDQ=="
+}
