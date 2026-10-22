@@ -1,0 +1,10 @@
+{
+  "uuid": "14df3291-e01c-47d3-92c8-e7c26899905d",
+  "issue_uuid": "e637d8fb-5d31-41ae-a499-38e5158e5a79",
+  "author": "3owj",
+  "content": "Verified in Pi after full restart: 'git branch -D x; touch /tmp/marker' was blocked by PreToolUse gate (work-check.py via pi-tool-shim.py); /tmp/marker not created. Note: hook's suggested 'crosslink intervene' subcommand doesn't exist in installed crosslink (known; fixed in beta).",
+  "created_at": "2026-10-22T04:52:10.370804Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABA2Wah3epAZvoPoPBfRSp8Qdgyn9E+OFi3EHYNiD0ljBmrpe7oGy+FS1AuJ59oATVH9QysFksQmvcHZPwIqWf8Cw=="
+}
