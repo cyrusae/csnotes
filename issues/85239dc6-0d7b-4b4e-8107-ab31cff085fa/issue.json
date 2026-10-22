@@ -1,6 +1,6 @@
 {
   "uuid": "85239dc6-0d7b-4b4e-8107-ab31cff085fa",
-  "display_id": null,
+  "display_id": 188,
   "title": "Pi: reading-comfort theming of the session UI (active QoL goal)",
   "description": "Theme the Pi workspace for comfortable reading (colors, contrast, emphasis). Motivation: most mock-exam mistakes were misreads, so readability is a real UX win. User-specific; keep it config-driven. See PI-PLAN.md goal 6 / Phase 7.",
   "status": "open",
