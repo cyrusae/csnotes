@@ -1,0 +1,10 @@
+{
+  "uuid": "7e7f16f0-0760-4a2d-b472-703832380294",
+  "issue_uuid": "dccac918-84a0-4aaf-a308-c555132442a1",
+  "author": "3owj",
+  "content": "NOT actually enforced: under Pi (claude-bridge) the tool executes regardless of the PreToolUse result; exit 2 only replaces the tool output the model sees. Proven: blocked 'git branch -D x; touch /tmp/marker' -> block message shown, marker created. Also observed a race (hook ran concurrently with git switch). Shim makes the guard visible/advisory only. Real enforcement must happen on the Pi side before execution (e.g. a Pi extension tool_call handler that runs work-check and blocks), or in claude-bridge honoring Claude Code's hook decision.",
+  "created_at": "2026-10-22T04:18:47.532965Z",
+  "kind": "note",
+  "signed_by": "SHA256:52w4r/pOUNnrsda0/kuPySDiHRWSPWvyxohNqHlC8b0",
+  "signature": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgYS22dTuKvhxY5N8guRsAGyg/qSEwELybc2F08AiTASoAAAARY3Jvc3NsaW5rLWNvbW1lbnQAAAAAAAAABnNoYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAuaadSSmLolHN5BlZv8qZFq1cgsm0K80jqafC+EhX3ofUTaHveAJsYxj58F7MphFD+olDhQVdoi2i07oAiUyKBQ=="
+}
